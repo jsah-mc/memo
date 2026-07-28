@@ -20,9 +20,10 @@ class GatewaySettings:
     heavy_model: str = DEFAULT_HEAVY_MODEL
     vision_model: str = DEFAULT_VISION_MODEL
     upstream_api_base: str | None = None
+    computer_enabled: bool = False
 
     @classmethod
-    def from_environment(cls) -> "GatewaySettings":
+    def from_environment(cls) -> GatewaySettings:
         configured_model = os.environ.get("CODEX_MODEL", DEFAULT_UPSTREAM_MODEL)
         upstream_model = (
             configured_model
@@ -35,4 +36,5 @@ class GatewaySettings:
             heavy_model=upstream_model,
             vision_model=upstream_model,
             upstream_api_base=os.environ.get("CHATGPT_API_BASE") or None,
+            computer_enabled=os.environ.get("MEMO_COMPUTER_ENABLED", "0") == "1",
         )

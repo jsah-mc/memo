@@ -1,5 +1,11 @@
-import { ipcMain, type IpcMainEvent } from "electron";
-import { app } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  type IpcMainEvent,
+  type MessageBoxOptions,
+} from "electron";
 import { appendFileSync, statSync, truncateSync } from "node:fs";
 import path from "node:path";
 import {
@@ -36,6 +42,13 @@ type OpenAIStreamChunk = {
     media_type?: unknown;
     model?: unknown;
     prompt?: unknown;
+  };
+  permission?: {
+    id?: unknown;
+    kind?: unknown;
+    command?: unknown;
+    cwd?: unknown;
+    os_isolated?: unknown;
   };
   choices?: Array<{
     delta?: {
@@ -135,7 +148,88 @@ function sseData(block: string): string | null {
   return data || null;
 }
 
-function emitSseData(event: IpcMainEvent, requestId: string, data: string) {
+async function resolveShellPermission(
+  event: IpcMainEvent,
+  permission: NonNullable<OpenAIStreamChunk["permission"]>,
+) {
+  if (
+    typeof permission.id !== "string" ||
+    typeof permission.command !== "string" ||
+    typeof permission.cwd !== "string"
+  ) {
+    throw new Error("Gateway returned an invalid permission request.");
+  }
+
+  const isComputerControl = permission.kind === "computer_control";
+  const options: MessageBoxOptions = {
+    type: "warning",
+    title: isComputerControl
+      ? "Memo computer control"
+      : "Memo shell permission",
+    message: isComputerControl
+      ? "Allow Memo to view and control the computer for this task?"
+      : "Allow Memo to run this shell command?",
+    detail: isComputerControl
+      ? [
+          "Memo may capture your visible screens and send screenshots to the configured AI model.",
+          "It may click, type, press keys, and scroll until this response finishes.",
+          "",
+          "This approval applies only to the current task and is not remembered.",
+        ].join("\n")
+      : [
+          "Command:",
+          permission.command,
+          "",
+          "Working directory:",
+          permission.cwd,
+          "",
+          "This runs on your Windows host and is not OS-isolated.",
+        ].join("\n"),
+    buttons: ["Deny", "Allow once"],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  };
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  const choice = owner
+    ? await dialog.showMessageBox(owner, options)
+    : await dialog.showMessageBox(options);
+  const allowed = choice.response === 1;
+
+  const response = await fetch(
+    `${GATEWAY_BASE_URL}/v1/permissions/${encodeURIComponent(permission.id)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Memo-Desktop": "1",
+        "X-Memo-Computer-Tools": "1",
+      },
+      body: JSON.stringify({ allowed }),
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+  if (!response.ok) {
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      // Use the status fallback for non-JSON errors.
+    }
+    throw new Error(
+      gatewayError(
+        payload,
+        `Permission response failed (${response.status}).`,
+      ),
+    );
+  }
+}
+
+async function emitSseData(
+  event: IpcMainEvent,
+  requestId: string,
+  data: string,
+) {
   if (data === "[DONE]") {
     sendChatEvent(event, { id: requestId, type: "done" });
     return true;
@@ -144,6 +238,14 @@ function emitSseData(event: IpcMainEvent, requestId: string, data: string) {
   const payload = JSON.parse(data) as OpenAIStreamChunk;
   if (payload.error?.message) {
     throw new Error(payload.error.message);
+  }
+
+  if (payload.object === "memo.permission_request") {
+    if (!payload.permission) {
+      throw new Error("Gateway returned an empty permission request.");
+    }
+    await resolveShellPermission(event, payload.permission);
+    return false;
   }
 
   if (payload.object === "memo.tool_call") {
@@ -229,7 +331,7 @@ async function streamResponse(
         buffer = buffer.slice(boundary + 2);
         const data = sseData(block);
         if (data) {
-          doneEventReceived = emitSseData(event, requestId, data);
+          doneEventReceived = await emitSseData(event, requestId, data);
           if (doneEventReceived) break;
         }
         boundary = buffer.indexOf("\n\n");
@@ -241,7 +343,11 @@ async function streamResponse(
     if (!doneEventReceived) {
       const trailingData = sseData(buffer);
       if (trailingData) {
-        doneEventReceived = emitSseData(event, requestId, trailingData);
+        doneEventReceived = await emitSseData(
+          event,
+          requestId,
+          trailingData,
+        );
       }
     }
     if (!doneEventReceived) {
@@ -508,6 +614,7 @@ export function registerChatApi() {
               Accept: "text/event-stream",
               "Content-Type": "application/json",
               "X-Memo-Desktop": "1",
+              "X-Memo-Computer-Tools": "1",
             },
             body: JSON.stringify({
               model: "codex",

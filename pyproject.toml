@@ -13,6 +13,7 @@ dependencies = [
     "nvidia-cudnn-cu12==9.19.0.56; sys_platform == 'win32'",
     "numpy>=2.3.0",
     "openai>=2.24.0",
+    "pillow>=12.3.0",
     "python-multipart>=0.0.22",
     "python-dotenv==1.2.2",
     "realtimestt[faster-whisper]>=1.0.2",

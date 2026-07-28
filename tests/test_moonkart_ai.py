@@ -1,8 +1,13 @@
-import json
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock
 
 from utils.gateway.moonkart import (
+    detect_moonkart_action as detect_gateway_moonkart_action,
+)
+from utils.gateway.moonkart import (
+    run_moonkart_tool_turn as run_gateway_moonkart_tool_turn,
+)
+from utils.program.moonkart import (
     detect_moonkart_action,
     run_moonkart_tool_turn,
 )
@@ -36,6 +41,8 @@ class MoonKartIntentTests(TestCase):
     def test_detects_start_and_stop_spellings(self) -> None:
         self.assertEqual(detect_moonkart_action("start the moonkart"), "start")
         self.assertEqual(detect_moonkart_action("Please start MoonCart"), "start")
+        self.assertEqual(detect_moonkart_action("start the moon cart"), "start")
+        self.assertEqual(detect_moonkart_action("stop the moon kart"), "stop")
         self.assertEqual(
             detect_moonkart_action([{"role": "user", "content": "stop the moonkart"}]),
             "stop",
@@ -51,91 +58,73 @@ class MoonKartIntentTests(TestCase):
 
 
 class MoonKartAIToolTests(IsolatedAsyncioTestCase):
-    async def test_executes_authorized_tool_and_returns_followup_stream(self) -> None:
-        initial = {
-            "output": [
-                {
-                    "id": "fc_test",
-                    "type": "function_call",
-                    "call_id": "call_test",
-                    "name": "control_moonkart",
-                    "arguments": json.dumps({"action": "start"}),
-                }
-            ]
-        }
-        final = {"output_text": "MoonKart started."}
-        sdk = FakeSDK(initial, final)
+    async def test_executes_authorized_action_without_model_round_trip(self) -> None:
+        sdk = FakeSDK({}, {})
         tool = AsyncMock()
         tool.name = "control_moonkart"
-        tool.litellm_definition = {
-            "type": "function",
-            "function": {"name": "control_moonkart", "parameters": {}},
-        }
-        tool.responses_definition = {
-            "type": "function",
-            "name": "control_moonkart",
-            "parameters": {},
-        }
         tool.execute.return_value = {
             "ok": True,
             "action": "start",
             "command": "H",
         }
 
-        history = [
-            {"role": "user", "content": "My MoonKart is in the garage."},
-            {"role": "assistant", "content": "Understood."},
-            {"role": "user", "content": "start the moonkart"},
-        ]
-        stream = await run_moonkart_tool_turn(sdk, {"input": history}, "start", tool)
-
-        self.assertEqual(await stream.completed_response(), final)
-        tool.execute.assert_awaited_once_with({"action": "start"})
-        first_messages = sdk.response_payloads[0]["input"]
-        self.assertEqual(first_messages[-3:], history)
-        self.assertEqual(
-            sdk.response_payloads[0]["tool_choice"],
-            {"type": "function", "name": "control_moonkart"},
+        stream = await run_moonkart_tool_turn(
+            sdk,
+            {"input": "start the moon cart"},
+            "start",
+            tool,
         )
-        final_input = sdk.response_payloads[1]["input"]
-        self.assertEqual(final_input[:-2], first_messages)
-        self.assertEqual(final_input[-2]["type"], "function_call")
-        self.assertEqual(final_input[-2]["call_id"], "call_test")
-        output = final_input[-1]
-        self.assertEqual(output["type"], "function_call_output")
-        self.assertEqual(output["call_id"], "call_test")
-        self.assertEqual(json.loads(output["output"])["command"], "H")
+        events = [event async for event in stream.events()]
 
-    async def test_does_not_execute_action_changed_by_model(self) -> None:
-        initial = {
-            "output": [
-                {
-                    "id": "fc_test",
-                    "type": "function_call",
-                    "call_id": "call_test",
-                    "name": "control_moonkart",
-                    "arguments": json.dumps({"action": "stop"}),
-                }
-            ]
-        }
-        sdk = FakeSDK(initial, {"output_text": "Not started."})
+        tool.execute.assert_awaited_once_with({"action": "start"})
+        self.assertEqual(sdk.response_payloads, [])
+        self.assertEqual(events[0]["type"], "memo.tool_call.started")
+        self.assertEqual(events[1]["type"], "memo.tool_call.completed")
+        self.assertEqual(events[1]["tool_call"]["result"]["command"], "H")
+        self.assertEqual(events[2]["delta"], "MoonKart start command sent (H).")
+        self.assertEqual(events[3]["type"], "response.completed")
+
+    async def test_reports_hardware_error_as_failed_tool_call(self) -> None:
+        sdk = FakeSDK({}, {})
         tool = AsyncMock()
         tool.name = "control_moonkart"
-        tool.litellm_definition = {
-            "type": "function",
-            "function": {"name": "control_moonkart", "parameters": {}},
-        }
-        tool.responses_definition = {
-            "type": "function",
-            "name": "control_moonkart",
-            "parameters": {},
-        }
+        tool.execute.side_effect = ConnectionError("MoonKart not found")
 
         stream = await run_moonkart_tool_turn(
-            sdk, {"input": "start the moonkart"}, "start", tool
+            sdk,
+            {"input": "stop moonkart"},
+            "stop",
+            tool,
         )
-        await stream.completed_response()
+        events = [event async for event in stream.events()]
 
-        tool.execute.assert_not_awaited()
-        result = json.loads(sdk.response_payloads[1]["input"][-1]["output"])
-        self.assertFalse(result["ok"])
+        self.assertTrue(events[1]["tool_call"]["is_error"])
+        self.assertIn("MoonKart not found", events[2]["delta"])
+
+
+class GatewayMoonKartTests(IsolatedAsyncioTestCase):
+    async def test_spaced_name_executes_gateway_tool_without_model(self) -> None:
+        self.assertEqual(
+            detect_gateway_moonkart_action("please start the moon cart"),
+            "start",
+        )
+        sdk = FakeSDK({}, {})
+        tool = AsyncMock()
+        tool.name = "control_moonkart"
+        tool.execute.return_value = {
+            "ok": True,
+            "action": "start",
+            "command": "H",
+        }
+
+        stream = await run_gateway_moonkart_tool_turn(
+            sdk,
+            {"input": "please start the moon cart"},
+            "start",
+            tool,
+        )
+        response = await stream.completed_response()
+
+        tool.execute.assert_awaited_once_with({"action": "start"})
+        self.assertEqual(sdk.response_payloads, [])
+        self.assertEqual(response["output_text"], "MoonKart start command sent (H).")

@@ -7,7 +7,19 @@ from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from utils.tools.browser import BrowserUseTool
+from utils.tools.computer import (
+    ComputerSandboxTool,
+    detect_app_request,
+    detect_computer_task,
+)
+from utils.tools.computer_turn import (
+    computer_request_text,
+    computer_tool_events,
+    direct_app_events,
+)
+from utils.tools.desktop import detect_desktop_control_request
 from utils.tools.moonkart import MoonKartTool
+from utils.tools.permissions import PermissionBroker
 
 from .browser import detect_browser_task, run_browser_tool_turn
 from .moonkart import detect_moonkart_action, run_moonkart_tool_turn
@@ -28,17 +40,19 @@ class ProgramAI:
         *,
         browser_tool: BrowserUseTool | None = None,
         moonkart_tool: MoonKartTool | None = None,
+        computer_tool: ComputerSandboxTool | None = None,
+        permission_broker: PermissionBroker | None = None,
         sdk_factory: SDKFactory = LiteLLMSDK,
         system_prompt: str | None = None,
     ) -> None:
         self.settings = settings or ProgramSettings.from_environment()
         self.browser_tool = browser_tool or BrowserUseTool()
         self.moonkart_tool = moonkart_tool or MoonKartTool()
+        self.computer_tool = computer_tool
+        self.permission_broker = permission_broker or PermissionBroker()
         self.sdk_factory = sdk_factory
         self.system_prompt = (
-            system_prompt.strip()
-            if system_prompt is not None
-            else load_system_prompt()
+            system_prompt.strip() if system_prompt is not None else load_system_prompt()
         )
         if not self.system_prompt:
             raise ValueError("The system prompt cannot be empty.")
@@ -80,6 +94,29 @@ class ProgramAI:
         )
         if browser_task is not None:
             return run_browser_tool_turn(browser_task, self.browser_tool)
+        computer_text = computer_request_text(payload.get("input"))
+        app = detect_app_request(computer_text)
+        if (
+            self.settings.computer_enabled
+            and app is not None
+            and not detect_desktop_control_request(computer_text)
+        ):
+            return SDKResponseStream(
+                direct_app_events(
+                    self.computer_tool or ComputerSandboxTool(),
+                    app=app,
+                    user_text=computer_text,
+                )
+            )
+        if self.settings.computer_enabled and detect_computer_task(computer_text):
+            return SDKResponseStream(
+                computer_tool_events(
+                    sdk,
+                    payload,
+                    self.computer_tool or ComputerSandboxTool(),
+                    self.permission_broker,
+                )
+            )
         return await sdk.responses(payload)
 
     async def _start_response(
@@ -161,5 +198,9 @@ class ProgramAI:
     def clear_history(self) -> None:
         self.history.clear()
 
+    def resolve_permission(self, permission_id: str, allowed: bool) -> bool:
+        return self.permission_broker.resolve(permission_id, allowed)
+
     async def close(self) -> None:
+        self.permission_broker.cancel_all()
         await self.moonkart_tool.close()

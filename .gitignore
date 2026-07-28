@@ -22,4 +22,5 @@ realtimesst.log
 # Local chat history
 data.sqlite
 data.sqlite-journal
+.memo-sandbox/
 node_modules

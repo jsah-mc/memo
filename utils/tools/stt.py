@@ -312,10 +312,23 @@ class STT:
         return result
 
     def abort(self) -> None:
+        """Request cancellation without blocking Textual's UI thread."""
+
         recorder = self._recorder
-        abort = getattr(recorder, "abort", None)
-        if callable(abort):
-            abort()
+        if recorder is None:
+            return
+        use_microphone = getattr(recorder, "use_microphone", None)
+        if hasattr(use_microphone, "value"):
+            use_microphone.value = False
+        for name in (
+            "interrupt_stop_event",
+            "start_recording_event",
+            "stop_recording_event",
+        ):
+            event = getattr(recorder, name, None)
+            set_event = getattr(event, "set", None)
+            if callable(set_event):
+                set_event()
 
     @staticmethod
     def _terminate_process(process: Any) -> None:
@@ -347,6 +360,7 @@ class STT:
                 setattr(recorder, name, value)
 
         for name in (
+            "interrupt_stop_event",
             "start_recording_event",
             "stop_recording_event",
             "shutdown_event",

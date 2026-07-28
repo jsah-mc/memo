@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
+
+# pywin32 honors this flag the first time ``pythoncom`` is imported. Memo's
+# asyncio-based Bluetooth stack requires MTA rather than a GUI/STA apartment.
+if sys.platform == "win32":
+    sys.coinit_flags = 0
 
 from dotenv import load_dotenv
 

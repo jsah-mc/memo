@@ -6,7 +6,7 @@ from typing import Any, cast
 
 from textual.widgets import Button, Input, Static
 
-from utils.program.main import MemoApp
+from utils.program.main import MemoApp, ShellPermissionScreen
 
 
 class FakeTextualSDK:
@@ -52,6 +52,50 @@ class FakeVoice:
 
     async def close(self) -> None:
         self.cancel()
+
+
+class FakePermissionSDK(FakeTextualSDK):
+    def __init__(self) -> None:
+        super().__init__()
+        self.decisions: list[tuple[str, bool]] = []
+
+    async def events(self, prompt: str):
+        self.prompts.append(prompt)
+        yield {
+            "type": "memo.tool_call.started",
+            "tool_call": {
+                "id": "call_shell",
+                "name": "run_shell_command",
+                "arguments": {"command": "npm --version"},
+            },
+        }
+        yield {
+            "type": "memo.permission.requested",
+            "permission": {
+                "id": "perm_test",
+                "tool_call_id": "call_shell",
+                "kind": "shell_command",
+                "command": "npm --version",
+                "cwd": r"C:\sandbox",
+                "os_isolated": False,
+            },
+        }
+        yield {
+            "type": "memo.tool_call.completed",
+            "tool_call": {
+                "id": "call_shell",
+                "name": "run_shell_command",
+                "arguments": {"command": "npm --version"},
+                "result": {"ok": True},
+                "is_error": False,
+            },
+        }
+        yield {"type": "response.output_text.delta", "delta": "Done"}
+        yield {"type": "response.completed", "response": {}}
+
+    def resolve_permission(self, permission_id: str, allowed: bool) -> bool:
+        self.decisions.append((permission_id, allowed))
+        return True
 
 
 class TextualProgramTests(unittest.IsolatedAsyncioTestCase):
@@ -121,7 +165,55 @@ class TextualProgramTests(unittest.IsolatedAsyncioTestCase):
             app._stop_voice_mode()
             await pilot.pause()
             self.assertFalse(app._voice_mode_active)
+            self.assertTrue(voice.cancelled.is_set())
+            self.assertEqual(str(app.query_one("#voicebutton", Button).label), "🎤")
             self.assertEqual(voice.release_count, 1)
+
+    async def test_shell_command_shows_permission_modal(self) -> None:
+        sdk = FakePermissionSDK()
+        app = MemoApp(cast(Any, sdk))
+
+        async with app.run_test(size=(100, 30)) as pilot:
+            input_widget = app.query_one("#messageinput", Input)
+            input_widget.value = "run npm --version"
+            await pilot.press("enter")
+            for _ in range(20):
+                await pilot.pause(0.01)
+                if isinstance(app.screen, ShellPermissionScreen):
+                    break
+
+            self.assertIsInstance(
+                app.screen,
+                ShellPermissionScreen,
+                str(app.query_one(".assistant-message", Static).content),
+            )
+            command = app.screen.query_one("#shell-permission-command", Static)
+            self.assertEqual(str(command.content), "npm --version")
+            await pilot.click("#allow-shell")
+            await pilot.pause()
+
+            self.assertEqual(sdk.decisions, [("perm_test", True)])
+            response = app.query_one(".assistant-message", Static)
+            self.assertEqual(str(response.content), "Memo\nDone")
+
+    async def test_shell_permission_escape_denies(self) -> None:
+        sdk = FakePermissionSDK()
+        app = MemoApp(cast(Any, sdk))
+
+        async with app.run_test(size=(100, 30)) as pilot:
+            input_widget = app.query_one("#messageinput", Input)
+            input_widget.value = "run npm --version"
+            await pilot.press("enter")
+            for _ in range(20):
+                await pilot.pause(0.01)
+                if isinstance(app.screen, ShellPermissionScreen):
+                    break
+
+            self.assertIsInstance(app.screen, ShellPermissionScreen)
+            await pilot.press("escape")
+            await pilot.pause()
+
+            self.assertEqual(sdk.decisions, [("perm_test", False)])
 
 
 if __name__ == "__main__":

@@ -8,9 +8,10 @@ import os
 import tempfile
 import time
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -18,18 +19,30 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.concurrency import iterate_in_threadpool
 
 from utils.tools.browser import BrowserUseTool
+from utils.tools.computer import (
+    ComputerSandboxTool,
+    detect_app_request,
+    detect_computer_task,
+)
+from utils.tools.computer_turn import (
+    computer_request_text,
+    computer_tool_events,
+    direct_app_events,
+)
+from utils.tools.desktop import detect_desktop_control_request
 from utils.tools.moonkart import MoonKartTool
+from utils.tools.permissions import PermissionBroker
 from utils.tools.stt import STT
 from utils.tools.tts import TTS
 
 from .access_log import QuietPathAccessLogFilter
+from .browser import detect_browser_task, run_browser_tool_turn
 from .chat import (
     chat_chunk,
     chat_to_responses,
     chat_usage,
     to_chat_completion,
 )
-from .browser import detect_browser_task, run_browser_tool_turn
 from .moonkart import detect_moonkart_action, run_moonkart_tool_turn
 from .router import ModelRouter
 from .sdk import LiteLLMSDK
@@ -40,11 +53,14 @@ def create_app(
     settings: GatewaySettings,
     moonkart_tool: MoonKartTool | None = None,
     browser_tool: BrowserUseTool | None = None,
+    computer_tool: ComputerSandboxTool | None = None,
+    permission_broker: PermissionBroker | None = None,
     stt_tool: STT | None = None,
     tts_tool: TTS | None = None,
 ) -> FastAPI:
     kart_tool = moonkart_tool or MoonKartTool()
     web_tool = browser_tool or BrowserUseTool()
+    approvals = permission_broker or PermissionBroker()
     router = ModelRouter(
         light_model=settings.light_model,
         heavy_model=settings.heavy_model,
@@ -60,6 +76,8 @@ def create_app(
         payload: dict[str, Any],
         *,
         allow_browser: bool,
+        allow_computer: bool,
+        interactive_permissions: bool,
     ):
         action = detect_moonkart_action(payload.get("input"))
         if action is not None:
@@ -69,9 +87,47 @@ def create_app(
         )
         if browser_task is not None:
             return await run_browser_tool_turn(sdk, payload, browser_task, web_tool)
+        computer_text = computer_request_text(payload.get("input"))
+        app = detect_app_request(computer_text)
+        if (
+            allow_computer
+            and settings.computer_enabled
+            and app is not None
+            and not detect_desktop_control_request(computer_text)
+        ):
+            from .sdk import SDKResponseStream
+
+            return SDKResponseStream(
+                direct_app_events(
+                    computer_tool or ComputerSandboxTool(),
+                    app=app,
+                    user_text=computer_text,
+                )
+            )
+        if (
+            allow_computer
+            and settings.computer_enabled
+            and detect_computer_task(computer_text)
+        ):
+            from .sdk import SDKResponseStream
+
+            return SDKResponseStream(
+                computer_tool_events(
+                    sdk,
+                    payload,
+                    computer_tool or ComputerSandboxTool(),
+                    approvals if interactive_permissions else None,
+                )
+            )
         return await sdk.responses(payload)
 
-    async def start_response(payload: dict[str, Any], *, allow_browser: bool = True):
+    async def start_response(
+        payload: dict[str, Any],
+        *,
+        allow_browser: bool = True,
+        allow_computer: bool = False,
+        interactive_permissions: bool = False,
+    ):
         route = router.route(payload)
 
         routed_payload = dict(payload)
@@ -84,6 +140,8 @@ def create_app(
                 LiteLLMSDK(route.model, api_base=settings.upstream_api_base),
                 routed_payload,
                 allow_browser=allow_browser,
+                allow_computer=allow_computer,
+                interactive_permissions=interactive_permissions,
             )
         except Exception:
             if not route.fallback_model or route.fallback_model == route.model:
@@ -101,6 +159,8 @@ def create_app(
                 ),
                 routed_payload,
                 allow_browser=allow_browser,
+                allow_computer=allow_computer,
+                interactive_permissions=interactive_permissions,
             )
 
     @asynccontextmanager
@@ -109,6 +169,7 @@ def create_app(
         try:
             yield
         finally:
+            approvals.cancel_all()
             try:
                 await kart_tool.close()
             finally:
@@ -133,6 +194,34 @@ def create_app(
                 }
             ],
         }
+
+    @app.post("/v1/permissions/{permission_id}")
+    async def resolve_permission(
+        permission_id: str,
+        request: Request,
+    ) -> dict[str, bool]:
+        if (
+            request.headers.get("x-memo-desktop") != "1"
+            or request.headers.get("x-memo-computer-tools") != "1"
+        ):
+            raise HTTPException(status_code=403, detail="Permission resolution denied.")
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise HTTPException(status_code=400, detail="Invalid JSON body.") from exc
+        if not isinstance(payload, dict) or not isinstance(
+            payload.get("allowed"), bool
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="The allowed field must be a boolean.",
+            )
+        if not approvals.resolve(permission_id, payload["allowed"]):
+            raise HTTPException(
+                status_code=404,
+                detail="Permission request is no longer pending.",
+            )
+        return {"resolved": True, "allowed": payload["allowed"]}
 
     @app.post("/v1/images/generations")
     async def image_generations() -> None:
@@ -256,9 +345,7 @@ def create_app(
 
         return StreamingResponse(
             audio_stream(),
-            media_type=(
-                "audio/wav" if response_format == "wav" else "audio/mpeg"
-            ),
+            media_type=("audio/wav" if response_format == "wav" else "audio/mpeg"),
             headers={
                 "Cache-Control": "no-store",
                 "X-Accel-Buffering": "no",
@@ -282,6 +369,8 @@ def create_app(
             sdk_stream = await start_response(
                 payload,
                 allow_browser=request.headers.get("x-memo-internal-browser") != "1",
+                allow_computer=request.headers.get("x-memo-computer-tools") == "1",
+                interactive_permissions=wants_stream,
             )
         except HTTPException:
             raise
@@ -334,6 +423,8 @@ def create_app(
             sdk_stream = await start_response(
                 responses_payload,
                 allow_browser=request.headers.get("x-memo-internal-browser") != "1",
+                allow_computer=request.headers.get("x-memo-computer-tools") == "1",
+                interactive_permissions=wants_stream,
             )
         except HTTPException:
             raise
@@ -376,6 +467,12 @@ def create_app(
                             "tool_call": event.get("tool_call", {}),
                         }
                         yield f"data: {json.dumps(tool_event, separators=(',', ':'))}\n\n"
+                    elif show_tool_events and event_type == "memo.permission.requested":
+                        permission_event = {
+                            "object": "memo.permission_request",
+                            "permission": event.get("permission", {}),
+                        }
+                        yield f"data: {json.dumps(permission_event, separators=(',', ':'))}\n\n"
                     elif show_tool_events and event_type == "memo.image.generated":
                         image_event = {
                             "object": "memo.image",

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import re
+import uuid
 from typing import Any, Literal
 
 from utils.tools.moonkart import MoonKartTool
@@ -13,7 +13,7 @@ from .sdk import LiteLLMSDK, SDKResponseStream
 MoonKartAction = Literal["start", "stop"]
 
 _MOONKART_INTENT = re.compile(
-    r"\b(?P<action>start|stop)\s+(?:the\s+)?moon(?:kart|cart)\b",
+    r"\b(?P<action>start|stop)\s+(?:the\s+)?moon\s*(?:kart|cart)\b",
     re.IGNORECASE,
 )
 _NEGATED_ACTION = re.compile(
@@ -121,54 +121,21 @@ def _completion_messages(
                 }
             )
     else:
-        raise ValueError("MoonKart requests require text or message input.")
+        raise TypeError("MoonKart requests require text or message input.")
     return messages
 
 
 async def run_moonkart_tool_turn(
-    sdk: LiteLLMSDK,
-    payload: dict[str, Any],
+    _sdk: LiteLLMSDK,
+    _payload: dict[str, Any],
     action: MoonKartAction,
     tool: MoonKartTool,
 ) -> SDKResponseStream:
-    messages = _completion_messages(payload, action)
-    initial = await (
-        await sdk.responses(
-            {
-                "input": list(messages),
-                "tools": [tool.responses_definition],
-                "tool_choice": {"type": "function", "name": tool.name},
-            }
-        )
-    ).completed_response()
-
-    output = initial.get("output")
-    calls = (
-        [
-            item
-            for item in output
-            if isinstance(item, dict)
-            and item.get("type") == "function_call"
-            and item.get("name") == tool.name
-        ]
-        if isinstance(output, list)
-        else []
-    )
-    if not calls:
-        raise RuntimeError("The model did not call the MoonKart tool.")
-
-    call = calls[0]
-    call_id = call.get("call_id") or call.get("id")
-    if not isinstance(call_id, str) or not call_id:
-        raise RuntimeError("The MoonKart tool call did not include an ID.")
-    try:
-        arguments = json.loads(call.get("arguments", "{}"))
-    except (TypeError, json.JSONDecodeError):
-        arguments = {}
-    if not isinstance(arguments, dict):
-        arguments = {}
+    """Execute an explicit MoonKart command without asking the model again."""
 
     async def events():
+        call_id = f"call_{uuid.uuid4().hex}"
+        arguments = {"action": action}
         yield {
             "type": "memo.tool_call.started",
             "tool_call": {
@@ -177,17 +144,10 @@ async def run_moonkart_tool_turn(
                 "arguments": arguments,
             },
         }
-        if arguments.get("action") != action:
-            result: dict[str, Any] = {
-                "ok": False,
-                "error": "The model requested an unauthorized MoonKart action.",
-                "authorized_action": action,
-            }
-        else:
-            try:
-                result = await tool.execute(arguments)
-            except Exception as exc:
-                result = {"ok": False, "action": action, "error": str(exc)}
+        try:
+            result: dict[str, Any] = await tool.execute(arguments)
+        except Exception as exc:  # noqa: BLE001 - hardware backends vary by platform.
+            result = {"ok": False, "action": action, "error": str(exc)}
 
         yield {
             "type": "memo.tool_call.completed",
@@ -199,25 +159,21 @@ async def run_moonkart_tool_turn(
                 "is_error": not bool(result.get("ok")),
             },
         }
-        final_stream = await sdk.responses(
-            {
-                "input": [
-                    *messages,
-                    {
-                        "type": "function_call",
-                        "call_id": call_id,
-                        "name": tool.name,
-                        "arguments": json.dumps(arguments, separators=(",", ":")),
-                    },
-                    {
-                        "type": "function_call_output",
-                        "call_id": call_id,
-                        "output": json.dumps(result, separators=(",", ":")),
-                    },
-                ]
-            }
-        )
-        async for event in final_stream.events():
-            yield event
+        if result.get("ok"):
+            command = result.get("command")
+            text = (
+                f"MoonKart {action} command sent"
+                + (f" ({command})." if command else ".")
+            )
+        else:
+            text = f"Could not {action} MoonKart: {result.get('error', 'unknown error')}"
+        yield {"type": "response.output_text.delta", "delta": text}
+        yield {
+            "type": "response.completed",
+            "response": {
+                "status": "completed",
+                "output_text": text,
+            },
+        }
 
     return SDKResponseStream(events())

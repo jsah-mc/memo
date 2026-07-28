@@ -106,12 +106,67 @@ Browser requests open visible Chromium unless `MEMO_BROWSER_HEADLESS=1`.
 MoonKart start and stop requests remain LiteLLM function calls and send `H` or
 `S` only after an explicit user request.
 
+## Restricted computer tools
+
+The Textual program can run a deliberately small set of commands and open
+Windows apps. Command files are confined to `.memo-sandbox/`;
+supported workspace commands are `echo`, `pwd`, `dir`, `type`, `mkdir`,
+`write`, and `delete`. Read-only host commands are limited to `whoami`,
+`hostname`, `ipconfig`, `tasklist`, and `systeminfo`. The allowed apps are
+Notepad, Calculator, Paint, and File Explorer; Explorer opens the sandbox
+directory. Requests for any other installed app that Windows can resolve, such
+as `open Chrome`, `launch Spotify`, or `start VS Code`, are routed through the
+permission-gated Windows shell.
+
+Arbitrary shell commands use a separate `run_shell_command` tool. Before any
+shell process starts, Memo pauses and shows the exact command and working
+directory. The Textual program displays an Allow once/Deny modal, while the
+desktop app displays a native Windows permission dialog. Denial, dismissal, or
+no answer prevents execution. Every command needs a new approval; approvals
+are never remembered. Commands time out after 60 seconds, output is capped, and
+credential-like environment variables are not passed to the child shell.
+
+Visible desktop tasks use `inspect_computer_screen` and `control_computer`.
+After one explicit Allow once decision, Memo can capture the unlocked Windows
+desktop, send scaled screenshots to the configured vision-capable model, and
+perform bounded batches of clicks, typing, key presses, hotkeys, scrolling, and
+short waits. It captures the result after each action batch so the model can
+continue from what is actually visible. This control session ends with the
+current response and is never reused by a later message.
+
+Examples include `run echo hello`, `write hello to notes/hello.txt`, and
+`open calculator`. Arbitrary app launches and requests such as
+`search air in my Downloads` are also
+routed to the permission-gated Windows shell, and short confirmations such as
+`yeah do it` approve the immediately preceding app-launch request exactly once.
+That conversational approval is bound to the named app, consumed by the first
+action, and never remembered for later actions. The executor
+checks the original user message, so the model cannot substitute another
+allowlisted command or open an app that was not explicitly named.
+
+This is a capability-policy sandbox, not virtual-machine or container
+isolation. Allowlisted commands and apps still run on Windows. An approved
+shell starts in `.memo-sandbox/`, but it can use absolute paths or change
+directories and therefore can access the host with the current user's
+permissions. The permission dialog states this explicitly. Do not approve a
+command you do not understand, and do not treat the working directory as a
+security boundary for hostile native code. Desktop control likewise operates
+as the signed-in Windows user and can interact with anything visible on the
+unlocked desktop, so approve it only for tasks you intend Memo to perform.
+
+The HTTP gateway keeps computer control disabled by default. To opt in, set
+`MEMO_COMPUTER_ENABLED=1` and send `X-Memo-Computer-Tools: 1` on each
+`/v1/responses` or `/v1/chat/completions` request. Keep such a gateway bound to
+localhost; the header is a capability switch, not authentication. Set
+`MEMO_SANDBOX_ROOT` to relocate the command workspace. The desktop app supplies
+both settings to the localhost gateway process that it manages.
+
 ## Structure
 
 ```text
 utils/
   gateway/   FastAPI, LiteLLM, routing, streaming, and tool orchestration
-  tools/     Browser, MoonKart, RealtimeSTT, and RealtimeTTS adapters
+  tools/     Computer, Browser, MoonKart, RealtimeSTT, and RealtimeTTS adapters
   browser/   Visible Browser Use agent
   program/   Desktop/runtime integration
 ```

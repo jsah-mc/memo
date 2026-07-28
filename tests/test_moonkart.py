@@ -25,6 +25,9 @@ class MoonKartClientTests(IsolatedAsyncioTestCase):
 
         with (
             patch(
+                "utils.tools.moonkart._prepare_windows_bluetooth_thread"
+            ) as prepare_thread,
+            patch(
                 "utils.tools.moonkart.BleakScanner.find_device_by_filter",
                 new=AsyncMock(return_value=device),
             ),
@@ -38,6 +41,7 @@ class MoonKartClientTests(IsolatedAsyncioTestCase):
             await moonkart.disconnect()
 
         self.assertIs(found, device)
+        prepare_thread.assert_called_once_with()
         client_type.assert_called_once()
         bleak_client.connect.assert_awaited_once_with()
         bleak_client.start_notify.assert_awaited_once_with(

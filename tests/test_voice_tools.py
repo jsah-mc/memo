@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import unittest
 import wave
 from pathlib import Path
@@ -13,12 +14,17 @@ class FakeRecorder:
         self.result = text
         self.aborted = False
         self.was_shutdown = False
+        self.use_microphone = SimpleNamespace(value=True)
+        self.interrupt_stop_event = threading.Event()
+        self.start_recording_event = threading.Event()
+        self.stop_recording_event = threading.Event()
+        self.shutdown_event = threading.Event()
 
     def text(self) -> str:
         return self.result
 
     def abort(self) -> None:
-        self.aborted = True
+        raise AssertionError("STT.abort must not call RealtimeSTT's blocking abort")
 
     def shutdown(self) -> None:
         self.was_shutdown = True
@@ -74,7 +80,10 @@ class VoiceToolTests(unittest.TestCase):
         self.assertEqual(result["transcript"], "hello in real time")
         self.assertEqual(result["provider"], "realtimestt")
         self.assertEqual(result["model"], "small.en")
-        self.assertTrue(recorder.aborted)
+        self.assertTrue(recorder.interrupt_stop_event.is_set())
+        self.assertTrue(recorder.start_recording_event.is_set())
+        self.assertTrue(recorder.stop_recording_event.is_set())
+        self.assertFalse(recorder.use_microphone.value)
         self.assertTrue(recorder.was_shutdown)
 
     def test_stt_transcribes_audio_with_faster_whisper(self):

@@ -1,11 +1,15 @@
 import json
+import tempfile
 from unittest import TestCase
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from fastapi.testclient import TestClient
 
 from utils.gateway.api import create_app
+from utils.gateway.sdk import SDKResponseStream
 from utils.gateway.settings import GatewaySettings
+from utils.tools.computer import ComputerSandboxTool
+from utils.tools.permissions import PermissionBroker
 
 
 class FakeResponseStream:
@@ -44,7 +48,46 @@ class FakeToolResponseStream:
         yield {"type": "response.completed", "response": {"usage": {}}}
 
 
+class FakePermissionResponseStream:
+    async def events(self):
+        yield {
+            "type": "memo.permission.requested",
+            "permission": {
+                "id": "perm_test",
+                "tool_call_id": "call_shell",
+                "kind": "shell_command",
+                "command": "npm --version",
+                "cwd": r"C:\sandbox",
+                "os_isolated": False,
+            },
+        }
+        yield {"type": "response.completed", "response": {"usage": {}}}
+
+
+def completed_stream(response: dict, text: str = "") -> SDKResponseStream:
+    async def events():
+        if text:
+            yield {"type": "response.output_text.delta", "delta": text}
+        yield {"type": "response.completed", "response": response}
+
+    return SDKResponseStream(events())
+
+
 class FakeMoonKartTool:
+    name = "control_moonkart"
+
+    def __init__(self) -> None:
+        self.actions: list[str] = []
+
+    async def execute(self, arguments: dict) -> dict:
+        action = arguments["action"]
+        self.actions.append(action)
+        return {
+            "ok": True,
+            "action": action,
+            "command": "H" if action == "start" else "S",
+        }
+
     async def close(self) -> None:
         pass
 
@@ -122,6 +165,61 @@ class GatewayStreamingTests(TestCase):
         self.assertNotIn("result", tool_events[0])
         self.assertEqual(tool_events[1]["result"]["result"], "Found it")
 
+    def test_desktop_stream_exposes_shell_permission_event(self) -> None:
+        with (
+            patch(
+                "utils.gateway.sdk.LiteLLMSDK.responses",
+                new=AsyncMock(return_value=FakePermissionResponseStream()),
+            ),
+            TestClient(create_app(GatewaySettings())) as client,
+        ):
+            response = client.post(
+                "/v1/chat/completions",
+                headers={"X-Memo-Desktop": "1"},
+                json={
+                    "model": "codex",
+                    "messages": [{"role": "user", "content": "Hello"}],
+                    "stream": True,
+                },
+            )
+
+        data = [
+            json.loads(line.removeprefix("data: "))
+            for line in response.text.splitlines()
+            if line.startswith("data: ") and line != "data: [DONE]"
+        ]
+        permission = next(
+            item for item in data if item.get("object") == "memo.permission_request"
+        )
+        self.assertEqual(permission["permission"]["command"], "npm --version")
+        self.assertFalse(permission["permission"]["os_isolated"])
+
+    def test_gateway_executes_spaced_moon_cart_without_upstream_model(self) -> None:
+        settings = GatewaySettings()
+        tool = FakeMoonKartTool()
+
+        with (
+            patch(
+                "utils.gateway.sdk.LiteLLMSDK.responses",
+                new=AsyncMock(side_effect=AssertionError("model was called")),
+            ),
+            TestClient(create_app(settings, moonkart_tool=tool)) as client,
+        ):
+            response = client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "codex",
+                    "messages": [{"role": "user", "content": "start the moon cart"}],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(tool.actions, ["start"])
+        self.assertEqual(
+            response.json()["choices"][0]["message"]["content"],
+            "MoonKart start command sent (H).",
+        )
+
     def test_image_generation_endpoint_is_disabled_without_local_backend(self) -> None:
         settings = GatewaySettings()
 
@@ -135,3 +233,132 @@ class GatewayStreamingTests(TestCase):
 
         self.assertEqual(response.status_code, 501)
         self.assertIn("not configured", response.json()["detail"])
+
+    def test_gateway_computer_tool_requires_setting_and_opt_in_header(self) -> None:
+        settings = GatewaySettings(computer_enabled=True)
+        with tempfile.TemporaryDirectory() as root:
+            computer = ComputerSandboxTool(root)
+            upstream = AsyncMock(
+                side_effect=[
+                    completed_stream(
+                        {
+                            "output": [
+                                {
+                                    "type": "function_call",
+                                    "call_id": "call_echo",
+                                    "name": "run_sandboxed_command",
+                                    "arguments": '{"argv":["echo","gateway"]}',
+                                }
+                            ]
+                        }
+                    ),
+                    completed_stream(
+                        {"output": [], "usage": {}},
+                        "The command printed gateway.",
+                    ),
+                ]
+            )
+            with (
+                patch(
+                    "utils.gateway.sdk.LiteLLMSDK.responses",
+                    new=upstream,
+                ),
+                TestClient(create_app(settings, computer_tool=computer)) as client,
+            ):
+                response = client.post(
+                    "/v1/chat/completions",
+                    headers={"X-Memo-Computer-Tools": "1"},
+                    json={
+                        "model": "codex",
+                        "messages": [{"role": "user", "content": "run echo gateway"}],
+                    },
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["choices"][0]["message"]["content"],
+            "The command printed gateway.",
+        )
+        self.assertEqual(upstream.await_count, 2)
+        second_input = upstream.await_args_list[1].args[-1]["input"]
+        self.assertEqual(second_input[-1]["type"], "function_call_output")
+
+    def test_gateway_computer_tool_is_not_exposed_without_header(self) -> None:
+        settings = GatewaySettings(computer_enabled=True)
+        upstream = AsyncMock(
+            return_value=completed_stream(
+                {"output": [], "usage": {}},
+                "Ordinary model response.",
+            )
+        )
+        with (
+            patch(
+                "utils.gateway.sdk.LiteLLMSDK.responses",
+                new=upstream,
+            ),
+            TestClient(create_app(settings)) as client,
+        ):
+            response = client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "codex",
+                    "messages": [{"role": "user", "content": "run echo gateway"}],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(upstream.await_count, 1)
+        self.assertNotIn("tools", upstream.await_args.args[-1])
+
+    def test_gateway_opens_explicit_app_without_model_decision(self) -> None:
+        settings = GatewaySettings(computer_enabled=True)
+        with tempfile.TemporaryDirectory() as root:
+            computer = ComputerSandboxTool(root)
+            process = Mock(pid=42)
+            with (
+                patch(
+                    "utils.gateway.sdk.LiteLLMSDK.responses",
+                    new=AsyncMock(side_effect=AssertionError("model was called")),
+                ),
+                patch(
+                    "utils.tools.computer.subprocess.Popen",
+                    return_value=process,
+                ),
+                TestClient(create_app(settings, computer_tool=computer)) as client,
+            ):
+                response = client.post(
+                    "/v1/chat/completions",
+                    headers={"X-Memo-Computer-Tools": "1"},
+                    json={
+                        "model": "codex",
+                        "messages": [{"role": "user", "content": "open notepad"}],
+                    },
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["choices"][0]["message"]["content"],
+            "Opened Notepad.",
+        )
+
+    def test_gateway_permission_resolution_requires_desktop_headers(self) -> None:
+        broker = Mock(spec=PermissionBroker)
+        broker.resolve.return_value = True
+        settings = GatewaySettings(computer_enabled=True)
+        with TestClient(create_app(settings, permission_broker=broker)) as client:
+            denied = client.post(
+                "/v1/permissions/perm_test",
+                json={"allowed": True},
+            )
+            allowed = client.post(
+                "/v1/permissions/perm_test",
+                headers={
+                    "X-Memo-Desktop": "1",
+                    "X-Memo-Computer-Tools": "1",
+                },
+                json={"allowed": True},
+            )
+
+        self.assertEqual(denied.status_code, 403)
+        self.assertEqual(allowed.status_code, 200)
+        broker.resolve.assert_called_once_with("perm_test", True)

@@ -143,7 +143,10 @@ async function startGateway() {
   const { command, args } = gatewayCommand(root);
   const child = spawn(command, args, {
     cwd: root,
-    env: process.env,
+    env: {
+      ...process.env,
+      MEMO_COMPUTER_ENABLED: "1",
+    },
     windowsHide: true,
     stdio: "ignore",
   });

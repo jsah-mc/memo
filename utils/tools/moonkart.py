@@ -6,6 +6,7 @@ import asyncio
 import copy
 import sys
 from collections.abc import Callable
+from typing import ClassVar
 
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -47,6 +48,28 @@ ResponseHandler = Callable[[str | bytes], None]
 DisconnectHandler = Callable[[], None]
 
 
+def _prepare_windows_bluetooth_thread() -> None:
+    """Undo accidental STA initialization before Bleak starts WinRT."""
+
+    if sys.platform != "win32":
+        return
+    from bleak.backends.winrt import util
+
+    # A dependency may have called CoInitialize more than once. Bleak's public
+    # helper removes one reference, so repeat only while the thread remains STA.
+    for _ in range(16):
+        try:
+            apartment, _ = util._get_apartment_type()
+        except OSError as exc:
+            if exc.winerror == util._CO_E_NOTINITIALIZED:
+                return
+            raise
+        if apartment == util._AptType.MTA:
+            return
+        util.uninitialize_sta()
+    raise RuntimeError("Could not reset the Windows COM thread for Bluetooth.")
+
+
 class MoonKartNotFoundError(ConnectionError):
     """Raised when a MoonKart cannot be found during Bluetooth discovery."""
 
@@ -73,6 +96,7 @@ class MoonKartClient:
     async def find_device(self) -> BLEDevice:
         """Scan until a BLE device with the configured name is found."""
 
+        _prepare_windows_bluetooth_thread()
         device = await BleakScanner.find_device_by_filter(
             lambda candidate, advertisement: (
                 candidate.name == self.device_name
@@ -115,7 +139,7 @@ class MoonKartClient:
 
         await self._client.write_gatt_char(
             UART_RX_CHAR_UUID,
-            f"{command}\n".encode("utf-8"),
+            f"{command}\n".encode(),
             response=True,
         )
 
@@ -151,7 +175,7 @@ class MoonKartTool:
     """LiteLLM function tool backed by one reusable MoonKart BLE connection."""
 
     name = "control_moonkart"
-    COMMANDS = {"start": "H", "stop": "S"}
+    COMMANDS: ClassVar[dict[str, str]] = {"start": "H", "stop": "S"}
 
     def __init__(self, client: MoonKartClient | None = None) -> None:
         self.client = client or MoonKartClient()
@@ -175,7 +199,7 @@ class MoonKartTool:
 
         action = arguments.get("action")
         if not isinstance(action, str):
-            raise ValueError("MoonKart tool arguments require an `action` string.")
+            raise TypeError("MoonKart tool arguments require an `action` string.")
         return await self.control(action)
 
     async def control(self, action: str) -> dict[str, str | bool]:
