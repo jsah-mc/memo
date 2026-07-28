@@ -1,0 +1,32 @@
+.messagerow {
+  dock: bottom;
+  height: 1;
+  width: 100%;
+  background: $surface;
+}
+
+#messageinput {
+  border: none;
+  width: 1fr;
+  height: 1;
+  padding: 0 1;
+}
+
+.messagerow Button {
+  width: 5;
+  min-width: 5;
+  height: 1;
+  padding: 0;
+  border: none;
+}
+
+.messagerow Button:hover,
+.messagerow Button:focus,
+.messagerow Button.-active {
+  border: none;
+}
+
+#messages {
+  height: 1fr;
+  padding: 1 2;
+}

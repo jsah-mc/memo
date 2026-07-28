@@ -1,0 +1,22 @@
+.chat-message {
+  width: 100%;
+  height: auto;
+  margin-bottom: 1;
+  padding: 1 2;
+}
+
+.user-message {
+  background: $primary 15%;
+  border-left: thick $primary;
+}
+
+.assistant-message {
+  background: $surface;
+  border-left: thick $secondary;
+}
+
+.tool-message {
+  color: $text-muted;
+  background: $boost;
+  border-left: thick $warning;
+}

@@ -1,1 +1,3 @@
-__all__ = ["stt" "tts" "program" "asciiart" "ai"]
+"""Memo's reusable gateway and hardware modules."""
+
+__all__ = ["gateway", "tools", "cli"]

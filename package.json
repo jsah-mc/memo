@@ -1,0 +1,16 @@
+{
+  "name": "memo",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.15.1",
+  "scripts": {
+    "dev": "pnpm --filter @memo/desktop start",
+    "dev:desktop": "pnpm --filter @memo/desktop start",
+    "dev:gateway": "uv run memo gateway",
+    "build": "pnpm --filter @memo/desktop package",
+    "package": "pnpm --filter @memo/desktop package",
+    "make": "pnpm --filter @memo/desktop make",
+    "lint": "pnpm --filter @memo/desktop lint",
+    "typecheck": "pnpm --filter @memo/desktop typecheck"
+  }
+}

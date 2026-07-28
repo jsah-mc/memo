@@ -1,3 +1,9 @@
+# JavaScript workspace files
+apps/desktop/node_modules/
+apps/*/node_modules/
+apps/*/out/
+apps/*/.vite/
+
 # Python-generated files
 __pycache__/
 *.py[oc]
@@ -8,6 +14,12 @@ wheels/
 
 # Virtual environments
 .venv
+.env
 
 # RealTime SST logs
 realtimesst.log
+
+# Local chat history
+data.sqlite
+data.sqlite-journal
+node_modules
