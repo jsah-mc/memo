@@ -416,6 +416,30 @@ export function registerChatApi() {
     traceVoice("prepare.received");
     try {
       await ensureGatewayRunning();
+      const response = await fetch(
+        `${GATEWAY_BASE_URL}/v1/audio/transcriptions/prepare`,
+        {
+          method: "POST",
+          headers: {
+            "X-Memo-Desktop": "1",
+          },
+          signal: AbortSignal.timeout(120_000),
+        },
+      );
+      if (!response.ok) {
+        let payload: unknown;
+        try {
+          payload = await response.json();
+        } catch {
+          // Use the status fallback for non-JSON errors.
+        }
+        throw new Error(
+          gatewayError(
+            payload,
+            `Speech preparation failed (${response.status}).`,
+          ),
+        );
+      }
       traceVoice("prepare.ready");
       return { ready: true };
     } catch (error) {

@@ -10,6 +10,11 @@ from utils.gateway.settings import GatewaySettings
 class FakeSTT:
     def __init__(self) -> None:
         self.received = b""
+        self.prepared = False
+
+    def prepare(self):
+        self.prepared = True
+        return {"ready": True, "model": "fake"}
 
     def transcribe(self, path: Path):
         self.received = path.read_bytes()
@@ -53,6 +58,13 @@ class AudioApiTests(TestCase):
             {"text": "hello from the microphone", "language": "en"},
         )
         self.assertEqual(self.stt.received, b"microphone-audio")
+
+    def test_transcription_model_can_be_prepared_before_recording(self) -> None:
+        response = self.client.post("/v1/audio/transcriptions/prepare")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ready": True, "model": "fake"})
+        self.assertTrue(self.stt.prepared)
 
     def test_accepts_legacy_desktop_stt_model_alias(self) -> None:
         response = self.client.post(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -23,11 +24,15 @@ from utils.tools.computer import (
     ComputerSandboxTool,
     detect_app_request,
     detect_computer_task,
+    generic_app_request_name,
+    known_folder_request,
 )
 from utils.tools.computer_turn import (
     computer_request_text,
     computer_tool_events,
     direct_app_events,
+    direct_named_app_events,
+    has_one_time_computer_approval,
 )
 from utils.tools.desktop import detect_desktop_control_request
 from utils.tools.moonkart import MoonKartTool
@@ -88,6 +93,23 @@ def create_app(
         if browser_task is not None:
             return await run_browser_tool_turn(sdk, payload, browser_task, web_tool)
         computer_text = computer_request_text(payload.get("input"))
+        folder = known_folder_request(computer_text)
+        if (
+            allow_computer
+            and settings.computer_enabled
+            and folder is not None
+            and not detect_desktop_control_request(computer_text)
+        ):
+            from .sdk import SDKResponseStream
+
+            return SDKResponseStream(
+                direct_named_app_events(
+                    computer_tool or ComputerSandboxTool(),
+                    user_text=computer_text,
+                    permission_broker=approvals if interactive_permissions else None,
+                    approved=has_one_time_computer_approval(payload.get("input")),
+                )
+            )
         app = detect_app_request(computer_text)
         if (
             allow_computer
@@ -102,6 +124,22 @@ def create_app(
                     computer_tool or ComputerSandboxTool(),
                     app=app,
                     user_text=computer_text,
+                )
+            )
+        if (
+            allow_computer
+            and settings.computer_enabled
+            and generic_app_request_name(computer_text) is not None
+            and not detect_desktop_control_request(computer_text)
+        ):
+            from .sdk import SDKResponseStream
+
+            return SDKResponseStream(
+                direct_named_app_events(
+                    computer_tool or ComputerSandboxTool(),
+                    user_text=computer_text,
+                    permission_broker=approvals if interactive_permissions else None,
+                    approved=has_one_time_computer_approval(payload.get("input")),
                 )
             )
         if (
@@ -165,10 +203,31 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        nonlocal speech_to_text
         access_logger.addFilter(quiet_health_logs)
+        warmup_task: asyncio.Task[None] | None = None
+
+        async def warm_speech_model() -> None:
+            nonlocal speech_to_text
+            try:
+                if speech_to_text is None:
+                    speech_to_text = STT()
+                prepare = getattr(speech_to_text, "prepare", None)
+                if callable(prepare):
+                    await asyncio.to_thread(prepare)
+            except Exception:
+                logging.getLogger("memo.stt").warning(
+                    "Background speech model warmup failed.",
+                    exc_info=True,
+                )
+
+        if os.environ.get("MEMO_STT_PRELOAD", "0") == "1":
+            warmup_task = asyncio.create_task(warm_speech_model())
         try:
             yield
         finally:
+            if warmup_task is not None and not warmup_task.done():
+                warmup_task.cancel()
             approvals.cancel_all()
             try:
                 await kart_tool.close()
@@ -178,8 +237,12 @@ def create_app(
     app = FastAPI(title="Memo Gateway", version="0.1.0", lifespan=lifespan)
 
     @app.get("/health/liveliness")
-    async def liveliness() -> dict[str, str]:
-        return {"status": "ok"}
+    async def liveliness() -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "memo_api_version": 2,
+            "desktop_control": settings.computer_enabled,
+        }
 
     @app.get("/v1/models")
     async def models() -> dict[str, Any]:
@@ -284,6 +347,23 @@ def create_app(
         finally:
             await file.close()
             path.unlink(missing_ok=True)
+
+    @app.post("/v1/audio/transcriptions/prepare")
+    async def prepare_audio_transcriptions() -> dict[str, Any]:
+        nonlocal speech_to_text
+        if speech_to_text is None:
+            speech_to_text = STT()
+        prepare = getattr(speech_to_text, "prepare", None)
+        if not callable(prepare):
+            return {"ready": True}
+        try:
+            result = await run_in_threadpool(prepare)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Speech model preparation failed: {exc}",
+            ) from exc
+        return result if isinstance(result, dict) else {"ready": True}
 
     @app.post("/v1/audio/speech")
     async def audio_speech(request: Request) -> Response:

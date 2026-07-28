@@ -11,11 +11,15 @@ from utils.tools.computer import (
     ComputerSandboxTool,
     detect_app_request,
     detect_computer_task,
+    generic_app_request_name,
+    known_folder_request,
 )
 from utils.tools.computer_turn import (
     computer_request_text,
     computer_tool_events,
     direct_app_events,
+    direct_named_app_events,
+    has_one_time_computer_approval,
 )
 from utils.tools.desktop import detect_desktop_control_request
 from utils.tools.moonkart import MoonKartTool
@@ -95,6 +99,20 @@ class ProgramAI:
         if browser_task is not None:
             return run_browser_tool_turn(browser_task, self.browser_tool)
         computer_text = computer_request_text(payload.get("input"))
+        folder = known_folder_request(computer_text)
+        if (
+            self.settings.computer_enabled
+            and folder is not None
+            and not detect_desktop_control_request(computer_text)
+        ):
+            return SDKResponseStream(
+                direct_named_app_events(
+                    self.computer_tool or ComputerSandboxTool(),
+                    user_text=computer_text,
+                    permission_broker=self.permission_broker,
+                    approved=has_one_time_computer_approval(payload.get("input")),
+                )
+            )
         app = detect_app_request(computer_text)
         if (
             self.settings.computer_enabled
@@ -106,6 +124,19 @@ class ProgramAI:
                     self.computer_tool or ComputerSandboxTool(),
                     app=app,
                     user_text=computer_text,
+                )
+            )
+        if (
+            self.settings.computer_enabled
+            and generic_app_request_name(computer_text) is not None
+            and not detect_desktop_control_request(computer_text)
+        ):
+            return SDKResponseStream(
+                direct_named_app_events(
+                    self.computer_tool or ComputerSandboxTool(),
+                    user_text=computer_text,
+                    permission_broker=self.permission_broker,
+                    approved=has_one_time_computer_approval(payload.get("input")),
                 )
             )
         if self.settings.computer_enabled and detect_computer_task(computer_text):

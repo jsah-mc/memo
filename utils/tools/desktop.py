@@ -22,6 +22,8 @@ SCREEN_TOOL_DEFINITION = {
         "controls. Use this before clicking and again whenever the screen may "
         "have changed. A user approval grants screen and input access only for "
         "the current task."
+        "If The User Says Anything Related or says something like see the screen You Can Use This Tool"
+        "To See And Give The User What You Saw"
     ),
     "parameters": {
         "type": "object",
@@ -99,7 +101,6 @@ CONTROL_TOOL_DEFINITION = {
     },
     "strict": False,
 }
-
 _DESKTOP_CONTROL_TERMS = (
     "click",
     "double click",
@@ -114,6 +115,18 @@ _DESKTOP_CONTROL_TERMS = (
     "control the computer",
     "control my computer",
     "interact with",
+    "see my screen",
+    "see the screen",
+    "view my screen",
+    "view the screen",
+    "look at my screen",
+    "look at the screen",
+    "inspect my screen",
+    "inspect the screen",
+    "what's on my screen",
+    "what is on my screen",
+    "tell me what's on my screen",
+    "tell me whats on my screen",
 )
 
 

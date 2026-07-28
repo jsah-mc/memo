@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,7 @@ from utils.tools.computer import (
     detect_computer_task,
     detect_shell_request,
     generic_app_request_name,
+    known_folder_request,
 )
 from utils.tools.computer_turn import (
     computer_request_text,
@@ -129,6 +131,25 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
                 user_text="open calculator",
             )
 
+    def test_resolves_zed_from_local_programs(self) -> None:
+        local_app_data = self.root / "Local"
+        zed = local_app_data / "Programs" / "Zed" / "Zed.exe"
+        zed.parent.mkdir(parents=True)
+        zed.write_bytes(b"test executable")
+
+        with patch.dict(
+            os.environ,
+            {
+                "LOCALAPPDATA": str(local_app_data),
+                "ProgramFiles": str(self.root / "Program Files"),
+                "ProgramFiles(x86)": str(self.root / "Program Files (x86)"),
+                "PATH": "",
+            },
+        ):
+            resolved = self.tool._resolve_executable("Zed")
+
+        self.assertEqual(resolved, zed.resolve())
+
     def test_intent_detection_is_narrow(self) -> None:
         self.assertTrue(detect_computer_task("open calculator"))
         self.assertTrue(detect_computer_task("run the hostname command"))
@@ -150,6 +171,11 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(generic_app_request_name("launch Spotify!"), "Spotify")
         self.assertIsNone(generic_app_request_name("open the browser"))
+        folder = known_folder_request("now open the downloads Folder")
+        self.assertIsNotNone(folder)
+        assert folder is not None
+        self.assertEqual(folder[0], "Downloads")
+        self.assertEqual(folder[1], (Path.home() / "Downloads").resolve())
         self.assertTrue(detect_desktop_control_request("use the computer"))
         self.assertTrue(detect_desktop_control_request("open Notepad and write hello"))
         self.assertTrue(
@@ -609,7 +635,7 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
             events = []
             async for event in computer_tool_events(
                 sdk,
-                {"input": "use the computer and click the visible button"},
+                {"input": "see my screen and tell me whats on it"},
                 self.tool,
                 broker,
             ):

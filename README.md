@@ -37,6 +37,7 @@ MEMO_WHISPER_MODEL=small.en
 MEMO_WHISPER_DEVICE=cuda
 MEMO_POCKETTTS_DEVICE=cuda
 MEMO_SPEECH_CPU_THREADS=4
+MEMO_STT_PRELOAD=0
 MEMO_BROWSER_HEADLESS=0
 ```
 
@@ -49,7 +50,10 @@ files. No speech API key is required.
 uv run memo gateway
 ```
 
-The default gateway is `http://127.0.0.1:4000`.
+The default manually launched gateway is `http://127.0.0.1:4000`. The desktop
+uses its own managed gateway on `http://127.0.0.1:4010` so an older or manually
+configured process on port 4000 cannot silently disable desktop-only tools.
+Override the desktop port with `MEMO_DESKTOP_GATEWAY_PORT` if needed.
 
 ## OpenAI-compatible endpoints
 
@@ -98,7 +102,9 @@ uv run memo-tts "Save this" --output output.wav --no-play
 
 The desktop uses the same audio endpoints. Dictation stops after speech followed
 by silence, filters common Whisper silence hallucinations, and interrupts active
-TTS when voice input starts.
+TTS when voice input starts. Its managed gateway enables background STT preload,
+so the persistent `small.en` model is normally ready before dictation. For a
+manually launched gateway, set `MEMO_STT_PRELOAD=1` to get the same behavior.
 
 ## Browser and MoonKart tools
 
@@ -133,6 +139,9 @@ perform bounded batches of clicks, typing, key presses, hotkeys, scrolling, and
 short waits. It captures the result after each action batch so the model can
 continue from what is actually visible. This control session ends with the
 current response and is never reused by a later message.
+Requests such as `see my screen and tell me what's on it` go directly into this
+screen-inspection flow rather than relying on the model to decide whether it has
+screen access.
 
 Examples include `run echo hello`, `write hello to notes/hello.txt`, and
 `open calculator`. Arbitrary app launches and requests such as

@@ -13,6 +13,7 @@ from .computer import (
     detect_computer_task,
     detect_shell_request,
     generic_app_request_name,
+    known_folder_request,
 )
 from .desktop import detect_desktop_control_request
 from .permissions import PermissionBroker
@@ -124,9 +125,13 @@ def _matches_approved_app_launch(command: str, user_text: str) -> bool:
     return bool(requested_words & target_words)
 
 
-def _canonical_app_launch_command(user_text: str) -> str | None:
+def canonical_app_launch_command(user_text: str) -> str | None:
     """Build a non-injectable Windows launch command from the user's app name."""
 
+    folder = known_folder_request(user_text)
+    if folder is not None:
+        _, path = folder
+        return f'start "" "{path}"'
     requested_app = generic_app_request_name(user_text)
     if requested_app is None:
         return None
@@ -226,6 +231,89 @@ async def direct_app_events(
     }
 
 
+async def direct_named_app_events(
+    tool: ComputerSandboxTool,
+    *,
+    user_text: str,
+    permission_broker: PermissionBroker | None,
+    approved: bool = False,
+) -> AsyncIterator[dict[str, Any]]:
+    """Launch an arbitrary named app without trusting a model-generated command."""
+
+    folder = known_folder_request(user_text)
+    app_name = folder[0] if folder is not None else generic_app_request_name(user_text)
+    command = canonical_app_launch_command(user_text)
+    if app_name is None or command is None:
+        raise ValueError("The app-launch request is invalid.")
+
+    call_id = f"call_{uuid.uuid4().hex}"
+    arguments = {"command": command}
+    tool_call = {
+        "id": call_id,
+        "name": tool.shell_name,
+        "arguments": arguments,
+    }
+    yield {"type": "memo.tool_call.started", "tool_call": tool_call}
+
+    permission_granted = approved
+    if not permission_granted and permission_broker is not None:
+        pending = permission_broker.create(
+            {
+                "kind": "folder_open" if folder is not None else "app_launch",
+                "tool_call_id": call_id,
+                "command": command,
+                "cwd": str(tool.root),
+                "os_isolated": False,
+            }
+        )
+        yield {
+            "type": "memo.permission.requested",
+            "permission": {"id": pending.id, **pending.details},
+        }
+        permission_granted = await permission_broker.wait(pending.id)
+
+    if permission_granted:
+        try:
+            result = await tool.execute(
+                tool.shell_name,
+                arguments,
+                user_text=user_text,
+                permission_granted=True,
+            )
+        except Exception as exc:  # noqa: BLE001 - report launch failure to the UI.
+            result = {"ok": False, "error": str(exc)}
+    else:
+        result = {
+            "ok": False,
+            "permission_denied": True,
+            "error": "The app launch was not approved.",
+        }
+
+    yield {
+        "type": "memo.tool_call.completed",
+        "tool_call": {
+            **tool_call,
+            "result": result,
+            "is_error": not bool(result.get("ok")),
+        },
+    }
+    if result.get("ok"):
+        resolved = result.get("resolved_path") or result.get("resolved_name")
+        if resolved is None and folder is not None:
+            resolved = str(folder[1])
+        resolved = resolved or app_name
+        text = f"Opened {app_name} ({resolved})."
+    elif result.get("permission_denied"):
+        text = f"Opening {app_name} was not approved."
+    else:
+        text = f"Could not open {app_name}: {result.get('error', 'unknown error')}"
+    yield {"type": "response.output_text.delta", "delta": text}
+    yield {
+        "type": "response.completed",
+        "response": {"output_text": text, "usage": {}},
+    }
+
+
 async def computer_tool_events(
     sdk: Any,
     payload: dict[str, Any],
@@ -296,7 +384,7 @@ async def computer_tool_events(
             if not isinstance(arguments, dict):
                 arguments = {}
             if name == shell_name:
-                app_command = _canonical_app_launch_command(user_text)
+                app_command = canonical_app_launch_command(user_text)
                 if app_command is not None:
                     arguments = {**arguments, "command": app_command}
             yield {

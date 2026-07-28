@@ -8,7 +8,7 @@ type MeterSnapshot = {
 
 const CALIBRATION_MS = 300;
 const SPEECH_CONFIRM_MS = 150;
-const ENDPOINT_SILENCE_MS = 1_250;
+const ENDPOINT_SILENCE_MS = 700;
 const MAX_WAIT_FOR_SPEECH_MS = 15_000;
 const MIN_SPEECH_RMS = 0.006;
 

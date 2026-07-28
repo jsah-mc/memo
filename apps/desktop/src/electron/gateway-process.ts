@@ -3,7 +3,9 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-export const GATEWAY_BASE_URL = "http://127.0.0.1:4000";
+const DESKTOP_GATEWAY_PORT =
+  process.env.MEMO_DESKTOP_GATEWAY_PORT ?? "4010";
+export const GATEWAY_BASE_URL = `http://127.0.0.1:${DESKTOP_GATEWAY_PORT}`;
 const GATEWAY_URL = `${GATEWAY_BASE_URL}/health/liveliness`;
 const STARTUP_TIMEOUT_MS = 30_000;
 const RESTART_BACKOFF_MS = 5_000;
@@ -104,6 +106,22 @@ async function probeGateway(timeout = 1_000): Promise<GatewayStatus> {
         message: `Gateway health check returned ${response.status}.`,
       };
     }
+    const payload = (await response.json()) as {
+      memo_api_version?: unknown;
+      desktop_control?: unknown;
+    };
+    if (
+      payload.memo_api_version !== 2 ||
+      payload.desktop_control !== true
+    ) {
+      return {
+        state: "error",
+        running: false,
+        latencyMs: null,
+        message:
+          "A gateway is running on the desktop port, but it does not support Memo computer control.",
+      };
+    }
     return {
       state: "online",
       running: true,
@@ -145,7 +163,9 @@ async function startGateway() {
     cwd: root,
     env: {
       ...process.env,
+      GATEWAY_PORT: DESKTOP_GATEWAY_PORT,
       MEMO_COMPUTER_ENABLED: "1",
+      MEMO_STT_PRELOAD: process.env.MEMO_STT_PRELOAD ?? "1",
     },
     windowsHide: true,
     stdio: "ignore",

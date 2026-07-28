@@ -111,9 +111,7 @@ class STT:
         )
         self.language = language or os.environ.get("MEMO_WHISPER_LANGUAGE", "")
         self.device = device or os.environ.get("MEMO_WHISPER_DEVICE", "auto")
-        self.compute_type = compute_type or os.environ.get(
-            "MEMO_WHISPER_COMPUTE_TYPE"
-        )
+        self.compute_type = compute_type or os.environ.get("MEMO_WHISPER_COMPUTE_TYPE")
         self.cpu_threads = max(
             1,
             int(os.environ.get("MEMO_SPEECH_CPU_THREADS", "4")),
@@ -123,6 +121,13 @@ class STT:
         self._whisper_model = whisper_model
         self._active_device: str | None = None
         self._listen_lock = threading.Lock()
+        self._model_lock = threading.Lock()
+
+    def _language_hint(self) -> str:
+        if self.language:
+            return self.language
+        normalized_model = self.model_name.casefold().replace("_", ".")
+        return "en" if normalized_model.endswith(".en") else ""
 
     def _runtime(self) -> tuple[str, str]:
         device = self.device
@@ -141,9 +146,7 @@ class STT:
                 device = "cuda" if cuda_available else "cpu"
             except Exception:  # noqa: BLE001 - CUDA discovery must fail closed.
                 device = "cpu"
-        compute_type = self.compute_type or (
-            "float16" if device == "cuda" else "int8"
-        )
+        compute_type = self.compute_type or ("float16" if device == "cuda" else "int8")
         return device, compute_type
 
     def _create_recorder(self):
@@ -158,7 +161,7 @@ class STT:
         options = {
             "transcription_engine": "faster_whisper",
             "model": self.model_name,
-            "language": self.language,
+            "language": self._language_hint(),
             "device": device,
             "compute_type": compute_type,
             "beam_size": 1,
@@ -221,7 +224,11 @@ class STT:
         return self._result(str(text or ""), self.model_name)
 
     def _get_whisper_model(self):
-        if self._whisper_model is None:
+        if self._whisper_model is not None:
+            return self._whisper_model
+        with self._model_lock:
+            if self._whisper_model is not None:
+                return self._whisper_model
             from faster_whisper import WhisperModel
 
             device, compute_type = self._runtime()
@@ -253,6 +260,17 @@ class STT:
                 self._active_device = "cpu"
         return self._whisper_model
 
+    def prepare(self) -> dict[str, Any]:
+        """Load the persistent faster-whisper model before the first request."""
+
+        self._get_whisper_model()
+        return {
+            "ready": True,
+            "model": self.model_name,
+            "device": self._active_device,
+            "language": self._language_hint() or None,
+        }
+
     def transcribe(self, audio_path: str | Path) -> dict[str, Any]:
         """Transcribe an existing audio file with faster-whisper."""
 
@@ -268,8 +286,9 @@ class STT:
             "vad_filter": True,
             "condition_on_previous_text": False,
         }
-        if self.language:
-            arguments["language"] = self.language
+        language = self._language_hint()
+        if language:
+            arguments["language"] = language
         try:
             segments, info = model.transcribe(str(path), **arguments)
             materialized_segments = list(segments)

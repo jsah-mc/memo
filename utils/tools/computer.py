@@ -7,6 +7,7 @@ import copy
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, ClassVar
@@ -115,9 +116,15 @@ _SHELL_REQUEST = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _LOCAL_FILE_REQUEST = re.compile(
-    r"\b(?:search|find|locate|look\s+for|list)\b.{0,160}"
+    r"\b(?:search|find|locate|look\s+for|list|open|show)\b.{0,160}"
     r"\b(?:downloads?|desktop|documents?|files?|folders?|director(?:y|ies))\b",
     re.IGNORECASE | re.DOTALL,
+)
+_KNOWN_FOLDER_REQUEST = re.compile(
+    r"\b(?:open|show)\s+(?:(?:the|my)\s+)?"
+    r"(?P<folder>downloads?|documents?|desktop)"
+    r"(?:\s+(?:folder|directory))?(?:\s+in\s+file\s+explorer)?\s*[.!?]?$",
+    re.IGNORECASE,
 )
 _GENERIC_APP_REQUEST = re.compile(
     r"\b(?:open|launch|start)\s+(?!(?:https?://|www\.))"
@@ -182,6 +189,23 @@ def generic_app_request_name(text: str) -> str | None:
         flags=re.IGNORECASE,
     )
     return request.rstrip(" .!?") or None
+
+
+def known_folder_request(text: str) -> tuple[str, Path] | None:
+    """Return a safe, user-scoped folder explicitly requested for opening."""
+
+    match = _KNOWN_FOLDER_REQUEST.search(text)
+    if match is None:
+        return None
+    names = {
+        "download": "Downloads",
+        "downloads": "Downloads",
+        "document": "Documents",
+        "documents": "Documents",
+        "desktop": "Desktop",
+    }
+    label = names[match.group("folder").casefold()]
+    return label, (Path.home() / label).resolve()
 
 
 def detect_computer_task(text: str) -> bool:
@@ -535,7 +559,111 @@ class ComputerSandboxTool:
         _, name, app_id = min(candidates, key=lambda candidate: candidate[:2])
         return name, app_id
 
+    def _resolve_executable(self, target: str) -> Path | None:
+        if target.endswith(":"):
+            return None
+        supplied = Path(target).expanduser()
+        if supplied.is_file():
+            return supplied.resolve()
+
+        aliases = {
+            "chrome": "chrome.exe",
+            "code": "Code.exe",
+            "excel": "EXCEL.EXE",
+            "firefox": "firefox.exe",
+            "msedge": "msedge.exe",
+            "powerpnt": "POWERPNT.EXE",
+            "winword": "WINWORD.EXE",
+            "wt": "wt.exe",
+        }
+        executable_name = aliases.get(
+            target.casefold(),
+            target if target.casefold().endswith(".exe") else f"{target}.exe",
+        )
+        on_path = shutil.which(executable_name)
+        if on_path:
+            return Path(on_path).resolve()
+
+        if os.name == "nt":
+            try:
+                import winreg
+
+                registry_path = (
+                    r"Software\Microsoft\Windows\CurrentVersion\App Paths"
+                    f"\\{executable_name}"
+                )
+                for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                    for view in (
+                        0,
+                        getattr(winreg, "KEY_WOW64_64KEY", 0),
+                        getattr(winreg, "KEY_WOW64_32KEY", 0),
+                    ):
+                        try:
+                            with winreg.OpenKey(
+                                hive,
+                                registry_path,
+                                0,
+                                winreg.KEY_READ | view,
+                            ) as key:
+                                value, _ = winreg.QueryValueEx(key, None)
+                        except OSError:
+                            continue
+                        candidate = Path(str(value).strip('"'))
+                        if candidate.is_file():
+                            return candidate.resolve()
+            except ImportError:
+                pass
+
+        normalized = self._normalized_app_name(Path(executable_name).stem)
+        roots = [
+            path
+            for value, suffix in (
+                (os.environ.get("LOCALAPPDATA"), "Programs"),
+                (os.environ.get("ProgramFiles"), ""),
+                (os.environ.get("ProgramFiles(x86)"), ""),
+            )
+            if value
+            for path in [Path(value, suffix)]
+        ]
+        for root in roots:
+            if not root.is_dir():
+                continue
+            direct_candidates = (
+                root / target / executable_name,
+                root / target.capitalize() / executable_name,
+            )
+            for candidate in direct_candidates:
+                if candidate.is_file():
+                    return candidate.resolve()
+            if root.name.casefold() != "programs":
+                continue
+            for candidate in root.glob("*/*.exe"):
+                if self._normalized_app_name(candidate.stem) == normalized:
+                    return candidate.resolve()
+        return None
+
     def _launch_windows_app(self, target: str) -> dict[str, Any]:
+        executable = self._resolve_executable(target)
+        if executable is not None:
+            process = subprocess.Popen(
+                [str(executable)],
+                cwd=executable.parent,
+                env=self._shell_environment(),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=True,
+                creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+            )
+            return {
+                "ok": True,
+                "resolved_name": executable.stem,
+                "resolved_path": str(executable),
+                "target": target,
+                "pid": process.pid,
+                "resolution": "executable",
+            }
+
         resolved = self._resolve_start_app(target)
         if resolved is not None:
             name, app_id = resolved
