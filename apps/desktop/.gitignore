@@ -1,2 +1,4 @@
 .env
 .env.local
+.tmp-electron-profile/
+.pnpm-store/

@@ -1,4 +1,4 @@
-"""Permission-gated Windows screen, mouse, and keyboard control."""
+"""Permission-gated screen, mouse, and keyboard control."""
 
 from __future__ import annotations
 
@@ -6,7 +6,11 @@ import asyncio
 import base64
 import ctypes
 import io
+import json
 import os
+import shutil
+import subprocess
+import time
 from typing import Any, ClassVar
 
 from PIL import Image
@@ -18,7 +22,7 @@ SCREEN_TOOL_DEFINITION = {
     "type": "function",
     "name": "inspect_computer_screen",
     "description": (
-        "Capture the current Windows desktop so you can see visible apps and "
+        "Capture the current desktop so you can see visible apps and "
         "controls. Use this before clicking and again whenever the screen may "
         "have changed. A user approval grants screen and input access only for "
         "the current task."
@@ -37,7 +41,7 @@ CONTROL_TOOL_DEFINITION = {
     "type": "function",
     "name": "control_computer",
     "description": (
-        "Perform a short sequence of Windows mouse and keyboard actions, then "
+        "Perform a short sequence of mouse and keyboard actions, then "
         "return a fresh screenshot. Coordinates use the pixel dimensions from "
         "the latest screenshot. Supported actions are click, double_click, "
         "move, type, press, hotkey, scroll, and wait. Keep each sequence short "
@@ -199,7 +203,7 @@ class _BITMAPINFO(ctypes.Structure):
 
 
 class DesktopController:
-    """Capture and control the interactive Windows desktop."""
+    """Capture and control the interactive Windows or Wayland desktop."""
 
     screen_name = "inspect_computer_screen"
     control_name = "control_computer"
@@ -258,7 +262,60 @@ class DesktopController:
         if os.name != "nt":
             raise RuntimeError("Desktop control is supported only on Windows.")
 
-    def _capture_sync(self) -> dict[str, Any]:
+    @staticmethod
+    def _require_linux_tools(*names: str) -> None:
+        missing = [name for name in names if shutil.which(name) is None]
+        if missing:
+            raise RuntimeError(
+                "Linux desktop control requires: " + ", ".join(missing)
+            )
+        if not os.environ.get("WAYLAND_DISPLAY"):
+            raise RuntimeError(
+                "Linux desktop control requires a running Wayland session."
+            )
+
+    @staticmethod
+    def _encoded_capture(
+        image: Image.Image,
+        *,
+        screen_width: int,
+        screen_height: int,
+        origin_x: int,
+        origin_y: int,
+    ) -> tuple[dict[str, Any], int, int]:
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+        scale = min(1.0, MAX_SCREEN_EDGE / max(image.size))
+        if scale < 1:
+            image = image.resize(
+                (
+                    max(1, round(image.width * scale)),
+                    max(1, round(image.height * scale)),
+                ),
+                Image.Resampling.LANCZOS,
+            )
+        image_width, image_height = image.size
+        output = io.BytesIO()
+        image.save(output, format="JPEG", quality=72, optimize=True)
+        image_url = "data:image/jpeg;base64," + base64.b64encode(
+            output.getvalue()
+        ).decode("ascii")
+        return (
+            {
+                "ok": True,
+                "image_url": image_url,
+                "image_width": image_width,
+                "image_height": image_height,
+                "screen_width": screen_width,
+                "screen_height": screen_height,
+                "origin_x": origin_x,
+                "origin_y": origin_y,
+            },
+            image_width,
+            image_height,
+        )
+
+    def _capture_windows_sync(self) -> dict[str, Any]:
         self._require_windows()
         user32 = ctypes.windll.user32
         self._origin_x = int(user32.GetSystemMetrics(76))
@@ -282,33 +339,74 @@ class DesktopController:
                     "Windows screenshot backends failed",
                     [gdi_error, pillow_error],
                 )
-        if image.mode != "RGB":
-            image = image.convert("RGB")
-        scale = min(1.0, MAX_SCREEN_EDGE / max(image.size))
-        if scale < 1:
-            image = image.resize(
-                (
-                    max(1, round(image.width * scale)),
-                    max(1, round(image.height * scale)),
-                ),
-                Image.Resampling.LANCZOS,
+        result, self._image_width, self._image_height = self._encoded_capture(
+            image,
+            screen_width=self._screen_width,
+            screen_height=self._screen_height,
+            origin_x=self._origin_x,
+            origin_y=self._origin_y,
+        )
+        return result
+
+    def _capture_linux_sync(self) -> dict[str, Any]:
+        self._require_linux_tools("grim", "hyprctl")
+        screenshot = subprocess.run(
+            ["grim", "-t", "png", "-"],
+            check=False,
+            capture_output=True,
+            timeout=10,
+        )
+        if screenshot.returncode != 0 or not screenshot.stdout:
+            detail = screenshot.stderr.decode(errors="replace").strip()
+            raise RuntimeError(
+                f"Wayland screenshot failed{f': {detail}' if detail else '.'}"
             )
-        self._image_width, self._image_height = image.size
-        output = io.BytesIO()
-        image.save(output, format="JPEG", quality=72, optimize=True)
-        image_url = "data:image/jpeg;base64," + base64.b64encode(
-            output.getvalue()
-        ).decode("ascii")
-        return {
-            "ok": True,
-            "image_url": image_url,
-            "image_width": self._image_width,
-            "image_height": self._image_height,
-            "screen_width": self._screen_width,
-            "screen_height": self._screen_height,
-            "origin_x": self._origin_x,
-            "origin_y": self._origin_y,
-        }
+
+        monitors = subprocess.run(
+            ["hyprctl", "monitors", "-j"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        try:
+            parsed = json.loads(monitors.stdout) if monitors.returncode == 0 else []
+            active = [
+                monitor
+                for monitor in parsed
+                if isinstance(monitor, dict) and not monitor.get("disabled", False)
+            ]
+            left = min(int(monitor["x"]) for monitor in active)
+            top = min(int(monitor["y"]) for monitor in active)
+            right = max(
+                int(monitor["x"])
+                + round(int(monitor["width"]) / float(monitor.get("scale", 1)))
+                for monitor in active
+            )
+            bottom = max(
+                int(monitor["y"])
+                + round(int(monitor["height"]) / float(monitor.get("scale", 1)))
+                for monitor in active
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            left = top = 0
+            active = []
+
+        image = Image.open(io.BytesIO(screenshot.stdout))
+        image.load()
+        self._origin_x = left
+        self._origin_y = top
+        self._screen_width = max(1, right - left) if active else image.width
+        self._screen_height = max(1, bottom - top) if active else image.height
+        result, self._image_width, self._image_height = self._encoded_capture(
+            image,
+            screen_width=self._screen_width,
+            screen_height=self._screen_height,
+            origin_x=self._origin_x,
+            origin_y=self._origin_y,
+        )
+        result["backend"] = "hyprland"
+        return result
 
     def _grab_screen_gdi(self) -> Image.Image:
         user32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -428,7 +526,12 @@ class DesktopController:
             user32.ReleaseDC(None, source_dc)
 
     async def capture(self) -> dict[str, Any]:
-        return await asyncio.to_thread(self._capture_sync)
+        capture = (
+            self._capture_windows_sync
+            if os.name == "nt"
+            else self._capture_linux_sync
+        )
+        return await asyncio.to_thread(capture)
 
     def _screen_point(self, x: Any, y: Any) -> tuple[int, int]:
         if not isinstance(x, int) or not isinstance(y, int):
@@ -503,7 +606,7 @@ class DesktopController:
                 if sent != 1:
                     raise OSError("Windows rejected keyboard input.")
 
-    def _perform_sync(self, actions: list[dict[str, Any]]) -> None:
+    def _perform_windows_sync(self, actions: list[dict[str, Any]]) -> None:
         self._require_windows()
         if not 1 <= len(actions) <= MAX_ACTIONS:
             raise ValueError(f"actions must contain 1 to {MAX_ACTIONS} items.")
@@ -569,8 +672,187 @@ class DesktopController:
                 seconds = action.get("seconds", 1)
                 if not isinstance(seconds, (int, float)) or not 0 <= seconds <= 5:
                     raise ValueError("wait seconds must be between 0 and 5.")
-                import time
+                time.sleep(float(seconds))
+            else:
+                raise ValueError(f"Unsupported desktop action: {kind}")
 
+    @staticmethod
+    def _run_linux_input(*argv: str) -> None:
+        completed = subprocess.run(
+            list(argv),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if completed.returncode != 0:
+            detail = completed.stderr.strip() or completed.stdout.strip()
+            raise RuntimeError(
+                f"{argv[0]} input failed{f': {detail}' if detail else '.'}"
+            )
+
+    @staticmethod
+    def _linux_key_code(key: str) -> int:
+        codes = {
+            "escape": 1,
+            "esc": 1,
+            "1": 2,
+            "2": 3,
+            "3": 4,
+            "4": 5,
+            "5": 6,
+            "6": 7,
+            "7": 8,
+            "8": 9,
+            "9": 10,
+            "0": 11,
+            "minus": 12,
+            "-": 12,
+            "equal": 13,
+            "=": 13,
+            "backspace": 14,
+            "tab": 15,
+            "q": 16,
+            "w": 17,
+            "e": 18,
+            "r": 19,
+            "t": 20,
+            "y": 21,
+            "u": 22,
+            "i": 23,
+            "o": 24,
+            "p": 25,
+            "enter": 28,
+            "return": 28,
+            "ctrl": 29,
+            "control": 29,
+            "a": 30,
+            "s": 31,
+            "d": 32,
+            "f": 33,
+            "g": 34,
+            "h": 35,
+            "j": 36,
+            "k": 37,
+            "l": 38,
+            "shift": 42,
+            "z": 44,
+            "x": 45,
+            "c": 46,
+            "v": 47,
+            "b": 48,
+            "n": 49,
+            "m": 50,
+            "comma": 51,
+            ",": 51,
+            "period": 52,
+            ".": 52,
+            "slash": 53,
+            "/": 53,
+            "alt": 56,
+            "space": 57,
+            "f1": 59,
+            "f2": 60,
+            "f3": 61,
+            "f4": 62,
+            "f5": 63,
+            "f6": 64,
+            "f7": 65,
+            "f8": 66,
+            "f9": 67,
+            "f10": 68,
+            "f11": 87,
+            "f12": 88,
+            "home": 102,
+            "up": 103,
+            "pageup": 104,
+            "left": 105,
+            "right": 106,
+            "end": 107,
+            "down": 108,
+            "pagedown": 109,
+            "insert": 110,
+            "delete": 111,
+            "super": 125,
+            "logo": 125,
+            "win": 125,
+            "windows": 125,
+        }
+        normalized = key.casefold()
+        try:
+            return codes[normalized]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported key: {key}") from exc
+
+    def _send_linux_keys(self, keys: list[str]) -> None:
+        key_codes = [self._linux_key_code(key) for key in keys]
+        events = [
+            *(f"{key_code}:1" for key_code in key_codes),
+            *(f"{key_code}:0" for key_code in reversed(key_codes)),
+        ]
+        self._run_linux_input("ydotool", "key", *events)
+
+    def _perform_linux_sync(self, actions: list[dict[str, Any]]) -> None:
+        self._require_linux_tools("hyprctl", "ydotool", "wtype")
+        if not 1 <= len(actions) <= MAX_ACTIONS:
+            raise ValueError(f"actions must contain 1 to {MAX_ACTIONS} items.")
+        buttons = {"left": "0xC0", "right": "0xC1", "middle": "0xC2"}
+        for action in actions:
+            if not isinstance(action, dict):
+                raise TypeError("Each desktop action must be an object.")
+            kind = action.get("action")
+            if kind in {"move", "click", "double_click"}:
+                x, y = self._screen_point(action.get("x"), action.get("y"))
+                self._run_linux_input(
+                    "hyprctl",
+                    "dispatch",
+                    "movecursor",
+                    str(x),
+                    str(y),
+                )
+                if kind != "move":
+                    button = str(action.get("button", "left"))
+                    if button not in buttons:
+                        raise ValueError(f"Unsupported mouse button: {button}")
+                    click_args = ["ydotool", "click"]
+                    if kind == "double_click":
+                        click_args.extend(["--repeat", "2"])
+                    click_args.append(buttons[button])
+                    self._run_linux_input(*click_args)
+            elif kind == "type":
+                text = action.get("text")
+                if not isinstance(text, str) or len(text) > 4_000:
+                    raise ValueError("type requires text of at most 4,000 characters.")
+                self._run_linux_input("wtype", "--", text)
+            elif kind == "press":
+                key = action.get("key")
+                if not isinstance(key, str):
+                    raise ValueError("press requires a key.")
+                self._send_linux_keys([key])
+            elif kind == "hotkey":
+                keys = action.get("keys")
+                if (
+                    not isinstance(keys, list)
+                    or not 2 <= len(keys) <= 4
+                    or not all(isinstance(key, str) for key in keys)
+                ):
+                    raise ValueError("hotkey requires two to four keys.")
+                self._send_linux_keys(keys)
+            elif kind == "scroll":
+                amount = action.get("amount")
+                if not isinstance(amount, int) or not -20 <= amount <= 20:
+                    raise ValueError("scroll amount must be between -20 and 20.")
+                self._run_linux_input(
+                    "ydotool",
+                    "mousemove",
+                    "--wheel",
+                    "0",
+                    str(amount),
+                )
+            elif kind == "wait":
+                seconds = action.get("seconds", 1)
+                if not isinstance(seconds, (int, float)) or not 0 <= seconds <= 5:
+                    raise ValueError("wait seconds must be between 0 and 5.")
                 time.sleep(float(seconds))
             else:
                 raise ValueError(f"Unsupported desktop action: {kind}")
@@ -579,7 +861,12 @@ class DesktopController:
         actions = arguments.get("actions")
         if not isinstance(actions, list):
             raise TypeError("actions must be an array.")
-        await asyncio.to_thread(self._perform_sync, actions)
+        perform = (
+            self._perform_windows_sync
+            if os.name == "nt"
+            else self._perform_linux_sync
+        )
+        await asyncio.to_thread(perform, actions)
         result = await self.capture()
         result["actions_completed"] = len(actions)
         return result

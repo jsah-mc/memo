@@ -22,7 +22,7 @@ from utils.tools.computer_turn import (
     direct_app_events,
     has_one_time_computer_approval,
 )
-from utils.tools.desktop import detect_desktop_control_request
+from utils.tools.desktop import DesktopController, detect_desktop_control_request
 from utils.tools.permissions import PermissionBroker
 
 
@@ -316,6 +316,78 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
                 user_text="use the computer",
             )
 
+    def test_linux_desktop_control_builds_pointer_and_keyboard_commands(self) -> None:
+        desktop = DesktopController()
+        desktop._screen_width = desktop._image_width = 1920
+        desktop._screen_height = desktop._image_height = 1080
+
+        with (
+            patch.object(desktop, "_require_linux_tools"),
+            patch.object(desktop, "_run_linux_input") as run_input,
+        ):
+            desktop._perform_linux_sync(
+                [
+                    {"action": "click", "x": 120, "y": 240},
+                    {"action": "type", "text": "hello"},
+                    {"action": "hotkey", "keys": ["ctrl", "shift", "p"]},
+                    {"action": "scroll", "amount": -3},
+                ]
+            )
+
+        self.assertEqual(
+            run_input.call_args_list[0].args,
+            ("hyprctl", "dispatch", "movecursor", "120", "240"),
+        )
+        self.assertEqual(
+            run_input.call_args_list[1].args,
+            ("ydotool", "click", "0xC0"),
+        )
+        self.assertEqual(
+            run_input.call_args_list[2].args,
+            ("wtype", "--", "hello"),
+        )
+        self.assertEqual(
+            run_input.call_args_list[3].args,
+            (
+                "ydotool",
+                "key",
+                "29:1",
+                "42:1",
+                "25:1",
+                "25:0",
+                "42:0",
+                "29:0",
+            ),
+        )
+        self.assertEqual(
+            run_input.call_args_list[4].args,
+            ("ydotool", "mousemove", "--wheel", "0", "-3"),
+        )
+
+    def test_linux_desktop_control_normalizes_uppercase_hotkey_names(self) -> None:
+        desktop = DesktopController()
+        with (
+            patch.object(desktop, "_require_linux_tools"),
+            patch.object(desktop, "_run_linux_input") as run_input,
+        ):
+            desktop._perform_linux_sync(
+                [{"action": "hotkey", "keys": ["SUPER", "SHIFT", "F"]}]
+            )
+
+        self.assertEqual(
+            run_input.call_args.args,
+            (
+                "ydotool",
+                "key",
+                "125:1",
+                "42:1",
+                "33:1",
+                "33:0",
+                "42:0",
+                "125:0",
+            ),
+        )
+
     async def test_approved_shell_command_runs_in_configured_workspace(self) -> None:
         result = await self.tool.execute(
             "run_shell_command",
@@ -329,6 +401,32 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["cwd"], str(self.root))
         self.assertEqual(result["sandbox"], "working_directory_only")
         self.assertFalse(result["os_isolated"])
+
+    async def test_linux_translates_safe_windows_style_app_launch(self) -> None:
+        launch_result = {
+            "ok": True,
+            "resolved_name": "google-chrome-stable",
+            "resolved_path": "/usr/bin/google-chrome-stable",
+            "pid": 42,
+            "resolution": "linux_executable",
+        }
+        with (
+            patch("utils.tools.computer.os.name", "posix"),
+            patch.object(
+                self.tool,
+                "_launch_linux_app",
+                return_value=launch_result,
+            ) as launch,
+        ):
+            result = await self.tool.run_shell(
+                {"command": 'start "" "chrome"'},
+                permission_granted=True,
+            )
+
+        launch.assert_called_once_with("chrome")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["exit_code"], 0)
+        self.assertEqual(result["resolved_path"], "/usr/bin/google-chrome-stable")
 
     async def test_shell_tool_waits_for_one_time_permission(self) -> None:
         sdk = SequentialSDK(
@@ -392,8 +490,12 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
             for definition in sdk.payloads[0]["tools"]
             if definition.get("name") == "run_shell_command"
         )
-        self.assertIn("Windows cmd.exe", shell_definition["description"])
-        self.assertIn("Windows `start` syntax", shell_definition["description"])
+        expected_shell = "Windows cmd.exe" if os.name == "nt" else "POSIX /bin/sh"
+        self.assertIn(expected_shell, shell_definition["description"])
+        expected_launch = (
+            "Windows syntax" if os.name == "nt" else "`xdg-open`"
+        )
+        self.assertIn(expected_launch, shell_definition["description"])
         self.assertNotIn("tool_choice", sdk.payloads[1])
         self.assertFalse(broker.pending_ids)
 

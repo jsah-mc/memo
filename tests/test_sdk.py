@@ -35,26 +35,29 @@ class LiteLLMSDKTests(IsolatedAsyncioTestCase):
         )
 
     async def test_passes_codex_model_and_normalizes_string_input(self) -> None:
-        async def iterator():
-            yield {
+        iterator = iter(
+            [
+                {
                 "type": "response.output_text.delta",
                 "delta": "Hello",
-            }
-            yield {
+                },
+                {
                 "type": "response.completed",
                 "response": {"id": "response_test", "output": []},
-            }
+                },
+            ]
+        )
 
         with patch(
-            "utils.gateway.sdk.litellm.aresponses",
-            new=AsyncMock(return_value=iterator()),
+            "utils.gateway.sdk.litellm.responses",
+            return_value=iterator,
         ) as responses:
             result = await LiteLLMSDK(
                 "chatgpt/gpt-5.4",
             ).responses({"input": "Hello"})
 
         self.assertEqual(
-            responses.await_args.kwargs["input"],
+            responses.call_args.kwargs["input"],
             [
                 {
                     "role": "user",
@@ -62,8 +65,8 @@ class LiteLLMSDKTests(IsolatedAsyncioTestCase):
                 }
             ],
         )
-        self.assertEqual(responses.await_args.kwargs["model"], "chatgpt/gpt-5.4")
-        self.assertNotIn("api_base", responses.await_args.kwargs)
+        self.assertEqual(responses.call_args.kwargs["model"], "chatgpt/gpt-5.4")
+        self.assertNotIn("api_base", responses.call_args.kwargs)
         completed = await result.completed_response()
         self.assertEqual(completed["output_text"], "Hello")
 

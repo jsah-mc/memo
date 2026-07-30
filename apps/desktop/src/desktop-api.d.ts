@@ -23,6 +23,10 @@ declare global {
         onEvent: (event: ChatStreamEvent) => void,
       ): () => void;
       cancelChat(requestId: string): void;
+      onPermissionRequest(
+        onRequest: (request: PermissionRequest) => void,
+      ): () => void;
+      respondPermission(response: { id: string; allowed: boolean }): void;
       getGatewayStatus(): Promise<{
         state: "connecting" | "online" | "offline" | "error";
         running: boolean;
@@ -77,6 +81,14 @@ declare global {
       }
     | { id: string; type: "done" }
     | { id: string; type: "error"; message: string };
+
+  type PermissionRequest = {
+    id: string;
+    kind: "computer_control" | "shell_command";
+    command: string;
+    cwd: string;
+    osIsolated: boolean;
+  };
 
   type SpeechStreamEvent =
     | { id: string; type: "chunk"; audio: string }

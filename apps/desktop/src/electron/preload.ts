@@ -35,6 +35,14 @@ contextBridge.exposeInMainWorld("desktopApi", {
     return () => ipcRenderer.removeListener("chat:event", listener);
   },
   cancelChat: (requestId: string) => ipcRenderer.send("chat:cancel", requestId),
+  onPermissionRequest: (onRequest: (request: unknown) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, request: unknown) =>
+      onRequest(request);
+    ipcRenderer.on("permission:request", listener);
+    return () => ipcRenderer.removeListener("permission:request", listener);
+  },
+  respondPermission: (response: { id: string; allowed: boolean }) =>
+    ipcRenderer.send("permission:respond", response),
   getGatewayStatus: () => ipcRenderer.invoke("gateway:status"),
   traceSpeech: (stage: string) => ipcRenderer.send("speech:trace", stage),
   prepareSpeech: () => ipcRenderer.invoke("speech:prepare"),

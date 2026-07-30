@@ -82,7 +82,9 @@ const createWindow = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on("ready", () => {
-  void ensureGatewayRunning();
+  void ensureGatewayRunning().catch((error: unknown) => {
+    console.error("Memo gateway startup failed:", error);
+  });
   createWindow();
 });
 

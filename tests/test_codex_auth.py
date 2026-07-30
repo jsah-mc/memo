@@ -1,14 +1,39 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from litellm.llms.chatgpt.authenticator import Authenticator
 
-from utils.gateway.codex_auth import install_codex_auth_adapter
+from utils.gateway.codex_auth import (
+    configure_codex_token_dir,
+    install_codex_auth_adapter,
+)
 
 
 class CodexAuthAdapterTests(unittest.TestCase):
+    def test_replaces_windows_token_directory_on_linux(self):
+        with tempfile.TemporaryDirectory() as home:
+            codex_dir = Path(home, ".codex")
+            codex_dir.mkdir()
+            Path(codex_dir, "auth.json").write_text("{}", encoding="utf-8")
+            with (
+                patch("utils.gateway.codex_auth.os.name", "posix"),
+                patch("utils.gateway.codex_auth.Path.home", return_value=Path(home)),
+                patch.dict(
+                    os.environ,
+                    {
+                        "CHATGPT_TOKEN_DIR": r"C:\Users\Admin\.codex",
+                        "CHATGPT_AUTH_FILE": "auth.json",
+                    },
+                    clear=False,
+                ),
+            ):
+                configure_codex_token_dir()
+                self.assertEqual(os.environ["CHATGPT_TOKEN_DIR"], str(codex_dir))
+
     def test_reads_and_updates_nested_codex_tokens_without_flattening_file(self):
         install_codex_auth_adapter()
         with tempfile.TemporaryDirectory() as directory:

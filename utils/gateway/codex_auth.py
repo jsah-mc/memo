@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import threading
 from pathlib import Path
@@ -11,12 +12,28 @@ from typing import Any
 
 _PATCH_LOCK = threading.Lock()
 _PATCHED = False
+_WINDOWS_ABSOLUTE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+def configure_codex_token_dir() -> None:
+    """Point LiteLLM at the Codex CLI login on non-Windows systems."""
+
+    configured = os.environ.get("CHATGPT_TOKEN_DIR")
+    if os.name == "nt":
+        return
+    if configured and not _WINDOWS_ABSOLUTE_PATH.match(configured):
+        return
+
+    codex_dir = Path.home() / ".codex"
+    if (codex_dir / os.environ.get("CHATGPT_AUTH_FILE", "auth.json")).is_file():
+        os.environ["CHATGPT_TOKEN_DIR"] = str(codex_dir)
 
 
 def install_codex_auth_adapter() -> None:
     """Teach LiteLLM to read and safely refresh Codex CLI's nested token file."""
 
     global _PATCHED
+    configure_codex_token_dir()
     if _PATCHED:
         return
 

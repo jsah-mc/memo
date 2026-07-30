@@ -107,6 +107,17 @@ class VoiceModeIO:
         self._monitor: SpeechInterruptMonitor | None = None
         self._cancelled = False
 
+    async def prepare(self) -> None:
+        """Warm realtime STT and TTS without a simultaneous memory spike."""
+
+        prepare_stt = getattr(self.stt, "prepare_realtime", None)
+        if not callable(prepare_stt):
+            prepare_stt = getattr(self.stt, "prepare", None)
+        prepare_tts = getattr(self.tts, "prepare", None)
+        for prepare in (prepare_stt, prepare_tts):
+            if callable(prepare):
+                await asyncio.to_thread(prepare)
+
     async def listen(self) -> str:
         """Use RealtimeSTT to capture one utterance and return its transcript."""
 
@@ -157,13 +168,16 @@ class VoiceModeIO:
         request_stop()
 
     async def release_recorder(self) -> None:
-        """Release the heavier STT worker when voice mode is inactive."""
+        """Release local speech models when voice mode is inactive."""
 
-        await asyncio.to_thread(self.stt.shutdown)
+        await asyncio.gather(
+            asyncio.to_thread(self.stt.shutdown),
+            asyncio.to_thread(self.tts.shutdown),
+        )
 
     async def close(self) -> None:
         self.cancel()
         await asyncio.gather(
-            self.release_recorder(),
+            asyncio.to_thread(self.stt.shutdown),
             asyncio.to_thread(self.tts.shutdown, fast=True),
         )

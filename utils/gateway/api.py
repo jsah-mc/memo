@@ -71,10 +71,55 @@ def create_app(
         heavy_model=settings.heavy_model,
         vision_model=settings.vision_model,
     )
+    owns_stt = stt_tool is None
+    owns_tts = tts_tool is None
     speech_to_text = stt_tool
     text_to_speech = tts_tool
+    speech_idle_task: asyncio.Task[None] | None = None
+    speech_idle_seconds = max(
+        0.0,
+        float(os.environ.get("MEMO_SPEECH_IDLE_TIMEOUT_SECONDS", "30")),
+    )
     access_logger = logging.getLogger("uvicorn.access")
     quiet_health_logs = QuietPathAccessLogFilter()
+
+    def cancel_speech_release() -> None:
+        nonlocal speech_idle_task
+        task = speech_idle_task
+        speech_idle_task = None
+        if task is not None and not task.done():
+            task.cancel()
+
+    async def release_owned_speech_models() -> None:
+        nonlocal speech_to_text, text_to_speech
+        stt = speech_to_text if owns_stt else None
+        tts = text_to_speech if owns_tts else None
+        if owns_stt:
+            speech_to_text = None
+        if owns_tts:
+            text_to_speech = None
+        shutdowns = []
+        for engine in (stt, tts):
+            shutdown = getattr(engine, "shutdown", None)
+            if callable(shutdown):
+                shutdowns.append(asyncio.to_thread(shutdown))
+        if shutdowns:
+            await asyncio.gather(*shutdowns, return_exceptions=True)
+
+    def schedule_speech_release() -> None:
+        nonlocal speech_idle_task
+        if speech_idle_seconds <= 0 or (not owns_stt and not owns_tts):
+            return
+        cancel_speech_release()
+
+        async def release_when_idle() -> None:
+            try:
+                await asyncio.sleep(speech_idle_seconds)
+                await release_owned_speech_models()
+            except asyncio.CancelledError:
+                return
+
+        speech_idle_task = asyncio.create_task(release_when_idle())
 
     async def dispatch_response(
         sdk: LiteLLMSDK,
@@ -203,31 +248,41 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        nonlocal speech_to_text
+        nonlocal speech_to_text, text_to_speech
         access_logger.addFilter(quiet_health_logs)
         warmup_task: asyncio.Task[None] | None = None
 
-        async def warm_speech_model() -> None:
-            nonlocal speech_to_text
+        async def warm_speech_models() -> None:
+            nonlocal speech_to_text, text_to_speech
             try:
                 if speech_to_text is None:
                     speech_to_text = STT()
-                prepare = getattr(speech_to_text, "prepare", None)
-                if callable(prepare):
-                    await asyncio.to_thread(prepare)
+                if text_to_speech is None:
+                    text_to_speech = TTS(muted=True)
+                for engine in (speech_to_text, text_to_speech):
+                    prepare = getattr(engine, "prepare", None)
+                    if callable(prepare):
+                        # Sequential loading avoids a large temporary RAM and
+                        # paging-file spike while both models deserialize.
+                        await asyncio.to_thread(prepare)
             except Exception:
-                logging.getLogger("memo.stt").warning(
+                logging.getLogger("memo.speech").warning(
                     "Background speech model warmup failed.",
                     exc_info=True,
                 )
 
-        if os.environ.get("MEMO_STT_PRELOAD", "0") == "1":
-            warmup_task = asyncio.create_task(warm_speech_model())
+        if os.environ.get(
+            "MEMO_SPEECH_PRELOAD",
+            os.environ.get("MEMO_STT_PRELOAD", "0"),
+        ) == "1":
+            warmup_task = asyncio.create_task(warm_speech_models())
         try:
             yield
         finally:
             if warmup_task is not None and not warmup_task.done():
                 warmup_task.cancel()
+            cancel_speech_release()
+            await release_owned_speech_models()
             approvals.cancel_all()
             try:
                 await kart_tool.close()
@@ -302,6 +357,7 @@ def create_app(
         model: str = Form("whisper-1"),
     ) -> dict[str, Any]:
         nonlocal speech_to_text
+        cancel_speech_release()
         if model not in {
             "realtimestt",
             "faster-whisper",
@@ -347,10 +403,12 @@ def create_app(
         finally:
             await file.close()
             path.unlink(missing_ok=True)
+            schedule_speech_release()
 
     @app.post("/v1/audio/transcriptions/prepare")
     async def prepare_audio_transcriptions() -> dict[str, Any]:
         nonlocal speech_to_text
+        cancel_speech_release()
         if speech_to_text is None:
             speech_to_text = STT()
         prepare = getattr(speech_to_text, "prepare", None)
@@ -368,6 +426,7 @@ def create_app(
     @app.post("/v1/audio/speech")
     async def audio_speech(request: Request) -> Response:
         nonlocal text_to_speech
+        cancel_speech_release()
         try:
             payload = await request.json()
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -390,7 +449,7 @@ def create_app(
 
         try:
             if text_to_speech is None:
-                text_to_speech = TTS()
+                text_to_speech = TTS(muted=True)
         except Exception as exc:
             raise HTTPException(
                 status_code=502,
@@ -422,6 +481,7 @@ def create_app(
                 close = getattr(iterator, "close", None)
                 if callable(close):
                     await run_in_threadpool(close)
+                schedule_speech_release()
 
         return StreamingResponse(
             audio_stream(),

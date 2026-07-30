@@ -26,6 +26,15 @@ let managedGateway: ChildProcess | null = null;
 let startup: Promise<void> | null = null;
 let lastStartAttempt = 0;
 let quitting = false;
+let lastGatewayError = "";
+
+function managedGatewayIsAlive() {
+  return managedGateway !== null && managedGateway.exitCode === null;
+}
+
+function rememberGatewayError(chunk: Buffer | string) {
+  lastGatewayError = `${lastGatewayError}${String(chunk)}`.slice(-4_000).trim();
+}
 
 function isMemoRoot(candidate: string) {
   const projectFile = path.join(candidate, "pyproject.toml");
@@ -165,12 +174,18 @@ async function startGateway() {
       ...process.env,
       GATEWAY_PORT: DESKTOP_GATEWAY_PORT,
       MEMO_COMPUTER_ENABLED: "1",
-      MEMO_STT_PRELOAD: process.env.MEMO_STT_PRELOAD ?? "1",
+      // Loading both local speech models can monopolize startup long enough
+      // for the desktop health check to treat the gateway as unavailable.
+      // The speech endpoints already initialize their models on first use.
+      MEMO_SPEECH_PRELOAD: process.env.MEMO_SPEECH_PRELOAD ?? "0",
+      MEMO_STT_PRELOAD: process.env.MEMO_STT_PRELOAD ?? "0",
     },
     windowsHide: true,
-    stdio: "ignore",
+    stdio: ["ignore", "ignore", "pipe"],
   });
   managedGateway = child;
+  lastGatewayError = "";
+  child.stderr?.on("data", rememberGatewayError);
 
   child.once("error", (error) => {
     if (managedGateway === child) managedGateway = null;
@@ -184,15 +199,33 @@ async function startGateway() {
   child.once("exit", (code, signal) => {
     if (managedGateway === child) managedGateway = null;
     if (quitting) return;
-    status = {
-      state: code === 0 ? "offline" : "error",
-      running: false,
-      latencyMs: null,
-      message:
-        code === 0
-          ? "Gateway stopped."
-          : `Gateway exited (${signal ?? code ?? "unknown"}).`,
-    };
+    void probeGateway(2_000)
+      .then((replacement) => {
+        if (replacement.running) {
+          status = replacement;
+          return;
+        }
+        const detail = lastGatewayError
+          ? ` ${lastGatewayError.split(/\r?\n/).at(-1)}`
+          : "";
+        status = {
+          state: code === 0 ? "offline" : "error",
+          running: false,
+          latencyMs: null,
+          message:
+            code === 0
+              ? "Gateway stopped."
+              : `Gateway exited (${signal ?? code ?? "unknown"}).${detail}`,
+        };
+      })
+      .catch(() => {
+        status = {
+          state: "error",
+          running: false,
+          latencyMs: null,
+          message: `Gateway exited (${signal ?? code ?? "unknown"}).`,
+        };
+      });
   });
 
   const deadline = Date.now() + STARTUP_TIMEOUT_MS;
@@ -218,6 +251,13 @@ async function startGateway() {
 }
 
 export async function ensureGatewayRunning() {
+  // A model load can temporarily prevent the Python event loop from serving
+  // health checks. Do not spawn a competing gateway while our child is alive
+  // and has already reached the online state.
+  if (managedGatewayIsAlive() && status.state === "online") {
+    return;
+  }
+
   if (!startup) {
     if (
       status.state === "error" &&
@@ -232,13 +272,15 @@ export async function ensureGatewayRunning() {
   }
 
   await startup;
-  const current = await probeGateway(2_000);
-  if (!current.running) {
-    throw new Error(
-      status.message ?? current.message ?? "Memo gateway is not available.",
-    );
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const current = await probeGateway(2_000);
+    if (current.running) {
+      status = current;
+      return;
+    }
+    await wait(250);
   }
-  status = current;
+  throw new Error(status.message ?? "Memo gateway is not available.");
 }
 
 export function registerGatewayLifecycle() {
@@ -246,6 +288,14 @@ export function registerGatewayLifecycle() {
     const current = await probeGateway();
     if (current.running) {
       status = current;
+    } else if (managedGatewayIsAlive() && status.state === "online") {
+      status = {
+        state: "online",
+        running: true,
+        latencyMs: null,
+        message: "Gateway is busy loading or running a local model.",
+      };
+      return status;
     } else if (status.state === "online") {
       status = current;
     }
@@ -255,7 +305,14 @@ export function registerGatewayLifecycle() {
       status.state !== "connecting" &&
       Date.now() - lastStartAttempt >= RESTART_BACKOFF_MS
     ) {
-      void ensureGatewayRunning();
+      void ensureGatewayRunning().catch((error: unknown) => {
+        status = {
+          state: "error",
+          running: false,
+          latencyMs: null,
+          message: error instanceof Error ? error.message : String(error),
+        };
+      });
       status = { state: "connecting", running: false, latencyMs: null };
     }
 

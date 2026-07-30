@@ -76,14 +76,20 @@ _SHELL_DEFINITION = {
         "Run a host shell command only after Memo shows the exact command to "
         "the user and receives one-time permission. The command starts in "
         "Memo's sandbox directory, but the host shell is not OS-isolated and "
-        "can access other files. This Memo installation runs commands through "
-        "Windows cmd.exe: use Windows syntax and paths such as "
-        "%USERPROFILE%\\Downloads, not bash, find, or ~/Downloads unless the "
-        "user explicitly asks to invoke an installed Unix shell. To launch an "
-        "application, use Windows `start` syntax, such as "
-        'start "" "chrome" or start "" "C:\\Path\\App.exe". The exact command '
-        "will be shown for one-time permission. Never claim the command is "
-        "contained."
+        "can access other files. "
+        + (
+            "This Memo installation runs commands through Windows cmd.exe: use "
+            "Windows syntax and paths such as %USERPROFILE%\\Downloads. To "
+            'launch an application, use `start "" "app"` syntax. '
+            if os.name == "nt"
+            else
+            "This Memo installation runs commands through POSIX /bin/sh on "
+            "Linux: use Linux commands and paths such as ~/Downloads. Launch "
+            "applications using their executable name or `xdg-open` for files "
+            "and URLs. "
+        )
+        + "The exact command will be shown for one-time permission. Never claim "
+        "the command is contained."
     ),
     "parameters": {
         "type": "object",
@@ -462,6 +468,9 @@ class ComputerSandboxTool:
             "HOMEDRIVE",
             "HOMEPATH",
             "LANG",
+            "DBUS_SESSION_BUS_ADDRESS",
+            "DISPLAY",
+            "HYPRLAND_INSTANCE_SIGNATURE",
             "LOCALAPPDATA",
             "NUMBER_OF_PROCESSORS",
             "OS",
@@ -477,7 +486,11 @@ class ComputerSandboxTool:
             "USERDOMAIN",
             "USERNAME",
             "USERPROFILE",
+            "WAYLAND_DISPLAY",
             "WINDIR",
+            "XDG_CURRENT_DESKTOP",
+            "XDG_RUNTIME_DIR",
+            "XDG_SESSION_TYPE",
         }
         environment = {
             key: value
@@ -703,6 +716,75 @@ class ComputerSandboxTool:
             "resolution": "windows_shell",
         }
 
+    def _launch_linux_app(self, target: str) -> dict[str, Any]:
+        supplied = Path(target).expanduser()
+        if supplied.exists():
+            command = shutil.which("xdg-open")
+            arguments = [str(supplied.resolve())]
+            resolved_name = supplied.name
+            resolution = "xdg_open"
+        else:
+            aliases = {
+                "chrome": ("google-chrome-stable", "google-chrome", "chromium"),
+                "google chrome": (
+                    "google-chrome-stable",
+                    "google-chrome",
+                    "chromium",
+                ),
+                "edge": ("microsoft-edge-stable", "microsoft-edge"),
+                "firefox": ("firefox",),
+                "spotify": ("spotify",),
+                "steam": ("steam",),
+                "terminal": ("xdg-terminal-exec",),
+                "visual studio code": ("code",),
+                "vs code": ("code",),
+                "vscode": ("code",),
+                "zed": ("zeditor", "zed"),
+            }
+            candidates = aliases.get(target.casefold(), (target,))
+            command = next(
+                (resolved for name in candidates if (resolved := shutil.which(name))),
+                None,
+            )
+            arguments = []
+            resolved_name = Path(command).name if command else target
+            resolution = "linux_executable"
+
+        if command is None:
+            return {
+                "ok": False,
+                "target": target,
+                "resolution": "linux_executable",
+                "error": f"Linux could not resolve the app '{target}'.",
+            }
+
+        try:
+            process = subprocess.Popen(
+                [command, *arguments],
+                cwd=self.root,
+                env=self._shell_environment(),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=True,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            return {
+                "ok": False,
+                "target": target,
+                "resolution": resolution,
+                "error": f"Linux could not launch '{target}': {exc}",
+            }
+        return {
+            "ok": True,
+            "resolved_name": resolved_name,
+            "resolved_path": command,
+            "target": target,
+            "pid": process.pid,
+            "resolution": resolution,
+        }
+
     async def run_command(
         self,
         arguments: dict[str, Any],
@@ -810,6 +892,23 @@ class ComputerSandboxTool:
             shell_args = ["/d", "/s", "/c", command]
             creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         else:
+            app_launch = _START_APP_COMMAND.fullmatch(command)
+            if app_launch is not None:
+                result = await asyncio.to_thread(
+                    self._launch_linux_app,
+                    app_launch.group("target"),
+                )
+                return {
+                    **result,
+                    "permission_granted": True,
+                    "sandbox": "working_directory_only",
+                    "os_isolated": False,
+                    "command": command,
+                    "cwd": str(self.root),
+                    "exit_code": 0 if result.get("ok") else 1,
+                    "stdout": "",
+                    "stderr": "" if result.get("ok") else str(result.get("error", "")),
+                }
             shell = "/bin/sh"
             shell_args = ["-c", command]
             creationflags = 0

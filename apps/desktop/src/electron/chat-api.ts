@@ -1,10 +1,7 @@
 import {
   app,
-  BrowserWindow,
-  dialog,
   ipcMain,
   type IpcMainEvent,
-  type MessageBoxOptions,
 } from "electron";
 import { appendFileSync, statSync, truncateSync } from "node:fs";
 import path from "node:path";
@@ -62,6 +59,14 @@ type OpenAIStreamChunk = {
 
 const controllers = new Map<string, AbortController>();
 const speechControllers = new Map<string, AbortController>();
+const permissionResponses = new Map<
+  string,
+  {
+    senderId: number;
+    resolve: (allowed: boolean) => void;
+    timeout: ReturnType<typeof setTimeout>;
+  }
+>();
 
 type ChatStreamEvent =
   | { id: string; type: "delta"; content: string }
@@ -160,41 +165,33 @@ async function resolveShellPermission(
     throw new Error("Gateway returned an invalid permission request.");
   }
 
-  const isComputerControl = permission.kind === "computer_control";
-  const options: MessageBoxOptions = {
-    type: "warning",
-    title: isComputerControl
-      ? "Memo computer control"
-      : "Memo shell permission",
-    message: isComputerControl
-      ? "Allow Memo to view and control the computer for this task?"
-      : "Allow Memo to run this shell command?",
-    detail: isComputerControl
-      ? [
-          "Memo may capture your visible screens and send screenshots to the configured AI model.",
-          "It may click, type, press keys, and scroll until this response finishes.",
-          "",
-          "This approval applies only to the current task and is not remembered.",
-        ].join("\n")
-      : [
-          "Command:",
-          permission.command,
-          "",
-          "Working directory:",
-          permission.cwd,
-          "",
-          "This runs on your Windows host and is not OS-isolated.",
-        ].join("\n"),
-    buttons: ["Deny", "Allow once"],
-    defaultId: 0,
-    cancelId: 0,
-    noLink: true,
-  };
-  const owner = BrowserWindow.fromWebContents(event.sender);
-  const choice = owner
-    ? await dialog.showMessageBox(owner, options)
-    : await dialog.showMessageBox(options);
-  const allowed = choice.response === 1;
+  const allowed = await new Promise<boolean>((resolve) => {
+    const timeout = setTimeout(() => {
+      permissionResponses.delete(permission.id as string);
+      resolve(false);
+    }, 120_000);
+    permissionResponses.set(permission.id as string, {
+      senderId: event.sender.id,
+      resolve,
+      timeout,
+    });
+    if (event.sender.isDestroyed()) {
+      clearTimeout(timeout);
+      permissionResponses.delete(permission.id as string);
+      resolve(false);
+      return;
+    }
+    event.sender.send("permission:request", {
+      id: permission.id,
+      kind:
+        permission.kind === "computer_control"
+          ? "computer_control"
+          : "shell_command",
+      command: permission.command,
+      cwd: permission.cwd,
+      osIsolated: permission.os_isolated === true,
+    });
+  });
 
   const response = await fetch(
     `${GATEWAY_BASE_URL}/v1/permissions/${encodeURIComponent(permission.id)}`,
@@ -408,6 +405,23 @@ function isChatRequest(value: unknown): value is ChatRequest {
 
 export function registerChatApi() {
   traceVoice("ipc.registered");
+  ipcMain.on("permission:respond", (event, response: unknown) => {
+    if (
+      !response ||
+      typeof response !== "object" ||
+      !("id" in response) ||
+      typeof response.id !== "string" ||
+      !("allowed" in response) ||
+      typeof response.allowed !== "boolean"
+    ) {
+      return;
+    }
+    const pending = permissionResponses.get(response.id);
+    if (!pending || pending.senderId !== event.sender.id) return;
+    clearTimeout(pending.timeout);
+    permissionResponses.delete(response.id);
+    pending.resolve(response.allowed);
+  });
   ipcMain.on("speech:trace", (_event, stage: unknown) => {
     if (typeof stage === "string") traceVoice(`renderer.${stage}`);
   });

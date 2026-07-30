@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import functools
+import gc
 import logging
+import multiprocessing.util
 import os
 import re
 import sys
@@ -24,6 +27,7 @@ MAX_WAIT_FOR_SPEECH_SECONDS = 15.0
 logger = logging.getLogger(__name__)
 _CUDA_DLL_HANDLES: list[Any] = []
 _CUDA_DLL_PATHS: set[Path] = set()
+_ORIGINAL_SPAWNV_PASSFDS: Callable[..., Any] | None = None
 
 WHISPER_HALLUCINATIONS = {
     "thank you",
@@ -75,6 +79,37 @@ def _configure_cuda_dlls() -> None:
             continue
         _CUDA_DLL_HANDLES.append(os.add_dll_directory(str(path)))
         _CUDA_DLL_PATHS.add(path)
+
+
+def _deduplicate_multiprocessing_passfds() -> None:
+    """Prevent duplicate descriptors during local speech worker startup."""
+
+    global _ORIGINAL_SPAWNV_PASSFDS
+    if sys.platform == "win32" or _ORIGINAL_SPAWNV_PASSFDS is not None:
+        return
+
+    original = multiprocessing.util.spawnv_passfds
+
+    @functools.wraps(original)
+    def spawnv_passfds(path, args, passfds):
+        # POSIX requires this list to contain valid, strictly increasing file
+        # descriptors. Speech/Torch resource trackers can leave behind a
+        # closed descriptor, and Python sorts without validating or removing
+        # duplicates before calling fork_exec.
+        valid_passfds = set()
+        for value in passfds:
+            try:
+                descriptor = int(value)
+                if descriptor < 0:
+                    continue
+                os.fstat(descriptor)
+            except (OSError, TypeError, ValueError):
+                continue
+            valid_passfds.add(descriptor)
+        return original(path, args, sorted(valid_passfds))
+
+    _ORIGINAL_SPAWNV_PASSFDS = original
+    multiprocessing.util.spawnv_passfds = spawnv_passfds
 
 
 def is_whisper_hallucination(transcript: str) -> bool:
@@ -146,10 +181,13 @@ class STT:
                 device = "cuda" if cuda_available else "cpu"
             except Exception:  # noqa: BLE001 - CUDA discovery must fail closed.
                 device = "cpu"
-        compute_type = self.compute_type or ("float16" if device == "cuda" else "int8")
+        compute_type = self.compute_type or (
+            "int8_float16" if device == "cuda" else "int8"
+        )
         return device, compute_type
 
     def _create_recorder(self):
+        _deduplicate_multiprocessing_passfds()
         if self._recorder_factory is None:
             from RealtimeSTT import AudioToTextRecorder
 
@@ -169,11 +207,15 @@ class STT:
             "spinner": False,
             "no_log_file": True,
             "debug_mode": False,
-            "silero_use_onnx": None,
-            "silero_backend": "auto",
-            "post_speech_silence_duration": SILENCE_DURATION_SECONDS,
-            "min_length_of_recording": 0.3,
-            "pre_recording_buffer_duration": 0.5,
+            # ONNX VAD avoids importing a second PyTorch model beside Whisper.
+            "silero_use_onnx": True,
+            "silero_backend": "onnx",
+            "silero_onnx_threads": 1,
+            "post_speech_silence_duration": float(
+                os.environ.get("MEMO_STT_SILENCE_SECONDS", "0.45")
+            ),
+            "min_length_of_recording": 0.25,
+            "pre_recording_buffer_duration": 0.3,
             "ensure_sentence_starting_uppercase": True,
             "ensure_sentence_ends_with_period": False,
             "faster_whisper_vad_filter": True,
@@ -269,6 +311,18 @@ class STT:
             "model": self.model_name,
             "device": self._active_device,
             "language": self._language_hint() or None,
+        }
+
+    def prepare_realtime(self) -> dict[str, Any]:
+        """Load RealtimeSTT's recorder and model before microphone input."""
+
+        self._get_recorder()
+        return {
+            "ready": True,
+            "model": self.model_name,
+            "device": self._active_device,
+            "language": self._language_hint() or None,
+            "mode": "realtime",
         }
 
     def transcribe(self, audio_path: str | Path) -> dict[str, Any]:
@@ -396,12 +450,23 @@ class STT:
         with self._listen_lock:
             recorder = self._recorder
             self._recorder = None
-            if recorder is None:
-                return
-            self._prepare_fast_shutdown(recorder)
-            shutdown = getattr(recorder, "shutdown", None)
-            if callable(shutdown):
-                shutdown()
+            if recorder is not None:
+                self._prepare_fast_shutdown(recorder)
+                shutdown = getattr(recorder, "shutdown", None)
+                if callable(shutdown):
+                    shutdown()
+
+        # File transcription and realtime recording use separate backends.
+        # Releasing both prevents a dormant voice session retaining model memory.
+        with self._model_lock:
+            self._whisper_model = None
+            self._active_device = None
+        gc.collect()
+        torch = sys.modules.get("torch")
+        cuda = getattr(torch, "cuda", None)
+        empty_cache = getattr(cuda, "empty_cache", None)
+        if callable(empty_cache):
+            empty_cache()
 
 
 def build_parser() -> argparse.ArgumentParser:

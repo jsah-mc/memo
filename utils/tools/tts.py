@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import os
 import re
+import sys
 import tempfile
 import threading
 from collections.abc import Callable, Iterator
@@ -38,10 +40,12 @@ class TTS:
         *,
         voice: str = DEFAULT_VOICE,
         device: str | None = None,
+        muted: bool = False,
         engine: Any | None = None,
-        stream_factory: Callable[[Any], Any] | None = None,
+        stream_factory: Callable[..., Any] | None = None,
     ) -> None:
         self.voice = voice
+        self.muted = muted
         self.device = device or os.environ.get(
             "MEMO_POCKETTTS_DEVICE",
             DEFAULT_DEVICE,
@@ -77,13 +81,32 @@ class TTS:
                     voice=self.voice,
                     device=self.device,
                     streaming=True,
+                    max_tokens=max(
+                        8,
+                        int(os.environ.get("MEMO_POCKETTTS_MAX_TOKENS", "24")),
+                    ),
                 )
             if self._stream_factory is None:
                 from RealtimeTTS import TextToAudioStream
 
                 self._stream_factory = TextToAudioStream
-            self._audio_stream = self._stream_factory(self._engine)
+            self._audio_stream = self._stream_factory(
+                self._engine,
+                muted=self.muted,
+            )
         return self._audio_stream
+
+    def prepare(self) -> dict[str, Any]:
+        """Load PocketTTS and its playback stream before the first utterance."""
+
+        with self._lock:
+            self._stream_player()
+        return {
+            "ready": True,
+            "model": DEFAULT_MODEL,
+            "voice": self.voice,
+            "device": self.device,
+        }
 
     @staticmethod
     def _play_options() -> dict[str, Any]:
@@ -191,15 +214,20 @@ class TTS:
     def shutdown(self, *, fast: bool = False) -> None:
         if fast:
             self.request_stop()
-            self._audio_stream = None
-            self._engine = None
-            return
-
-        self.stop()
-        engine = self._engine
-        close = getattr(engine, "shutdown", None)
-        if callable(close):
-            close()
+        else:
+            self.stop()
+            engine = self._engine
+            close = getattr(engine, "shutdown", None)
+            if callable(close):
+                close()
+        self._audio_stream = None
+        self._engine = None
+        gc.collect()
+        torch = sys.modules.get("torch")
+        cuda = getattr(torch, "cuda", None)
+        empty_cache = getattr(cuda, "empty_cache", None)
+        if callable(empty_cache):
+            empty_cache()
 
 
 def build_parser() -> argparse.ArgumentParser:

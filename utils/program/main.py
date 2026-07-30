@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from typing import ClassVar
 
@@ -114,6 +115,7 @@ class MemoApp(App):
         voice: VoiceModeIO | None = None,
     ) -> None:
         super().__init__()
+        self._preload_voice = ai is None and voice is None
         self.ai = ai or ProgramAI()
         self.voice = voice or VoiceModeIO()
         self._voice_mode_active = False
@@ -132,6 +134,21 @@ class MemoApp(App):
 
     def on_mount(self) -> None:
         self.query_one("#messageinput", Input).focus()
+        if (
+            self._preload_voice
+            and os.environ.get("MEMO_SPEECH_PRELOAD", "0") == "1"
+        ):
+            self.run_voice_warmup()
+
+    @work(thread=False, exclusive=True, group="voice-warmup")
+    async def run_voice_warmup(self) -> None:
+        """Load local voice models without blocking the Textual UI."""
+
+        try:
+            await self.voice.prepare()
+        except Exception:
+            # Voice mode will surface a detailed error if the user invokes it.
+            pass
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         await self._submit_input(event.input)

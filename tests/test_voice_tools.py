@@ -4,7 +4,9 @@ import unittest
 import wave
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
+from utils.tools import stt as stt_module
 from utils.tools.stt import STT, is_whisper_hallucination
 from utils.tools.tts import TTS
 
@@ -64,6 +66,37 @@ class FakeTextToAudioStream:
 
 
 class VoiceToolTests(unittest.TestCase):
+    def test_stt_deduplicates_worker_file_descriptors(self):
+        calls = []
+        read_fd, write_fd = stt_module.os.pipe()
+
+        def original(path, args, passfds):
+            calls.append((path, args, passfds))
+            return 123
+
+        try:
+            stt_module.os.close(write_fd)
+            with (
+                patch.object(stt_module, "_ORIGINAL_SPAWNV_PASSFDS", None),
+                patch.object(stt_module.sys, "platform", "linux"),
+                patch.object(
+                    stt_module.multiprocessing.util,
+                    "spawnv_passfds",
+                    original,
+                ),
+            ):
+                stt_module._deduplicate_multiprocessing_passfds()
+                result = stt_module.multiprocessing.util.spawnv_passfds(
+                    b"python",
+                    [b"python"],
+                    [read_fd, -1, write_fd, read_fd],
+                )
+        finally:
+            stt_module.os.close(read_fd)
+
+        self.assertEqual(result, 123)
+        self.assertEqual(calls, [(b"python", [b"python"], [read_fd])])
+
     def test_filters_common_whisper_silence_hallucinations(self):
         self.assertTrue(is_whisper_hallucination("Thank you. Thank you."))
         self.assertTrue(is_whisper_hallucination("Thanks for watching."))
@@ -120,7 +153,7 @@ class VoiceToolTests(unittest.TestCase):
         stream = FakeTextToAudioStream()
         tts = TTS(
             engine=object(),
-            stream_factory=lambda _engine: stream,
+            stream_factory=lambda _engine, **_kwargs: stream,
         )
 
         tts.speak("Hello")
@@ -133,17 +166,33 @@ class VoiceToolTests(unittest.TestCase):
         stream = FakeTextToAudioStream()
         tts = TTS(
             engine=object(),
-            stream_factory=lambda _engine: stream,
+            stream_factory=lambda _engine, **_kwargs: stream,
         )
 
         self.assertEqual(tts.synthesize_bytes("Hello"), b"RIFFfake-wave")
         self.assertTrue(stream.plays[0]["muted"])
 
+    def test_tts_can_disable_local_playback_during_stream_setup(self):
+        stream = FakeTextToAudioStream()
+        options = {}
+
+        def stream_factory(_engine, **kwargs):
+            options.update(kwargs)
+            return stream
+
+        TTS(
+            engine=object(),
+            muted=True,
+            stream_factory=stream_factory,
+        ).prepare()
+
+        self.assertEqual(options, {"muted": True})
+
     def test_tts_stop_interrupts_stream(self):
         stream = FakeTextToAudioStream()
         tts = TTS(
             engine=object(),
-            stream_factory=lambda _engine: stream,
+            stream_factory=lambda _engine, **_kwargs: stream,
         )
         tts.speak("Hello")
 
