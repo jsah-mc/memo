@@ -9,10 +9,24 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, Field
+try:
+    from pydantic import BaseModel, Field
+except ImportError:
+    class BaseModel:
+        @classmethod
+        def model_validate(cls, obj: Any) -> Any:
+            dummy = cls()
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    setattr(dummy, k, v)
+            return dummy
+
+    def Field(default: Any = None, *args: Any, **kwargs: Any) -> Any:
+        return default
 
 from .desktop import DesktopController, detect_desktop_control_request
 
@@ -474,6 +488,43 @@ class ComputerSandboxTool:
             "TMP": str(temporary),
         }
 
+    def _build_os_sandboxed_cmd(self, executable: str, args: list[str]) -> tuple[str, list[str]]:
+        """Wrap command with native OS sandbox utilities if available."""
+        if sys.platform.startswith("linux"):
+            bwrap = shutil.which("bwrap")
+            if bwrap:
+                bwrap_args = ["--ro-bind", "/usr", "/usr"]
+                for path in ("/lib", "/lib64", "/bin", "/sbin"):
+                    p = Path(path)
+                    if p.exists() and not p.is_symlink():
+                        bwrap_args.extend(["--ro-bind", path, path])
+                    elif p.is_symlink():
+                        target = os.readlink(path)
+                        bwrap_args.extend(["--symlink", target, path])
+                bwrap_args.extend([
+                    "--proc", "/proc",
+                    "--dev", "/dev",
+                    "--bind", str(self.root), str(self.root),
+                    "--chdir", str(self.root),
+                    "--unshare-pid",
+                    "--die-with-parent",
+                    executable,
+                    *args,
+                ])
+                return bwrap, bwrap_args
+        elif sys.platform == "darwin":
+            sandbox_exec = shutil.which("sandbox-exec")
+            if sandbox_exec:
+                # Use macOS sandbox-exec with lightweight profile
+                profile = f"(version 1) (allow default) (deny file-write* (regex #\"^/(?!{re.escape(str(self.root))})\"))"
+                return sandbox_exec, ["-p", profile, executable, *args]
+        elif sys.platform == "win32":
+            runas = shutil.which("runas.exe") or str(Path(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "runas.exe"))
+            if Path(runas).is_file():
+                # Use Windows low integrity level trust level isolation
+                return runas, ["/trustlevel:0x2000", f'"{executable}" {" ".join(args)}'.strip()]
+        return executable, args
+
     def _shell_environment(self) -> dict[str, str]:
         allowed_names = {
             "ALLUSERSPROFILE",
@@ -823,9 +874,10 @@ class ComputerSandboxTool:
             }
 
         executable, args = self._system_command(argv)
+        exec_cmd, exec_args = self._build_os_sandboxed_cmd(executable, args)
         process = await asyncio.create_subprocess_exec(
-            executable,
-            *args,
+            exec_cmd,
+            *exec_args,
             cwd=self.root,
             env=self._safe_environment(),
             stdin=asyncio.subprocess.DEVNULL,
@@ -923,9 +975,10 @@ class ComputerSandboxTool:
             shell_args = ["-c", command]
             creationflags = 0
 
+        exec_shell, exec_shell_args = self._build_os_sandboxed_cmd(shell, shell_args)
         process = await asyncio.create_subprocess_exec(
-            shell,
-            *shell_args,
+            exec_shell,
+            *exec_shell_args,
             cwd=self.root,
             env=self._shell_environment(),
             stdin=asyncio.subprocess.DEVNULL,
