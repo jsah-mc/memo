@@ -19,6 +19,7 @@ recognition and synthesis run fully locally.
 - uv
 - A signed-in Codex installation with `%USERPROFILE%\.codex\auth.json`
 - Node.js and pnpm for the desktop app
+- On Linux/Debian: `portaudio19-dev` for PyAudio compilation (`sudo apt-get install portaudio19-dev`)
 
 Install the Python environment:
 
