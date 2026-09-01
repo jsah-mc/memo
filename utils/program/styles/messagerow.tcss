@@ -1,8 +1,11 @@
+/* Modern Textual TUI Input Row styling */
 .messagerow {
   dock: bottom;
-  height: 1;
+  height: 3;
   width: 100%;
-  background: $surface;
+  background: #090d16;
+  border-top: solid #1e293b;
+  padding: 0 1;
 }
 
 #messageinput {
@@ -10,23 +13,28 @@
   width: 1fr;
   height: 1;
   padding: 0 1;
+  background: #090d16;
+  color: #f8fafc;
 }
 
 .messagerow Button {
-  width: 5;
-  min-width: 5;
+  width: 9;
+  min-width: 9;
   height: 1;
-  padding: 0;
+  padding: 0 1;
   border: none;
+  background: #2563eb;
+  color: #ffffff;
 }
 
 .messagerow Button:hover,
 .messagerow Button:focus,
 .messagerow Button.-active {
-  border: none;
+  background: #1d4ed8;
 }
 
 #messages {
   height: 1fr;
   padding: 1 2;
+  background: #030712;
 }

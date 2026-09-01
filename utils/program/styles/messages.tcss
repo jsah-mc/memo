@@ -1,22 +1,26 @@
+/* Modern Textual TUI Chat Messages styling */
 .chat-message {
   width: 100%;
   height: auto;
   margin-bottom: 1;
   padding: 1 2;
+  border-radius: 1;
 }
 
 .user-message {
-  background: $primary 15%;
-  border-left: thick $primary;
+  background: #1e293b;
+  border-left: thick #3b82f6;
+  color: #f8fafc;
 }
 
 .assistant-message {
-  background: $surface;
-  border-left: thick $secondary;
+  background: #0f172a;
+  border-left: thick #10b981;
+  color: #e2e8f0;
 }
 
 .tool-message {
-  color: $text-muted;
-  background: $boost;
-  border-left: thick $warning;
+  color: #94a3b8;
+  background: #18181b;
+  border-left: thick #eab308;
 }
