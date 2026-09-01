@@ -15,12 +15,34 @@ class PendingPermission:
     decision: asyncio.Future[bool]
 
 
+import time
+
+
 class PermissionBroker:
     """Coordinate a permission prompt with one waiting tool invocation."""
 
     def __init__(self, timeout_seconds: float = 120.0) -> None:
         self.timeout_seconds = timeout_seconds
         self._pending: dict[str, PendingPermission] = {}
+        self._session_grants: dict[str, float] = {}
+
+    def grant_session(self, scope: str, duration_seconds: float = 300.0) -> None:
+        """Grant a temporary time-bounded approval for a scope."""
+        self._session_grants[scope] = time.time() + duration_seconds
+
+    def is_session_granted(self, scope: str) -> bool:
+        """Check if an active session grant exists for the scope."""
+        expires = self._session_grants.get(scope)
+        if expires is None:
+            return False
+        if time.time() > expires:
+            self._session_grants.pop(scope, None)
+            return False
+        return True
+
+    def revoke_session(self, scope: str) -> None:
+        """Revoke a session grant."""
+        self._session_grants.pop(scope, None)
 
     def create(self, details: dict[str, Any]) -> PendingPermission:
         permission_id = f"perm_{uuid.uuid4().hex}"

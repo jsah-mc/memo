@@ -12,7 +12,22 @@ import subprocess
 from pathlib import Path
 from typing import Any, ClassVar
 
+from pydantic import BaseModel, Field
+
 from .desktop import DesktopController, detect_desktop_control_request
+
+
+class SandboxedCommandArgs(BaseModel):
+    argv: list[str] = Field(..., min_length=1, max_length=32)
+    timeout_seconds: int = Field(default=10, ge=1, le=30)
+
+
+class ShellCommandArgs(BaseModel):
+    command: str = Field(..., min_length=1, max_length=8000)
+
+
+class OpenAppArgs(BaseModel):
+    app: str = Field(..., min_length=1, max_length=200)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SANDBOX_ROOT = PROJECT_ROOT / ".memo-sandbox"
@@ -791,11 +806,10 @@ class ComputerSandboxTool:
         *,
         user_text: str,
     ) -> dict[str, Any]:
-        argv = self._validated_argv(arguments.get("argv"))
+        parsed = SandboxedCommandArgs.model_validate(arguments)
+        argv = self._validated_argv(parsed.argv)
         self._authorize_command(argv, user_text)
-        timeout = arguments.get("timeout_seconds", 10)
-        if not isinstance(timeout, int) or not 1 <= timeout <= 30:
-            raise ValueError("timeout_seconds must be between 1 and 30.")
+        timeout = parsed.timeout_seconds
 
         internal = await asyncio.to_thread(self._workspace_command, argv)
         if internal is not None:
@@ -858,13 +872,9 @@ class ComputerSandboxTool:
     ) -> dict[str, Any]:
         if not permission_granted:
             raise PermissionError("Shell command permission was not granted.")
-        command = arguments.get("command")
-        if (
-            not isinstance(command, str)
-            or not command.strip()
-            or "\0" in command
-            or len(command) > 8_000
-        ):
+        parsed = ShellCommandArgs.model_validate(arguments)
+        command = parsed.command
+        if "\0" in command or not command.strip():
             raise ValueError("command must contain 1 to 8,000 valid characters.")
         command = command.strip()
 
@@ -983,9 +993,8 @@ class ComputerSandboxTool:
         *,
         user_text: str,
     ) -> dict[str, Any]:
-        app = arguments.get("app")
-        if not isinstance(app, str):
-            raise TypeError("app must be a string.")
+        parsed = OpenAppArgs.model_validate(arguments)
+        app = parsed.app
         self._authorize_app(app, user_text)
         executable, args = self._app_path(app)
 
