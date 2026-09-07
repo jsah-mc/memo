@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "pnpm --filter @memo/desktop start",
     "dev:desktop": "pnpm --filter @memo/desktop start",
+    "dev:vite": "pnpm --filter @memo/desktop start:vite",
     "dev:gateway": "uv run memo gateway",
     "build": "pnpm --filter @memo/desktop package",
     "package": "pnpm --filter @memo/desktop package",

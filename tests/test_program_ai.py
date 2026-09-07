@@ -4,10 +4,10 @@ import unittest
 from pathlib import Path
 from typing import Any, ClassVar
 
-from utils.program.ai import ProgramAI
-from utils.program.moonkart import _completion_messages
-from utils.program.sdk import SDKResponseStream
-from utils.program.settings import ProgramSettings
+from utils.tools.ai import AI as ProgramAI
+from utils.tools.ai import AISettings as ProgramSettings
+from utils.tools.ai.moonkart import _completion_messages
+from utils.tools.ai.sdk import SDKResponseStream
 
 
 class FakeSDK:

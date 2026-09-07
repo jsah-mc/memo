@@ -22,7 +22,7 @@ from utils.tools.computer_turn import (
     direct_app_events,
     has_one_time_computer_approval,
 )
-from utils.tools.desktop import DesktopController, detect_desktop_control_request
+from utils.tools.desktop import detect_desktop_control_request
 from utils.tools.permissions import PermissionBroker
 
 
@@ -315,78 +315,6 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
                 {},
                 user_text="use the computer",
             )
-
-    def test_linux_desktop_control_builds_pointer_and_keyboard_commands(self) -> None:
-        desktop = DesktopController()
-        desktop._screen_width = desktop._image_width = 1920
-        desktop._screen_height = desktop._image_height = 1080
-
-        with (
-            patch.object(desktop, "_require_linux_tools"),
-            patch.object(desktop, "_run_linux_input") as run_input,
-        ):
-            desktop._perform_linux_sync(
-                [
-                    {"action": "click", "x": 120, "y": 240},
-                    {"action": "type", "text": "hello"},
-                    {"action": "hotkey", "keys": ["ctrl", "shift", "p"]},
-                    {"action": "scroll", "amount": -3},
-                ]
-            )
-
-        self.assertEqual(
-            run_input.call_args_list[0].args,
-            ("hyprctl", "dispatch", "movecursor", "120", "240"),
-        )
-        self.assertEqual(
-            run_input.call_args_list[1].args,
-            ("ydotool", "click", "0xC0"),
-        )
-        self.assertEqual(
-            run_input.call_args_list[2].args,
-            ("wtype", "--", "hello"),
-        )
-        self.assertEqual(
-            run_input.call_args_list[3].args,
-            (
-                "ydotool",
-                "key",
-                "29:1",
-                "42:1",
-                "25:1",
-                "25:0",
-                "42:0",
-                "29:0",
-            ),
-        )
-        self.assertEqual(
-            run_input.call_args_list[4].args,
-            ("ydotool", "mousemove", "--wheel", "0", "-3"),
-        )
-
-    def test_linux_desktop_control_normalizes_uppercase_hotkey_names(self) -> None:
-        desktop = DesktopController()
-        with (
-            patch.object(desktop, "_require_linux_tools"),
-            patch.object(desktop, "_run_linux_input") as run_input,
-        ):
-            desktop._perform_linux_sync(
-                [{"action": "hotkey", "keys": ["SUPER", "SHIFT", "F"]}]
-            )
-
-        self.assertEqual(
-            run_input.call_args.args,
-            (
-                "ydotool",
-                "key",
-                "125:1",
-                "42:1",
-                "33:1",
-                "33:0",
-                "42:0",
-                "125:0",
-            ),
-        )
 
     async def test_approved_shell_command_runs_in_configured_workspace(self) -> None:
         result = await self.tool.execute(

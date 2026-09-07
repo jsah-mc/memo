@@ -8,7 +8,7 @@ from typing import Any, TypeVar, overload
 
 from pydantic import BaseModel
 
-from utils.program.sdk import LiteLLMSDK
+from utils.tools.ai.sdk import LiteLLMSDK
 
 T = TypeVar("T", bound=BaseModel)
 

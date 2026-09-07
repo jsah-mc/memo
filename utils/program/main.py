@@ -11,7 +11,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Static
 
-from .ai import ProgramAI
+from utils.tools.ai import ProgramAI
 from .voice import VoiceModeIO
 
 

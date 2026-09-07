@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from utils.program.moonkart import MoonKartAction, detect_moonkart_action
+from utils.tools.ai.moonkart import MoonKartAction, detect_moonkart_action
 from utils.tools.moonkart import MoonKartTool
 
 from .sdk import LiteLLMSDK, SDKResponseStream

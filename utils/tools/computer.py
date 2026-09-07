@@ -14,7 +14,8 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field
 
-from .desktop import DesktopController, detect_desktop_control_request
+from .cua_desktop import CuaDesktopController
+from .desktop import detect_desktop_control_request
 
 
 class SandboxedCommandArgs(BaseModel):
@@ -253,7 +254,7 @@ class ComputerSandboxTool:
         configured = root or os.environ.get("MEMO_SANDBOX_ROOT")
         self.root = Path(configured or DEFAULT_SANDBOX_ROOT).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True)
-        self.desktop = DesktopController()
+        self.desktop = CuaDesktopController()
 
     @property
     def responses_definitions(self) -> list[dict[str, Any]]:

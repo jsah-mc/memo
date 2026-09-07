@@ -134,12 +134,25 @@ are never remembered. Commands time out after 60 seconds, output is capped, and
 credential-like environment variables are not passed to the child shell.
 
 Visible desktop tasks use `inspect_computer_screen` and `control_computer`.
-After one explicit Allow once decision, Memo can capture the unlocked Windows
-desktop, send scaled screenshots to the configured vision-capable model, and
+These tools use the pinned `cua-driver` Python SDK (installed by `uv sync`).
+After one explicit Allow once decision, Memo can capture the primary desktop
+display, send scaled screenshots to the configured vision-capable model, and
 perform bounded batches of clicks, typing, key presses, hotkeys, scrolling, and
 short waits. It captures the result after each action batch so the model can
 continue from what is actually visible. This control session ends with the
-current response and is never reused by a later message.
+current response and is never reused by a later message. Each tool call closes
+its CUA runtime after capture or the complete action batch, including failures.
+CUA handles native input on supported macOS, Windows, and Linux desktops; the
+host must have the desktop permissions and session access required by
+[CUA Driver](https://cua.ai/docs/how-to-guides/driver/install).
+Linux capture depends on CUA’s compositor support. On the development host,
+CUA 0.23.2 initializes successfully but full-screen capture returns an X11
+`GetImage` error in the Wayland session; live desktop control is not verified
+on that host. Driver errors are returned to the model rather than treated as
+successful actions.
+Memo no longer invokes `hyprctl`, `ydotool`, `wtype`, or Windows input APIs
+directly for desktop control. Shell and workspace commands retain their
+existing executors and permission rules.
 Requests such as `see my screen and tell me what's on it` go directly into this
 screen-inspection flow rather than relying on the model to decide whether it has
 screen access.
@@ -177,6 +190,9 @@ both settings to the localhost gateway process that it manages.
 utils/
   gateway/   FastAPI, LiteLLM, routing, streaming, and tool orchestration
   tools/     Computer, Browser, MoonKart, RealtimeSTT, and RealtimeTTS adapters
+    ai/      Shared AI runtime, settings, SDK, routing, and tool turns
   browser/   Visible Browser Use agent
   program/   Desktop/runtime integration
 ```
+
+The program and future messaging integrations can use `from utils.tools.ai import AI, AISettings`. Each `AI` instance owns its conversation history and permission broker; create one per conversation, consume `events()` or `stream()`, and call `close()` when finished. The gateway uses shared MoonKart detection while retaining its HTTP-specific response handling. Legacy `utils.program` AI imports remain compatible.

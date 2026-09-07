@@ -513,6 +513,18 @@ wheels = [
 ]
 
 [[package]]
+name = "cua-driver"
+version = "0.23.2"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4c/84/1052893c3170c3272330802425674617bbfb8822c198336f4c511966a2bd/cua_driver-0.23.2-py3-none-macosx_13_0_universal2.whl", hash = "sha256:2b552894ffe0c9298c3c54f39ff77e70d1829957718037a23380b643b873608c", size = 38810577, upload-time = "2026-08-31T11:04:35.473Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/f7/7afb940884ec3cfcaf083da148599dda5ed7a750a64d7860fb6ea41cd325/cua_driver-0.23.2-py3-none-manylinux_2_31_aarch64.whl", hash = "sha256:8dcae152e6c509d0b5b90f38bfc4b2149a3594e098def051b084fd12de7e47f0", size = 27547478, upload-time = "2026-08-31T11:04:38.225Z" },
+    { url = "https://files.pythonhosted.org/packages/52/63/5af0869121f0d5093394bc7fe450de70d5e774d1a9737ae75386a3c764a2/cua_driver-0.23.2-py3-none-manylinux_2_31_x86_64.whl", hash = "sha256:167b62cbef10b25ed6d31133e9afbbb061b13b8b8fa33445fb6da2b7d1947be6", size = 27557055, upload-time = "2026-08-31T11:04:40.592Z" },
+    { url = "https://files.pythonhosted.org/packages/2f/03/8fc7f302d437fc172c9dba2f31d9092bf4f6247ef56ffd162fa69803c936/cua_driver-0.23.2-py3-none-win_amd64.whl", hash = "sha256:8b5c81bdf0df14adc27dd2e26bf665db1efe88e3da037582d6e2ed314d7f2640", size = 25361844, upload-time = "2026-08-31T11:04:43.085Z" },
+    { url = "https://files.pythonhosted.org/packages/c3/73/3e062e3c18410e5c44f68cedcd2571ec9a64910bd0280f29a561fd75b498/cua_driver-0.23.2-py3-none-win_arm64.whl", hash = "sha256:43eaeb0946fc6736d1fafd5207216fba0c2726f55d4833bd90184162a86d6e72", size = 23673419, upload-time = "2026-08-31T11:04:45.437Z" },
+]
+
+[[package]]
 name = "cuda-bindings"
 version = "12.9.7"
 source = { registry = "https://pypi.org/simple" }
@@ -1323,6 +1335,7 @@ dependencies = [
     { name = "audioop-lts" },
     { name = "bleak" },
     { name = "browser-use" },
+    { name = "cua-driver" },
     { name = "fastapi" },
     { name = "litellm" },
     { name = "numpy" },
@@ -1353,6 +1366,7 @@ requires-dist = [
     { name = "audioop-lts", specifier = ">=0.2.2" },
     { name = "bleak", specifier = ">=3.0.2" },
     { name = "browser-use", specifier = ">=0.11.13,<0.12.0" },
+    { name = "cua-driver", specifier = "==0.23.2" },
     { name = "fastapi", specifier = ">=0.139.0" },
     { name = "litellm", specifier = ">=1.93.0" },
     { name = "numpy", specifier = ">=2.3.0" },
