@@ -6,6 +6,13 @@ declare global {
       streamChat(
         request: {
           id: string;
+          agent: {
+            cli: string;
+            model: string;
+            composioEnabled: boolean;
+            composioUserId: string;
+            composioToolkits: readonly string[];
+          };
           messages: Array<{
             role: "system" | "user" | "assistant";
             content:
@@ -23,6 +30,11 @@ declare global {
         onEvent: (event: ChatStreamEvent) => void,
       ): () => void;
       cancelChat(requestId: string): void;
+      agents: {
+        list(): Promise<AgentProfileData[]>;
+        create(agent: NewAgentData): Promise<AgentProfileData>;
+        delete(agentId: string): Promise<void>;
+      };
       onPermissionRequest(
         onRequest: (request: PermissionRequest) => void,
       ): () => void;
@@ -33,6 +45,10 @@ declare global {
         latencyMs: number | null;
         message?: string;
       }>;
+      getComposioStatus(): Promise<{ configured: boolean }>;
+      getComposioKeyStatus(): Promise<{ hasKey: boolean }>;
+      setComposioKey(key: string): Promise<{ saved: true }>;
+      authorizeComposio(toolkit: string): Promise<{ opened: true }>;
       traceSpeech(stage: string): void;
       prepareSpeech(): Promise<{ ready: true }>;
       transcribeSpeech(request: {
@@ -50,12 +66,6 @@ declare global {
         setItem(key: string, value: string): Promise<void>;
         removeItem(key: string): Promise<void>;
       };
-    };
-    windowButtons: {
-      close(): void;
-      maximize(): void;
-      minimize(): void;
-      setTitlebarTheme(isDark: boolean): void;
     };
   }
 
@@ -81,6 +91,23 @@ declare global {
       }
     | { id: string; type: "done" }
     | { id: string; type: "error"; message: string };
+
+  type NewAgentData = {
+    name: string;
+    role: string;
+    instructions: string;
+    cli: string;
+    model: string;
+    color: string;
+    composioEnabled: boolean;
+    composioUserId: string;
+    composioToolkits: readonly string[];
+  };
+
+  type AgentProfileData = NewAgentData & {
+    id: string;
+    builtIn?: boolean;
+  };
 
   type PermissionRequest = {
     id: string;

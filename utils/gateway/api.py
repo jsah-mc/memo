@@ -41,6 +41,7 @@ from utils.tools.stt import STT
 from utils.tools.tts import TTS
 
 from .access_log import QuietPathAccessLogFilter
+from .agents import AgentStore
 from .browser import detect_browser_task, run_browser_tool_turn
 from .chat import (
     chat_chunk,
@@ -48,10 +49,26 @@ from .chat import (
     chat_usage,
     to_chat_completion,
 )
+from .cli_backends import CLI_BACKENDS, validate_agent_config
+from .composio_tools import ComposioTools
 from .moonkart import detect_moonkart_action, run_moonkart_tool_turn
 from .router import ModelRouter
 from .sdk import LiteLLMSDK
 from .settings import GatewaySettings
+
+
+def _composio_scope(payload: object) -> tuple[str, list[str]]:
+    if not isinstance(payload, dict):
+        raise ValueError("JSON body must be an object")
+    user_id = payload.get("user_id") or os.environ.get("MEMO_COMPOSIO_USER_ID")
+    toolkits = payload.get("toolkits", [])
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise ValueError("user_id must be a non-empty string")
+    if not isinstance(toolkits, list) or not all(
+        isinstance(item, str) and item.strip() for item in toolkits
+    ):
+        raise ValueError("toolkits must be a list of names")
+    return user_id.strip(), [item.strip().lower() for item in toolkits]
 
 
 def create_app(
@@ -62,6 +79,8 @@ def create_app(
     permission_broker: PermissionBroker | None = None,
     stt_tool: STT | None = None,
     tts_tool: TTS | None = None,
+    agent_store: AgentStore | None = None,
+    composio_tools: ComposioTools | None = None,
 ) -> FastAPI:
     kart_tool = moonkart_tool or MoonKartTool()
     web_tool = browser_tool or BrowserUseTool()
@@ -82,6 +101,12 @@ def create_app(
     )
     access_logger = logging.getLogger("uvicorn.access")
     quiet_health_logs = QuietPathAccessLogFilter()
+    agents = agent_store or AgentStore(
+        Path(os.environ["MEMO_AGENT_STORE"])
+        if os.environ.get("MEMO_AGENT_STORE")
+        else None
+    )
+    composio = composio_tools or ComposioTools()
 
     def cancel_speech_release() -> None:
         nonlocal speech_idle_task
@@ -313,6 +338,82 @@ def create_app(
             ],
         }
 
+    @app.get("/v1/cli-backends")
+    async def cli_backends() -> dict[str, Any]:
+        return {
+            "object": "list",
+            "data": [backend.public_dict() for backend in CLI_BACKENDS],
+        }
+
+    @app.get("/v1/agents")
+    async def list_agents() -> dict[str, Any]:
+        return {"object": "list", "data": agents.list()}
+
+    @app.post("/v1/agents", status_code=201)
+    async def create_agent(request: Request) -> dict[str, Any]:
+        try:
+            return agents.create(await request.json())
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise HTTPException(status_code=400, detail="Invalid JSON body.") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.delete("/v1/agents/{agent_id}", status_code=204)
+    async def delete_agent(agent_id: str) -> Response:
+        try:
+            deleted = agents.delete(agent_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return Response(status_code=204)
+
+    @app.get("/v1/composio/status")
+    async def composio_status() -> dict[str, bool]:
+        return {"configured": composio.configured}
+
+    @app.post("/v1/composio/session-tools")
+    async def composio_session_tools(request: Request) -> dict[str, Any]:
+        payload = await request.json()
+        try:
+            user_id, toolkits = _composio_scope(payload)
+            return await asyncio.to_thread(composio.session_tools, user_id, toolkits)
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/v1/composio/execute")
+    async def composio_execute(request: Request) -> Any:
+        payload = await request.json()
+        try:
+            user_id, toolkits = _composio_scope(payload)
+            slug = payload.get("slug")
+            arguments = payload.get("arguments", {})
+            if not isinstance(slug, str) or not slug:
+                raise ValueError("slug must be a non-empty string")
+            if not isinstance(arguments, dict):
+                raise ValueError("arguments must be an object")
+            return await asyncio.to_thread(
+                composio.execute, user_id, toolkits, slug, arguments
+            )
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/v1/composio/authorize/{toolkit}")
+    async def composio_authorize(toolkit: str) -> dict[str, str]:
+        user_id = os.environ.get("MEMO_COMPOSIO_USER_ID")
+        if not user_id:
+            raise HTTPException(status_code=503, detail="Composio identity is unavailable")
+        try:
+            return await asyncio.to_thread(composio.authorize, user_id, toolkit)
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except Exception as exc:
+            logging.getLogger("memo.composio").exception("Composio authorization failed")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Composio authorization failed: {exc}",
+            ) from exc
+
     @app.post("/v1/permissions/{permission_id}")
     async def resolve_permission(
         permission_id: str,
@@ -503,6 +604,11 @@ def create_app(
             raise HTTPException(status_code=400, detail="JSON body must be an object.")
         if payload.get("model", settings.model_alias) != settings.model_alias:
             raise HTTPException(status_code=404, detail="Unknown model.")
+        if "memo_agent" in payload:
+            try:
+                validate_agent_config(payload["memo_agent"])
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         wants_stream = payload.get("stream") is True
         try:
@@ -556,6 +662,11 @@ def create_app(
             raise HTTPException(status_code=400, detail="JSON body must be an object.")
         if payload.get("model", settings.model_alias) != settings.model_alias:
             raise HTTPException(status_code=404, detail="Unknown model.")
+        if "memo_agent" in payload:
+            try:
+                validate_agent_config(payload["memo_agent"])
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         wants_stream = payload.get("stream") is True
         responses_payload = chat_to_responses(payload)
@@ -643,6 +754,7 @@ def create_app(
                             usage_chunk["choices"] = []
                             usage_chunk["usage"] = chat_usage(response)
                             yield f"data: {json.dumps(usage_chunk, separators=(',', ':'))}\n\n"
+                        break
                 yield "data: [DONE]\n\n"
             except Exception as exc:
                 error = {

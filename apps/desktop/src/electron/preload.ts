@@ -4,6 +4,13 @@ contextBridge.exposeInMainWorld("desktopApi", {
   streamChat: (
     request: {
       id: string;
+      agent: {
+        cli: string;
+        model: string;
+        composioEnabled: boolean;
+        composioUserId: string;
+        composioToolkits: readonly string[];
+      };
       messages: Array<{
         role: "system" | "user" | "assistant";
         content:
@@ -35,6 +42,11 @@ contextBridge.exposeInMainWorld("desktopApi", {
     return () => ipcRenderer.removeListener("chat:event", listener);
   },
   cancelChat: (requestId: string) => ipcRenderer.send("chat:cancel", requestId),
+  agents: {
+    list: () => ipcRenderer.invoke("agents:list"),
+    create: (agent: unknown) => ipcRenderer.invoke("agents:create", agent),
+    delete: (agentId: string) => ipcRenderer.invoke("agents:delete", agentId),
+  },
   onPermissionRequest: (onRequest: (request: unknown) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, request: unknown) =>
       onRequest(request);
@@ -44,6 +56,10 @@ contextBridge.exposeInMainWorld("desktopApi", {
   respondPermission: (response: { id: string; allowed: boolean }) =>
     ipcRenderer.send("permission:respond", response),
   getGatewayStatus: () => ipcRenderer.invoke("gateway:status"),
+  getComposioStatus: () => ipcRenderer.invoke("composio:status"),
+  getComposioKeyStatus: () => ipcRenderer.invoke("composio:key-status"),
+  setComposioKey: (key: string) => ipcRenderer.invoke("composio:set-key", key),
+  authorizeComposio: (toolkit: string) => ipcRenderer.invoke("composio:authorize", toolkit),
   traceSpeech: (stage: string) => ipcRenderer.send("speech:trace", stage),
   prepareSpeech: () => ipcRenderer.invoke("speech:prepare"),
   transcribeSpeech: (request: {
@@ -77,12 +93,4 @@ contextBridge.exposeInMainWorld("desktopApi", {
       ipcRenderer.invoke("chat-history:set", key, value),
     removeItem: (key: string) => ipcRenderer.invoke("chat-history:remove", key),
   },
-});
-
-contextBridge.exposeInMainWorld("windowButtons", {
-  close: () => ipcRenderer.send("window:close"),
-  maximize: () => ipcRenderer.send("window:maximize"),
-  minimize: () => ipcRenderer.send("window:minimize"),
-  setTitlebarTheme: (isDark: boolean) =>
-    ipcRenderer.send("titlebar:set-theme", isDark),
 });

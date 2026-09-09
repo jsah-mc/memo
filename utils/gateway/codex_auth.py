@@ -16,11 +16,9 @@ _WINDOWS_ABSOLUTE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 def configure_codex_token_dir() -> None:
-    """Point LiteLLM at the Codex CLI login on non-Windows systems."""
+    """Point LiteLLM at the Codex CLI login when it is available."""
 
     configured = os.environ.get("CHATGPT_TOKEN_DIR")
-    if os.name == "nt":
-        return
     if configured and not _WINDOWS_ABSOLUTE_PATH.match(configured):
         return
 
@@ -99,4 +97,17 @@ def install_codex_auth_adapter() -> None:
 
         Authenticator._read_auth_file = read_auth_file
         Authenticator._write_auth_file = write_auth_file
+        from litellm.llms.chatgpt.responses.transformation import (
+            ChatGPTResponsesAPIConfig,
+        )
+
+        def use_native_streaming(
+            self: ChatGPTResponsesAPIConfig,
+            model: str | None,
+            stream: bool | None,
+            custom_llm_provider: str | None = None,
+        ) -> bool:
+            return False
+
+        ChatGPTResponsesAPIConfig.should_fake_stream = use_native_streaming
         _PATCHED = True

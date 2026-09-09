@@ -6,7 +6,7 @@ recognition and synthesis run fully locally.
 
 ## Stack
 
-- Chat and image understanding: `chatgpt/gpt-5.4` through LiteLLM
+- Chat and image understanding: `chatgpt/gpt-5.6-luna` through LiteLLM
 - Speech-to-text: RealtimeSTT with faster-whisper `small.en`
 - Text-to-speech: RealtimeTTS with PocketTTS
 - Browser automation: Browser Use with visible Chromium
@@ -46,6 +46,14 @@ The first local speech run downloads the selected Whisper and PocketTTS model
 files. No speech API key is required.
 
 ## Run
+
+Launch the terminal UI:
+
+```powershell
+uv run memo
+```
+
+Start only the HTTP gateway:
 
 ```powershell
 uv run memo gateway

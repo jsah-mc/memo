@@ -121,7 +121,7 @@ class TextualProgramTests(unittest.IsolatedAsyncioTestCase):
             self.assertGreater(button.region.width, 0)
             self.assertLessEqual(button.region.x + button.region.width, 80)
             self.assertEqual(button.region.height, input_widget.region.height)
-            self.assertEqual(button.region.width, 5)
+            self.assertEqual(button.region.width, 9)
             self.assertEqual(
                 button.styles.border_top,
                 input_widget.styles.border_top,
@@ -166,8 +166,40 @@ class TextualProgramTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertFalse(app._voice_mode_active)
             self.assertTrue(voice.cancelled.is_set())
-            self.assertEqual(str(app.query_one("#voicebutton", Button).label), "🎤")
+            self.assertEqual(str(app.query_one("#voicebutton", Button).label), "Voice")
             self.assertEqual(voice.release_count, 1)
+
+    async def test_chat_content_is_rendered_as_plain_text(self) -> None:
+        sdk = FakeTextualSDK()
+        app = MemoApp(cast(Any, sdk))
+
+        async with app.run_test(size=(50, 16)) as pilot:
+            input_widget = app.query_one("#messageinput", Input)
+            input_widget.value = "show [bold] literally"
+            await pilot.press("enter")
+            await pilot.pause()
+
+            user_message = app.query_one(".user-message", Static)
+            self.assertIn("[bold]", str(user_message.content))
+            self.assertIn("[bold]", user_message.render().plain)
+
+    async def test_new_chat_restores_empty_state_and_ready_controls(self) -> None:
+        sdk = FakeTextualSDK()
+        app = MemoApp(cast(Any, sdk))
+
+        async with app.run_test(size=(50, 16)) as pilot:
+            input_widget = app.query_one("#messageinput", Input)
+            input_widget.value = "first turn"
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("ctrl+n")
+            await pilot.pause()
+
+            self.assertEqual(len(app.query(".chat-message")), 0)
+            self.assertIsNotNone(app.query("#empty-state").first())
+            self.assertFalse(input_widget.disabled)
+            self.assertFalse(app.query_one("#sendbutton", Button).disabled)
+            self.assertEqual(str(app.query_one("#status", Static).content), "Ready")
 
     async def test_shell_command_shows_permission_modal(self) -> None:
         sdk = FakePermissionSDK()
@@ -214,6 +246,22 @@ class TextualProgramTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
 
             self.assertEqual(sdk.decisions, [("perm_test", False)])
+
+    async def test_exit_while_permission_is_open_does_not_fail_worker(self) -> None:
+        sdk = FakePermissionSDK()
+        app = MemoApp(cast(Any, sdk))
+
+        async with app.run_test(size=(80, 24)) as pilot:
+            input_widget = app.query_one("#messageinput", Input)
+            input_widget.value = "run npm --version"
+            await pilot.press("enter")
+            for _ in range(20):
+                await pilot.pause(0.01)
+                if isinstance(app.screen, ShellPermissionScreen):
+                    break
+
+            self.assertIsInstance(app.screen, ShellPermissionScreen)
+            app.exit()
 
 
 if __name__ == "__main__":

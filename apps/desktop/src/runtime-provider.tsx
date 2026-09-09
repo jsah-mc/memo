@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import {
   AssistantRuntimeProvider,
   type AttachmentAdapter,
@@ -19,6 +19,8 @@ import {
 } from "@assistant-ui/core/react";
 import { gatewaySpeechAdapter } from "@/lib/gateway-speech-adapter";
 import { nativeSpeechDictationAdapter } from "@/lib/native-speech-dictation";
+import { useAgents } from "@/agents/agent-provider";
+import type { AgentProfile } from "@/agents/agent-provider";
 
 const fileToDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -129,12 +131,21 @@ const appendModelPart = (
   }
 };
 
-const modelAdapter: ChatModelAdapter = {
+const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
   async *run({ messages, abortSignal }) {
     const requestId = crypto.randomUUID();
     const request = {
       id: requestId,
-      messages: messages
+      agent: {
+        cli: agent.cli,
+        model: agent.model,
+        composioEnabled: agent.composioEnabled,
+        composioUserId: agent.composioUserId,
+        composioToolkits: agent.composioToolkits,
+      },
+      messages: [
+        { role: "system" as const, content: agent.instructions },
+        ...messages
         .map((message) => {
           const content: DesktopContentPart[] = [];
           for (const part of message.content) {
@@ -159,22 +170,36 @@ const modelAdapter: ChatModelAdapter = {
           };
         })
         .filter((message) => message.content.length > 0),
+      ],
     };
 
     const events: ChatStreamEvent[] = [];
     let wake: (() => void) | undefined;
+    let streamClosed = false;
     const enqueue = (event: ChatStreamEvent) => {
+      if (streamClosed) return;
       events.push(event);
       wake?.();
       wake = undefined;
     };
     const nextEvent = async () => {
-      while (events.length === 0) {
-        await new Promise<void>((resolve) => {
-          wake = resolve;
-        });
+      if (events.length > 0) return events.shift()!;
+      if (abortSignal.aborted) {
+        return { id: requestId, type: "done" } satisfies ChatStreamEvent;
       }
-      return events.shift()!;
+      return await new Promise<ChatStreamEvent>((resolve, reject) => {
+        const onAbort = () => {
+          abortSignal.removeEventListener("abort", onAbort);
+          resolve({ id: requestId, type: "done" });
+        };
+        abortSignal.addEventListener("abort", onAbort, { once: true });
+        wake = () => {
+          abortSignal.removeEventListener("abort", onAbort);
+          const event = events.shift();
+          if (event) resolve(event);
+          else reject(new Error("Chat stream woke without an event."));
+        };
+      });
     };
 
     const unsubscribe = window.desktopApi.streamChat(request, enqueue);
@@ -231,20 +256,29 @@ const modelAdapter: ChatModelAdapter = {
           yield { content: [...content] };
         } else if (event.type === "error") {
           throw new Error(event.message);
+        } else if (event.type === "done") {
+          break;
         } else {
           break;
         }
       }
     } finally {
+      streamClosed = true;
+      wake = undefined;
       abortSignal.removeEventListener("abort", cancel);
       unsubscribe();
     }
   },
-};
+});
 
 export function RuntimeProvider({
   children,
 }: Readonly<{ children: ReactNode }>) {
+  const { activeAgent } = useAgents();
+  const modelAdapter = useMemo(
+    () => createModelAdapter(activeAgent),
+    [activeAgent],
+  );
   const runtime = useRemoteThreadListRuntime({
     adapter: threadListAdapter,
     runtimeHook: () =>

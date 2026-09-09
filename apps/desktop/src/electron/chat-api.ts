@@ -1,6 +1,7 @@
 import {
   app,
   ipcMain,
+  shell,
   type IpcMainEvent,
 } from "electron";
 import { appendFileSync, statSync, truncateSync } from "node:fs";
@@ -8,7 +9,9 @@ import path from "node:path";
 import {
   ensureGatewayRunning,
   GATEWAY_BASE_URL,
+  restartManagedGateway,
 } from "./gateway-process";
+import { getComposioKey, setComposioKey } from "./settings-store";
 
 type ChatContentPart =
   | { type: "text"; text: string }
@@ -22,7 +25,23 @@ type ChatMessage = {
 
 type ChatRequest = {
   id: string;
+  agent: {
+    cli: string;
+    model: string;
+    composioEnabled: boolean;
+    composioUserId: string;
+    composioToolkits: readonly string[];
+  };
   messages: ChatMessage[];
+};
+
+type AgentProfileRequest = {
+  name: string;
+  role: string;
+  instructions: string;
+  cli: string;
+  model: string;
+  color: string;
 };
 
 type OpenAIStreamChunk = {
@@ -130,6 +149,13 @@ function gatewayError(payload: unknown, fallback: string) {
     return payload.detail;
   }
   return fallback;
+}
+
+async function gatewayPayload(response: Response): Promise<unknown> {
+  const body = await response.text();
+  if (!body) return undefined;
+  try { return JSON.parse(body); }
+  catch { return { detail: body }; }
 }
 
 function sendChatEvent(event: IpcMainEvent, payload: ChatStreamEvent) {
@@ -392,6 +418,9 @@ function isChatRequest(value: unknown): value is ChatRequest {
   const request = value as Partial<ChatRequest>;
   return (
     typeof request.id === "string" &&
+    !!request.agent &&
+    typeof request.agent.cli === "string" &&
+    typeof request.agent.model === "string" &&
     Array.isArray(request.messages) &&
     request.messages.every(
       (message) =>
@@ -424,6 +453,71 @@ export function registerChatApi() {
   });
   ipcMain.on("speech:trace", (_event, stage: unknown) => {
     if (typeof stage === "string") traceVoice(`renderer.${stage}`);
+  });
+
+  ipcMain.handle("agents:list", async () => {
+    await ensureGatewayRunning();
+    const response = await fetch(`${GATEWAY_BASE_URL}/v1/agents`);
+    const payload = (await response.json()) as { data?: unknown };
+    if (!response.ok || !Array.isArray(payload.data)) {
+      throw new Error(gatewayError(payload, "Could not load agents."));
+    }
+    return payload.data;
+  });
+
+  ipcMain.handle("composio:status", async () => {
+    await ensureGatewayRunning();
+    const response = await fetch(`${GATEWAY_BASE_URL}/v1/composio/status`);
+    const payload = (await response.json()) as { configured?: unknown };
+    if (!response.ok || typeof payload.configured !== "boolean") {
+      throw new Error(gatewayError(payload, "Could not read Composio status."));
+    }
+    return { configured: payload.configured };
+  });
+
+  ipcMain.handle("composio:key-status", () => ({ hasKey: Boolean(getComposioKey()) }));
+  ipcMain.handle("composio:set-key", async (_event, key: unknown) => {
+    if (typeof key !== "string" || !key.trim()) throw new Error("Enter a Composio API key.");
+    setComposioKey(key.trim());
+    await restartManagedGateway();
+    return { saved: true };
+  });
+  ipcMain.handle("composio:authorize", async (_event, toolkit: unknown) => {
+    if (typeof toolkit !== "string" || !toolkit) throw new Error("Invalid toolkit.");
+    await ensureGatewayRunning();
+    const response = await fetch(`${GATEWAY_BASE_URL}/v1/composio/authorize/${encodeURIComponent(toolkit)}`, { method: "POST" });
+    const payload = await gatewayPayload(response) as { redirect_url?: unknown; detail?: unknown };
+    if (!response.ok || typeof payload.redirect_url !== "string") throw new Error(gatewayError(payload, "Could not start Composio sign in."));
+    await shell.openExternal(payload.redirect_url);
+    return { opened: true };
+  });
+
+  ipcMain.handle("agents:create", async (_event, request: AgentProfileRequest) => {
+    await ensureGatewayRunning();
+    const response = await fetch(`${GATEWAY_BASE_URL}/v1/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
+    const payload = (await response.json()) as unknown;
+    if (!response.ok) {
+      throw new Error(gatewayError(payload, "Could not create agent."));
+    }
+    return payload;
+  });
+
+  ipcMain.handle("agents:delete", async (_event, agentId: unknown) => {
+    if (typeof agentId !== "string") throw new Error("Invalid agent id.");
+    await ensureGatewayRunning();
+    const response = await fetch(
+      `${GATEWAY_BASE_URL}/v1/agents/${encodeURIComponent(agentId)}`,
+      { method: "DELETE" },
+    );
+    if (!response.ok) {
+      let payload: unknown;
+      try { payload = await response.json(); } catch { /* status fallback */ }
+      throw new Error(gatewayError(payload, "Could not delete agent."));
+    }
   });
 
   ipcMain.handle("speech:prepare", async () => {
@@ -656,6 +750,7 @@ export function registerChatApi() {
             },
             body: JSON.stringify({
               model: "codex",
+              memo_agent: request.agent,
               messages: request.messages,
               stream: true,
             }),

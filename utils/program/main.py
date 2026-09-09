@@ -8,98 +8,17 @@ from typing import ClassVar
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Static
 
 from utils.tools.ai import ProgramAI
+
+from .permission_screen import ShellPermissionScreen
 from .voice import VoiceModeIO
+from .voice_mode import VoiceModeMixin
 
 
-class ShellPermissionScreen(ModalScreen[bool]):
-    """Ask for one computer capability approval, defaulting to denial."""
-
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [("escape", "deny", "Deny")]
-    CSS = """
-    ShellPermissionScreen {
-        align: center middle;
-        background: rgba(0, 0, 0, 0.55);
-    }
-
-    #shell-permission-dialog {
-        width: 76;
-        max-width: 92%;
-        height: auto;
-        max-height: 80%;
-        padding: 1 2;
-        border: round $warning;
-        background: $panel;
-    }
-
-    #shell-permission-command {
-        margin: 1 0;
-        padding: 1;
-        background: $surface;
-        color: $text;
-    }
-
-    #shell-permission-actions {
-        height: auto;
-        align-horizontal: right;
-    }
-
-    #shell-permission-actions Button {
-        margin-left: 1;
-    }
-    """
-
-    def __init__(self, command: str, cwd: str, kind: str = "shell_command") -> None:
-        super().__init__()
-        self.command = command
-        self.cwd = cwd
-        self.kind = kind
-
-    def compose(self) -> ComposeResult:
-        computer_control = self.kind == "computer_control"
-        with Vertical(id="shell-permission-dialog"):
-            yield Static(
-                (
-                    "Allow computer control?"
-                    if computer_control
-                    else "Allow shell command?"
-                ),
-                classes="permission-title",
-            )
-            yield Static(
-                (
-                    "Memo may share visible-screen screenshots with the configured "
-                    "AI and control the mouse and keyboard for this task only."
-                    if computer_control
-                    else "This command runs on the host and is not OS-isolated."
-                ),
-                classes="permission-warning",
-            )
-            yield Static(
-                self.command,
-                id="shell-permission-command",
-                markup=False,
-            )
-            if not computer_control:
-                yield Static(f"Working directory: {self.cwd}", markup=False)
-            with Horizontal(id="shell-permission-actions"):
-                yield Button("Deny", id="deny-shell", variant="default")
-                yield Button("Allow once", id="allow-shell", variant="warning")
-
-    def on_mount(self) -> None:
-        self.query_one("#deny-shell", Button).focus()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        self.dismiss(event.button.id == "allow-shell")
-
-    def action_deny(self) -> None:
-        self.dismiss(False)
-
-
-class MemoApp(App):
+class MemoApp(VoiceModeMixin, App):
+    TITLE = "Memo"
     BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
         ("ctrl+d", "toggle_dark", "Toggle dark mode"),
         ("ctrl+n", "new_chat", "New chat"),
@@ -123,14 +42,22 @@ class MemoApp(App):
 
     def compose(self) -> ComposeResult:
         self.theme = "catppuccin-mocha"
-        yield VerticalScroll(id="messages")
-        with Horizontal(classes="messagerow"):
-            yield Input(
-                placeholder="Message Memo",
-                id="messageinput",
+        with VerticalScroll(id="messages"):
+            yield Static(
+                "Memo\nAsk a question or describe a task to get started.",
+                id="empty-state",
+                markup=False,
             )
-            yield Button("🎤", id="voicebutton")
-            yield Button("➤", id="sendbutton")
+        with Vertical(id="composer"):
+            yield Static(
+                "Ready · ^N new · ^D theme · /quit",
+                id="status",
+                markup=False,
+            )
+            with Horizontal(classes="messagerow"):
+                yield Input(placeholder="Message Memo", id="messageinput")
+                yield Button("Voice", id="voicebutton")
+                yield Button("Send", id="sendbutton", variant="primary")
 
     def on_mount(self) -> None:
         self.query_one("#messageinput", Input).focus()
@@ -146,9 +73,8 @@ class MemoApp(App):
 
         try:
             await self.voice.prepare()
-        except Exception:
-            # Voice mode will surface a detailed error if the user invokes it.
-            pass
+        except (OSError, RuntimeError):
+            return
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         await self._submit_input(event.input)
@@ -173,16 +99,27 @@ class MemoApp(App):
             return
 
         input_widget.value = ""
-        input_widget.disabled = True
+        self._set_composer_busy(True, "Thinking…")
         response = await self._mount_turn(prompt)
         self.send_message(prompt, response)
 
     async def _mount_turn(self, prompt: str) -> Static:
         messages = self.query_one("#messages", VerticalScroll)
+        empty_state = messages.query("#empty-state").first()
+        if empty_state is not None:
+            await empty_state.remove()
         await messages.mount(
-            Static(f"You\n{prompt}", classes="chat-message user-message")
+            Static(
+                f"You\n{prompt}",
+                classes="chat-message user-message",
+                markup=False,
+            )
         )
-        response = Static("Memo\n", classes="chat-message assistant-message")
+        response = Static(
+            "Memo\n",
+            classes="chat-message assistant-message",
+            markup=False,
+        )
         await messages.mount(response)
         messages.scroll_end(animate=False)
         return response
@@ -195,7 +132,7 @@ class MemoApp(App):
             await self._stream_ai_response(prompt, response)
         finally:
             if not self._voice_mode_active:
-                input_widget.disabled = False
+                self._set_composer_busy(False, "Ready")
                 input_widget.focus()
             messages.scroll_end(animate=False)
 
@@ -222,6 +159,7 @@ class MemoApp(App):
                     if isinstance(delta, str):
                         output.append(delta)
                         render_response()
+                        self.query_one("#status", Static).update("Writing…")
                 elif event_type == "memo.tool_call.started":
                     call = event.get("tool_call", {})
                     call_id = str(call.get("id", "tool"))
@@ -229,7 +167,9 @@ class MemoApp(App):
                     widget = Static(
                         f"Tool\n{name} is running…",
                         classes="chat-message tool-message",
+                        markup=False,
                     )
+                    self.query_one("#status", Static).update(f"Running {name}…")
                     tool_widgets[call_id] = widget
                     await messages.mount(widget, before=response)
                     messages.scroll_end(animate=False)
@@ -242,6 +182,7 @@ class MemoApp(App):
                     widget = tool_widgets.get(call_id)
                     if widget is not None:
                         widget.update(f"Tool\n{name} {status}")
+                    self.query_one("#status", Static).update("Thinking…")
                     messages.scroll_end(animate=False)
                 elif event_type == "memo.permission.requested":
                     permission = event.get("permission", {})
@@ -265,86 +206,13 @@ class MemoApp(App):
                     if widget is not None:
                         state = "approved" if allowed else "denied"
                         widget.update(f"Tool\n{tool_name} permission {state}")
-        except Exception as exc:
+                elif event_type == "response.completed":
+                    self.query_one("#status", Static).update("Finishing…")
+        except Exception as exc:  # noqa: BLE001
             response.update(f"Memo\nError: {exc}")
             return ""
         render_response(force=True)
         return "".join(output).strip()
-
-    def _start_voice_mode(self) -> None:
-        input_widget = self.query_one("#messageinput", Input)
-        if input_widget.disabled:
-            return
-        self._voice_mode_active = True
-        input_widget.disabled = True
-        input_widget.placeholder = "Listening…"
-        self.query_one("#voicebutton", Button).label = "■"
-        self._voice_worker = self.run_voice_mode()
-
-    def _stop_voice_mode(self) -> None:
-        self._voice_mode_active = False
-        self.voice.cancel()
-        worker = self._voice_worker
-        self._voice_worker = None
-        if worker is not None:
-            worker.cancel()
-        self._reset_voice_controls()
-
-    def _reset_voice_controls(self) -> None:
-        try:
-            input_widget = self.query_one("#messageinput", Input)
-            input_widget.disabled = False
-            input_widget.placeholder = "Message Memo"
-            input_widget.focus()
-            self.query_one("#voicebutton", Button).label = "🎤"
-        except Exception:
-            # The widgets may already be unmounted during application shutdown.
-            pass
-
-    @work(exclusive=True, group="voice")
-    async def run_voice_mode(self) -> None:
-        input_widget = self.query_one("#messageinput", Input)
-        try:
-            while self._voice_mode_active:
-                input_widget.placeholder = "Listening…"
-                transcript = await self.voice.listen()
-                if not self._voice_mode_active:
-                    break
-                if not transcript:
-                    continue
-
-                input_widget.value = transcript
-                response = await self._mount_turn(transcript)
-                input_widget.value = ""
-                input_widget.placeholder = "Thinking…"
-                answer = await self._stream_ai_response(transcript, response)
-                if not self._voice_mode_active:
-                    break
-                if not answer:
-                    continue
-
-                input_widget.placeholder = "Speaking…"
-                interrupted = await self.voice.speak(answer)
-                if not self._voice_mode_active:
-                    break
-                input_widget.placeholder = (
-                    "Interrupted — listening…" if interrupted else "Listening…"
-                )
-        except Exception as exc:
-            messages = self.query_one("#messages", VerticalScroll)
-            await messages.mount(
-                Static(
-                    f"Voice mode\nError: {exc}",
-                    classes="chat-message tool-message",
-                )
-            )
-            messages.scroll_end(animate=False)
-        finally:
-            self._voice_mode_active = False
-            self._voice_worker = None
-            self.voice.cancel()
-            await self.voice.release_recorder()
-            self._reset_voice_controls()
 
     def action_toggle_dark(self) -> None:
         self.theme = (
@@ -359,9 +227,28 @@ class MemoApp(App):
         self.workers.cancel_all()
         self.ai.clear_history()
         await self.query_one("#messages", VerticalScroll).remove_children()
+        await self.query_one("#messages", VerticalScroll).mount(
+            Static(
+                "Memo\nAsk a question or describe a task to get started.",
+                id="empty-state",
+                markup=False,
+            )
+        )
         input_widget = self.query_one("#messageinput", Input)
-        input_widget.disabled = False
+        self._set_composer_busy(False, "Ready")
         input_widget.focus()
+
+    def _set_composer_busy(
+        self,
+        busy: bool,
+        status: str,
+        *,
+        keep_voice_enabled: bool = False,
+    ) -> None:
+        self.query_one("#messageinput", Input).disabled = busy
+        self.query_one("#sendbutton", Button).disabled = busy
+        self.query_one("#voicebutton", Button).disabled = busy and not keep_voice_enabled
+        self.query_one("#status", Static).update(status)
 
     async def on_unmount(self) -> None:
         if self._voice_mode_active:

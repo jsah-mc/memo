@@ -20,7 +20,6 @@ class CodexAuthAdapterTests(unittest.TestCase):
             codex_dir.mkdir()
             Path(codex_dir, "auth.json").write_text("{}", encoding="utf-8")
             with (
-                patch("utils.gateway.codex_auth.os.name", "posix"),
                 patch("utils.gateway.codex_auth.Path.home", return_value=Path(home)),
                 patch.dict(
                     os.environ,
@@ -28,6 +27,22 @@ class CodexAuthAdapterTests(unittest.TestCase):
                         "CHATGPT_TOKEN_DIR": r"C:\Users\Admin\.codex",
                         "CHATGPT_AUTH_FILE": "auth.json",
                     },
+                    clear=False,
+                ),
+            ):
+                configure_codex_token_dir()
+                self.assertEqual(os.environ["CHATGPT_TOKEN_DIR"], str(codex_dir))
+
+    def test_configures_codex_token_directory_on_windows(self):
+        with tempfile.TemporaryDirectory() as home:
+            codex_dir = Path(home, ".codex")
+            codex_dir.mkdir()
+            Path(codex_dir, "auth.json").write_text("{}", encoding="utf-8")
+            with (
+                patch("utils.gateway.codex_auth.Path.home", return_value=Path(home)),
+                patch.dict(
+                    os.environ,
+                    {"CHATGPT_TOKEN_DIR": "", "CHATGPT_AUTH_FILE": "auth.json"},
                     clear=False,
                 ),
             ):

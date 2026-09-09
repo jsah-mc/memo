@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-DEFAULT_MODEL = "chatgpt/gpt-5.4"
+DEFAULT_MODEL = "chatgpt/gpt-5.6-luna"
 
 
 def _normalized_model(value: str) -> str:

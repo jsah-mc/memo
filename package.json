@@ -13,5 +13,8 @@
     "make": "pnpm --filter @memo/desktop make",
     "lint": "pnpm --filter @memo/desktop lint",
     "typecheck": "pnpm --filter @memo/desktop typecheck"
+  },
+  "devDependencies": {
+    "lodash": "4.17.21"
   }
 }

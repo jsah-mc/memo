@@ -2,6 +2,7 @@ import { app, ipcMain } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { getComposioKey, getComposioUserId } from "./settings-store";
 
 const DESKTOP_GATEWAY_PORT =
   process.env.MEMO_DESKTOP_GATEWAY_PORT ?? "4010";
@@ -179,6 +180,9 @@ async function startGateway() {
       // The speech endpoints already initialize their models on first use.
       MEMO_SPEECH_PRELOAD: process.env.MEMO_SPEECH_PRELOAD ?? "0",
       MEMO_STT_PRELOAD: process.env.MEMO_STT_PRELOAD ?? "0",
+      MEMO_AGENT_STORE: path.join(app.getPath("userData"), "agents.json"),
+      COMPOSIO_API_KEY: getComposioKey() || process.env.COMPOSIO_API_KEY,
+      MEMO_COMPOSIO_USER_ID: getComposioUserId(),
     },
     windowsHide: true,
     stdio: ["ignore", "ignore", "pipe"],
@@ -324,4 +328,17 @@ export function stopManagedGateway() {
   quitting = true;
   managedGateway?.kill();
   managedGateway = null;
+}
+
+export async function restartManagedGateway() {
+  quitting = false;
+  const child = managedGateway;
+  if (child) {
+    child.kill();
+    managedGateway = null;
+    await wait(300);
+  }
+  status = { state: "offline", running: false, latencyMs: null };
+  lastStartAttempt = 0;
+  await ensureGatewayRunning();
 }

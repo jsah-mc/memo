@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator
 
 from .codex_auth import install_codex_auth_adapter
+from .chatgpt_streaming import ChatGPTStreamingHTTPHandler
 
 warnings.filterwarnings("ignore", message=r"^Pydantic serializer warnings:")
 
@@ -189,7 +190,10 @@ class SDKResponseStream:
 
     async def events(self) -> AsyncIterator[dict[str, Any]]:
         async for event in self.iterator:
-            yield as_dict(event)
+            normalized = as_dict(event)
+            yield normalized
+            if normalized.get("type") == "response.completed":
+                return
 
     async def completed_response(self) -> dict[str, Any]:
         completed: dict[str, Any] | None = None
@@ -242,6 +246,7 @@ class LiteLLMSDK:
         install_codex_auth_adapter()
         self.upstream_model = upstream_model
         self.api_base = api_base
+        self._chatgpt_client = ChatGPTStreamingHTTPHandler()
 
     def _connection_arguments(self) -> dict[str, Any]:
         return {"api_base": self.api_base} if self.api_base else {}
@@ -273,7 +278,12 @@ class LiteLLMSDK:
                 stream=True,
                 **self._connection_arguments(),
             )
-            return SDKResponseStream(await litellm.aresponses(**arguments))
+            return SDKResponseStream(
+                await litellm.aresponses(
+                    **arguments,
+                    client=self._chatgpt_client,
+                )
+            )
 
         arguments: dict[str, Any] = {
             "messages": _responses_input_to_messages(
@@ -447,7 +457,7 @@ class TextualChatSDK:
 
         configured_model = upstream_model or os.environ.get(
             "CODEX_MODEL",
-            "chatgpt/gpt-5.4",
+            "chatgpt/gpt-5.6-luna",
         )
         if "/" not in configured_model:
             configured_model = f"chatgpt/{configured_model}"

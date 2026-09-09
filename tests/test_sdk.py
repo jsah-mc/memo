@@ -49,11 +49,11 @@ class LiteLLMSDKTests(IsolatedAsyncioTestCase):
         )
 
         with patch(
-            "utils.gateway.sdk.litellm.responses",
-            return_value=iterator,
+            "utils.gateway.sdk.litellm.aresponses",
+            new=AsyncMock(return_value=iterator),
         ) as responses:
             result = await LiteLLMSDK(
-                "chatgpt/gpt-5.4",
+                "chatgpt/gpt-5.6-luna",
             ).responses({"input": "Hello"})
 
         self.assertEqual(
@@ -65,8 +65,10 @@ class LiteLLMSDKTests(IsolatedAsyncioTestCase):
                 }
             ],
         )
-        self.assertEqual(responses.call_args.kwargs["model"], "chatgpt/gpt-5.4")
-        self.assertNotIn("api_base", responses.call_args.kwargs)
+        self.assertEqual(
+            responses.await_args.kwargs["model"], "chatgpt/gpt-5.6-luna"
+        )
+        self.assertNotIn("api_base", responses.await_args.kwargs)
         completed = await result.completed_response()
         self.assertEqual(completed["output_text"], "Hello")
 
@@ -92,3 +94,20 @@ class LiteLLMSDKTests(IsolatedAsyncioTestCase):
         response = await SDKResponseStream(events()).completed_response()
 
         self.assertEqual(response["output"], [function_call])
+
+    async def test_stops_consuming_after_response_completed(self) -> None:
+        consumed_after_completion = False
+
+        async def events():
+            nonlocal consumed_after_completion
+            yield {
+                "type": "response.completed",
+                "response": {"id": "response_test", "output": []},
+            }
+            consumed_after_completion = True
+            raise AssertionError("stream continued after its terminal event")
+
+        received = [event async for event in SDKResponseStream(events()).events()]
+
+        self.assertEqual(received[0]["type"], "response.completed")
+        self.assertFalse(consumed_after_completion)

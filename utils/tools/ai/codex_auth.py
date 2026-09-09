@@ -13,10 +13,28 @@ _PATCH_LOCK = threading.Lock()
 _PATCHED = False
 
 
+def configure_codex_token_dir() -> None:
+    """Point LiteLLM at the Codex CLI login when it is available."""
+
+    configured = os.environ.get("CHATGPT_TOKEN_DIR")
+    if configured and not (
+        len(configured) >= 3
+        and configured[1] == ":"
+        and configured[2] in {"\\", "/"}
+    ):
+        return
+
+    codex_dir = Path.home() / ".codex"
+    auth_file = codex_dir / os.environ.get("CHATGPT_AUTH_FILE", "auth.json")
+    if auth_file.is_file():
+        os.environ["CHATGPT_TOKEN_DIR"] = str(codex_dir)
+
+
 def install_codex_auth_adapter() -> None:
     """Teach LiteLLM to read and safely refresh Codex CLI's nested token file."""
 
     global _PATCHED
+    configure_codex_token_dir()
     if _PATCHED:
         return
 
@@ -25,6 +43,9 @@ def install_codex_auth_adapter() -> None:
             return
 
         from litellm.llms.chatgpt.authenticator import Authenticator
+        from litellm.llms.chatgpt.responses.transformation import (
+            ChatGPTResponsesAPIConfig,
+        )
 
         original_read = Authenticator._read_auth_file
         original_write = Authenticator._write_auth_file
@@ -82,4 +103,14 @@ def install_codex_auth_adapter() -> None:
 
         Authenticator._read_auth_file = read_auth_file
         Authenticator._write_auth_file = write_auth_file
+
+        def use_native_streaming(
+            self: ChatGPTResponsesAPIConfig,
+            model: str | None,
+            stream: bool | None,
+            custom_llm_provider: str | None = None,
+        ) -> bool:
+            return False
+
+        ChatGPTResponsesAPIConfig.should_fake_stream = use_native_streaming
         _PATCHED = True

@@ -16,7 +16,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 DEFAULT_BASE_URL = ""
-DEFAULT_MODEL = "chatgpt/gpt-5.4"
+DEFAULT_MODEL = "chatgpt/gpt-5.6-luna"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BROWSER_RECOVERY_INSTRUCTIONS = """
 For DuckDuckGo searches, navigate directly to the read-only text rendering at

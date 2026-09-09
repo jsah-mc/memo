@@ -12,6 +12,8 @@ from typing import Any
 import litellm
 from fastapi import HTTPException
 
+from utils.tools.ai.chatgpt_streaming import ChatGPTStreamingHTTPHandler
+
 from .codex_auth import install_codex_auth_adapter
 from .serialization import as_dict
 
@@ -187,7 +189,10 @@ class SDKResponseStream:
     async def events(self) -> AsyncIterator[dict[str, Any]]:
         if hasattr(self.iterator, "__aiter__"):
             async for event in self.iterator:
-                yield as_dict(event)
+                normalized = as_dict(event)
+                yield normalized
+                if normalized.get("type") == "response.completed":
+                    return
             return
 
         iterator = iter(self.iterator)
@@ -195,7 +200,10 @@ class SDKResponseStream:
             event = await asyncio.to_thread(_next_stream_event, iterator)
             if event is _STREAM_END:
                 return
-            yield as_dict(event)
+            normalized = as_dict(event)
+            yield normalized
+            if normalized.get("type") == "response.completed":
+                return
 
     async def completed_response(self) -> dict[str, Any]:
         completed: dict[str, Any] | None = None
@@ -247,6 +255,7 @@ class LiteLLMSDK:
     def __init__(self, upstream_model: str, *, api_base: str | None = None):
         self.upstream_model = upstream_model
         self.api_base = api_base
+        self._chatgpt_client = ChatGPTStreamingHTTPHandler()
 
     def _connection_arguments(self) -> dict[str, Any]:
         return {"api_base": self.api_base} if self.api_base else {}
@@ -279,13 +288,12 @@ class LiteLLMSDK:
                 timeout=60,
                 **self._connection_arguments(),
             )
-            # LiteLLM's ChatGPT OAuth adapter performs blocking authentication
-            # and stream reads even through `aresponses`. Keep that work off
-            # FastAPI's event loop so health checks and other requests remain
-            # responsive while a model request is in flight.
             try:
                 iterator = await asyncio.wait_for(
-                    asyncio.to_thread(litellm.responses, **arguments),
+                    litellm.aresponses(
+                        **arguments,
+                        client=self._chatgpt_client,
+                    ),
                     timeout=60,
                 )
             except TimeoutError as exc:

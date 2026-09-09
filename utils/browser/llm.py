@@ -17,7 +17,7 @@ def _configured_model(model: str) -> str:
     """Resolve Memo's legacy ``codex`` alias to a LiteLLM ChatGPT model."""
 
     if model.casefold() == "codex":
-        model = os.environ.get("CODEX_MODEL", "chatgpt/gpt-5.4")
+        model = os.environ.get("CODEX_MODEL", "chatgpt/gpt-5.6-luna")
     return model if "/" in model else f"chatgpt/{model}"
 
 

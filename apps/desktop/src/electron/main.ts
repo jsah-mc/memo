@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeTheme } from "electron";
+import { app, BrowserWindow } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
 import { registerChatApi } from "./chat-api";
@@ -18,38 +18,6 @@ registerChatApi();
 registerChatHistory();
 registerGatewayLifecycle();
 
-const titleBarOverlayForTheme = (isDark: boolean) => ({
-  color: "#00000000",
-  symbolColor: isDark ? "#fafafa" : "#0a0a0a",
-  height: 40,
-});
-
-ipcMain.on("titlebar:set-theme", (event, isDark: unknown) => {
-  if (process.platform === "darwin" || typeof isDark !== "boolean") return;
-
-  BrowserWindow.fromWebContents(event.sender)?.setTitleBarOverlay(
-    titleBarOverlayForTheme(isDark),
-  );
-});
-
-ipcMain.on("window:close", (event) => {
-  BrowserWindow.fromWebContents(event.sender)?.close();
-});
-
-ipcMain.on("window:maximize", (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win) return;
-  if (win.isMaximized()) {
-    win.unmaximize();
-  } else {
-    win.maximize();
-  }
-});
-
-ipcMain.on("window:minimize", (event) => {
-  BrowserWindow.fromWebContents(event.sender)?.minimize();
-});
-
 const createWindow = () => {
   // Create the browser window.
   const win = new BrowserWindow({
@@ -61,9 +29,11 @@ const createWindow = () => {
     },
     ...(process.platform !== "darwin"
       ? {
-          titleBarOverlay: titleBarOverlayForTheme(
-            nativeTheme.shouldUseDarkColors,
-          ),
+          titleBarOverlay: {
+            color: "#00000000",
+            symbolColor: "#f5f5f7",
+            height: 56,
+          },
         }
       : {}),
   });

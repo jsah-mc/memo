@@ -1,31 +1,19 @@
-import { useEffect } from "react";
-import { SidebarTrigger } from "./ui/sidebar";
+import { useAgents } from "@/agents/agent-provider";
 
 export default function Titlebar() {
-  useEffect(() => {
-    const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
-    const applySystemTheme = (isDark: boolean) => {
-      document.documentElement.classList.toggle("dark", isDark);
-      window.windowButtons.setTitlebarTheme(isDark);
-    };
-
-    const handleSystemThemeChange = (event: MediaQueryListEvent) => {
-      applySystemTheme(event.matches);
-    };
-
-    applySystemTheme(systemTheme.matches);
-    systemTheme.addEventListener("change", handleSystemThemeChange);
-
-    return () =>
-      systemTheme.removeEventListener("change", handleSystemThemeChange);
-  }, []);
+  const { activeAgent } = useAgents();
 
   return (
-    <div className="drag fixed inset-x-0 top-0 z-50 flex h-10 items-center justify-center bg-sidebar text-foreground">
-      <SidebarTrigger className="no-drag absolute left-2 top-1 size-8" />
-      <div className="pointer-events-none text-center text-sm font-medium">
-        Memo
+    <header className="liquid-titlebar drag fixed top-0 right-0 left-72 z-50 flex h-14 items-center px-3 text-foreground">
+      <div className="pointer-events-none flex min-w-0 items-center gap-2.5 pl-1">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
+          {activeAgent.name.slice(0, 1).toUpperCase()}
+        </span>
+        <span className="min-w-0 text-left">
+          <span className="block max-w-56 truncate text-sm font-semibold">{activeAgent.name}</span>
+          <span className="block max-w-56 truncate text-[11px] text-muted-foreground">{activeAgent.role}</span>
+        </span>
       </div>
-    </div>
+    </header>
   );
 }

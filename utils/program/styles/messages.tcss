@@ -1,22 +1,37 @@
+Screen {
+  background: $background;
+  color: $text;
+}
+
 .chat-message {
   width: 100%;
   height: auto;
-  margin-bottom: 1;
-  padding: 1 2;
+  min-height: 3;
+  margin: 0 0 1 0;
+  padding: 1 3;
+  color: $text;
 }
 
 .user-message {
-  background: $primary 15%;
-  border-left: thick $primary;
+  background: $boost 45%;
+  border-left: solid $primary;
+  text-style: bold;
 }
 
 .assistant-message {
-  background: $surface;
-  border-left: thick $secondary;
+  background: $background;
+  border-left: solid $secondary 35%;
 }
 
 .tool-message {
+  min-height: 2;
+  padding: 0 3;
   color: $text-muted;
-  background: $boost;
-  border-left: thick $warning;
+  background: $surface;
+  border-left: solid $warning 55%;
+}
+
+VerticalScroll > ScrollBar {
+  background: $background;
+  color: $boost;
 }

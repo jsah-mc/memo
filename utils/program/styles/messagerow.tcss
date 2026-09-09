@@ -1,32 +1,77 @@
-.messagerow {
+#composer {
   dock: bottom;
+  height: 5;
+  width: 100%;
+  padding: 0 2 1 2;
+  background: $surface;
+  border-top: solid $boost;
+}
+
+#status {
   height: 1;
+  padding: 0 1;
+  color: $secondary;
+  background: $surface;
+}
+
+.messagerow {
+  height: 3;
   width: 100%;
   background: $surface;
 }
 
 #messageinput {
-  border: none;
+  border: tall $primary 35%;
   width: 1fr;
-  height: 1;
+  height: 3;
   padding: 0 1;
+  background: $panel;
+  color: $text;
+}
+
+#messageinput .input--placeholder {
+  color: $secondary;
 }
 
 .messagerow Button {
-  width: 5;
-  min-width: 5;
-  height: 1;
+  width: 9;
+  min-width: 9;
+  height: 3;
   padding: 0;
-  border: none;
+  margin-left: 1;
+  border: tall $primary 35%;
+  background: $surface;
+  color: $secondary;
 }
 
 .messagerow Button:hover,
 .messagerow Button:focus,
 .messagerow Button.-active {
-  border: none;
+  border: tall $primary;
+  background: $panel;
+  color: $text;
+}
+
+#sendbutton {
+  background: $primary 18%;
+  color: $text;
+}
+
+.messagerow Button:disabled,
+#messageinput:disabled {
+  opacity: 55%;
 }
 
 #messages {
   height: 1fr;
-  padding: 1 2;
+  padding: 2 4 1 4;
+  background: $background;
+}
+
+#empty-state {
+  width: 100%;
+  height: 1fr;
+  content-align: center middle;
+  text-style: bold;
+  color: $secondary;
 }
