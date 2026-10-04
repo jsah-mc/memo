@@ -326,7 +326,8 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result["ok"])
         self.assertIn("hello", result["stdout"])
-        self.assertEqual(result["cwd"], str(self.root))
+        # Windows temp paths may use an 8.3 alias while the tool resolves it.
+        self.assertTrue(Path(result["cwd"]).samefile(self.root))
         self.assertEqual(result["sandbox"], "working_directory_only")
         self.assertFalse(result["os_isolated"])
 
