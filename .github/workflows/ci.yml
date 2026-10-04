@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      MEMO_STT_PRELOAD: "0"
+      MEMO_WHISPER_DEVICE: cpu
+      MEMO_POCKETTTS_DEVICE: cpu
+      MEMO_BROWSER_HEADLESS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Install Linux audio build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y portaudio19-dev
+      - name: Install locked Python dependencies
+        run: uv sync --locked
+      - name: Run Python tests
+        run: uv run --no-sync python -m unittest discover -s tests
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install locked workspace dependencies
+        working-directory: .
+        run: npm exec --yes --package=pnpm@11.15.1 -- pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Build renderer
+        run: npx --no-install vite build

@@ -64,6 +64,62 @@ uses its own managed gateway on `http://127.0.0.1:4010` so an older or manually
 configured process on port 4000 cannot silently disable desktop-only tools.
 Override the desktop port with `MEMO_DESKTOP_GATEWAY_PORT` if needed.
 
+## Linux development and checks
+
+Use Python 3.13, Node.js 24, and pnpm 11.15.1 (also pinned in
+`mise.toml` and `package.json`). On Debian/Ubuntu, install the PortAudio
+headers before syncing Python dependencies:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y portaudio19-dev
+uv python install 3.13
+uv sync --locked --python "$(uv python find --managed-python 3.13)"
+npm exec --yes --package=pnpm@11.15.1 -- pnpm install --frozen-lockfile
+```
+
+The uv-managed Python includes development headers for compiling PyAudio.
+If using a system Python instead, install its matching Python 3.13 development
+headers too. The lockfile includes CUDA-enabled PyTorch packages, so allow
+several gigabytes for downloads and installed dependencies even on CPU hosts.
+
+For a CPU-only gateway without a graphical session:
+
+```bash
+export MEMO_WHISPER_DEVICE=cpu
+export MEMO_POCKETTTS_DEVICE=cpu
+export MEMO_STT_PRELOAD=0
+export MEMO_BROWSER_HEADLESS=1
+uv run --no-sync memo gateway --host 127.0.0.1 --port 4000
+```
+
+In another terminal, check `/health/liveliness` for `"status":"ok"` and
+`/v1/models` for the `codex` model. These endpoints do not require a chat login.
+Live chat requires a signed-in Codex installation, normally at
+`~/.codex/auth.json` on Linux; `CHATGPT_TOKEN_DIR` can select another directory.
+Keep credentials out of the repository.
+
+`pnpm dev:vite` serves the React frontend for layout development. It does not
+provide Electron IPC or the desktop-managed gateway. Use `pnpm dev:desktop`
+from a graphical desktop session to test the complete application.
+
+Run the same checks as CI:
+
+```bash
+# Repository root
+uv run --no-sync python -m unittest discover -s tests
+pnpm typecheck
+pnpm lint
+pnpm --filter @memo/desktop exec vite build
+```
+
+CI runs Python tests on Linux and Windows, plus frontend typechecking, lint,
+and the renderer build. These tests do not validate a live ChatGPT account or
+physical devices. For manual integration testing, verify authenticated chat
+first, then speech (model downloads and audio devices), browser automation
+(Chromium), and finally MoonKart/desktop control with the required hardware,
+desktop session, and explicit permissions.
+
 ## OpenAI-compatible endpoints
 
 - `GET /health/liveliness`

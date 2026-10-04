@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 from pathlib import Path
 from unittest import TestCase
@@ -419,7 +420,7 @@ class GatewayStreamingTests(TestCase):
                 ),
                 patch.object(
                     computer,
-                    "_launch_windows_app",
+                    "_launch_windows_app" if os.name == "nt" else "_launch_linux_app",
                     return_value=launch_result,
                 ) as launch,
                 TestClient(create_app(settings, computer_tool=computer)) as client,
@@ -464,7 +465,7 @@ class GatewayStreamingTests(TestCase):
                 ),
                 patch.object(
                     computer,
-                    "_launch_windows_app",
+                    "_launch_windows_app" if os.name == "nt" else "_launch_linux_app",
                     return_value={
                         "ok": True,
                         "target": downloads,
