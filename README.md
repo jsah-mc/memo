@@ -113,8 +113,9 @@ pnpm lint
 pnpm --filter @memo/desktop exec vite build
 ```
 
-CI runs Python tests on Linux and Windows, plus frontend typechecking, lint,
-and the renderer build. These tests do not validate a live ChatGPT account or
+CI runs Python tests on Linux, Windows, and macOS, plus frontend typechecking,
+lint, and the renderer build on Linux and macOS. macOS runners install PortAudio
+with Homebrew and use standard PyTorch packages rather than CUDA builds. These tests do not validate a live ChatGPT account or
 physical devices. For manual integration testing, verify authenticated chat
 first, then speech (model downloads and audio devices), browser automation
 (Chromium), and finally MoonKart/desktop control with the required hardware,
