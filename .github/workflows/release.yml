@@ -1,0 +1,119 @@
+name: Release prebuilds
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}-${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+          - os: windows-latest
+            platform: win32
+            arch: x64
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Check release version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: >-
+          node -e "const p = require('./apps/desktop/package.json'); if (process.env.RELEASE_TAG !== 'v' + p.version) { throw new Error('Release tag must match apps/desktop/package.json version: v' + p.version); }"
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y fakeroot rpm
+      - name: Install locked dependencies
+        run: npm exec --yes --package=pnpm@11.15.1 -- pnpm install --frozen-lockfile
+      - name: Install Electron binary
+        # Explicitly install it even when pnpm does not run its lifecycle hook.
+        env:
+          ELECTRON_GET_USE_PROXY: "1"
+        run: node node_modules/electron/install.js
+      - name: Typecheck
+        working-directory: apps/desktop
+        run: npm run typecheck
+      - name: Lint
+        working-directory: apps/desktop
+        run: npm run lint
+      - name: Build installers
+        working-directory: apps/desktop
+        run: npm run make -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: memo-${{ matrix.platform }}-${{ matrix.arch }}
+          path: apps/desktop/out/make/**
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: memo-*
+          path: installers
+      - name: Collect installers and checksums
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import shutil
+          from pathlib import Path
+
+          output = Path("release-assets")
+          output.mkdir()
+          files = sorted(p for p in Path("installers").rglob("*") if p.is_file())
+          if not files:
+              raise RuntimeError("No installers were downloaded")
+          checksums = []
+          for source in files:
+              target = output / source.name
+              if target.exists():
+                  raise RuntimeError(f"Duplicate release filename: {source.name}")
+              shutil.copyfile(source, target)
+              with target.open("rb") as stream:
+                  digest = hashlib.file_digest(stream, "sha256").hexdigest()
+              checksums.append(f"{digest}  {target.name}\n")
+          (output / "SHA256SUMS.txt").write_text("".join(checksums), encoding="utf-8")
+          PY
+      - name: Publish installers
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          body: |
+            Prebuilt Memo desktop app for Windows x64, Linux x64, and macOS Apple Silicon.
+
+            The Python gateway is not bundled. Install its dependencies from a Memo checkout, set MEMO_GATEWAY_ROOT to that checkout, and optionally set MEMO_GATEWAY_PYTHON to its virtual environment's Python executable before launching the app. See README.md for setup.
+
+            Builds are unsigned and the macOS app is not notarized. SHA256SUMS.txt contains checksums for the uploaded assets.

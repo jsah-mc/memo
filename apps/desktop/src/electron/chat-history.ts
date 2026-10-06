@@ -1,4 +1,4 @@
-import { ipcMain } from "electron";
+import { app, ipcMain } from "electron";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -41,7 +41,7 @@ export function chatDatabasePath() {
   const configured = process.env.MEMO_CHAT_DATABASE;
   return configured
     ? path.resolve(configured)
-    : path.join(findProjectRoot(), "data.sqlite");
+    : path.join(app.isPackaged ? app.getPath("userData") : findProjectRoot(), "data.sqlite");
 }
 
 function getDatabase() {

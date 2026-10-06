@@ -261,3 +261,31 @@ utils/
 ```
 
 The program and future messaging integrations can use `from utils.tools.ai import AI, AISettings`. Each `AI` instance owns its conversation history and permission broker; create one per conversation, consume `events()` or `stream()`, and call `close()` when finished. The gateway uses shared MoonKart detection while retaining its HTTP-specific response handling. Legacy `utils.program` AI imports remain compatible.
+
+## Release prebuilds
+
+The **Release prebuilds** workflow builds Windows x64 Squirrel installers,
+Linux x64 DEB/RPM packages and a portable ZIP, and a macOS Apple Silicon ZIP.
+Run it manually from GitHub Actions to test packaging without publishing;
+installers are available as workflow artifacts for 14 days.
+
+To publish, update `apps/desktop/package.json` to the intended version, refresh
+and commit the JavaScript lockfiles, then push a matching tag, for example:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The tag must match the desktop package version. After all builds pass, the
+workflow publishes a GitHub Release with installers and `SHA256SUMS.txt`.
+Tags containing a hyphen, such as `v1.1.0-beta.1`, create prereleases.
+Builds are unsigned; macOS builds are not notarized.
+
+These prebuilds contain the Electron desktop app, **not the Python gateway**.
+Prepare a Memo checkout with the Python dependencies as described above, then
+set `MEMO_GATEWAY_ROOT` to that checkout before launching the installed app.
+You can also set `MEMO_GATEWAY_PYTHON` to the environment's Python executable.
+The app starts and manages that gateway locally. Chat data for installed builds
+is stored in the application's user-data directory unless `MEMO_CHAT_DATABASE`
+is set.

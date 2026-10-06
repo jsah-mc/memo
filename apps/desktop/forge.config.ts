@@ -13,10 +13,10 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}),
-    new MakerZIP({}, ["darwin"]),
-    new MakerRpm({}),
-    new MakerDeb({}),
+    new MakerSquirrel({ name: "Memo" }),
+    new MakerZIP({}, ["darwin", "linux"]),
+    new MakerRpm({ options: { name: "memo" } }),
+    new MakerDeb({ options: { name: "memo" } }),
   ],
   plugins: [
     new VitePlugin({
