@@ -58,6 +58,9 @@ jobs:
       - name: Install locked workspace dependencies
         working-directory: .
         run: npm exec --yes --package=pnpm@11.15.1 -- pnpm install --frozen-lockfile
+      - name: Test packaged gateway launch paths
+        working-directory: .
+        run: node scripts/tests/gateway-runtime.test.mjs
       - name: Typecheck
         run: npm run typecheck
       - name: Lint

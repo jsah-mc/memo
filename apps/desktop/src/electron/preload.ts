@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld("desktopApi", {
   respondPermission: (response: { id: string; allowed: boolean }) =>
     ipcRenderer.send("permission:respond", response),
   getGatewayStatus: () => ipcRenderer.invoke("gateway:status"),
+  restartGateway: () => ipcRenderer.invoke("gateway:restart"),
   getComposioStatus: () => ipcRenderer.invoke("composio:status"),
   getComposioKeyStatus: () => ipcRenderer.invoke("composio:key-status"),
   setComposioKey: (key: string) => ipcRenderer.invoke("composio:set-key", key),

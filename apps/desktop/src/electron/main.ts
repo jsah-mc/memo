@@ -21,6 +21,8 @@ registerGatewayLifecycle();
 const createWindow = () => {
   // Create the browser window.
   const win = new BrowserWindow({
+    show: false,
+    backgroundColor: "#101014",
     width: 800,
     height: 600,
     titleBarStyle: "hidden",
@@ -37,6 +39,8 @@ const createWindow = () => {
         }
       : {}),
   });
+
+  win.once("ready-to-show", () => win.show());
 
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {

@@ -3,12 +3,13 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { getComposioKey, getComposioUserId } from "./settings-store";
+import { bundledGatewayLaunch } from "./gateway-runtime";
 
 const DESKTOP_GATEWAY_PORT =
   process.env.MEMO_DESKTOP_GATEWAY_PORT ?? "4010";
 export const GATEWAY_BASE_URL = `http://127.0.0.1:${DESKTOP_GATEWAY_PORT}`;
 const GATEWAY_URL = `${GATEWAY_BASE_URL}/health/liveliness`;
-const STARTUP_TIMEOUT_MS = 30_000;
+const STARTUP_TIMEOUT_MS = 90_000;
 const RESTART_BACKOFF_MS = 5_000;
 
 export type GatewayStatus = {
@@ -155,9 +156,14 @@ async function startGateway() {
   status = { state: "connecting", running: false, latencyMs: null };
   lastStartAttempt = Date.now();
 
-  let root: string;
+  let launch: { command: string; args: string[]; cwd: string };
   try {
-    root = findMemoRoot();
+    if (app.isPackaged && !process.env.MEMO_GATEWAY_ROOT) {
+      launch = bundledGatewayLaunch(process.resourcesPath, app.getPath("userData"), process.platform);
+    } else {
+      const root = findMemoRoot();
+      launch = { ...gatewayCommand(root), cwd: root };
+    }
   } catch (error) {
     status = {
       state: "error",
@@ -168,12 +174,19 @@ async function startGateway() {
     return;
   }
 
-  const { command, args } = gatewayCommand(root);
-  const child = spawn(command, args, {
-    cwd: root,
+  const child = spawn(launch.command, launch.args, {
+    cwd: launch.cwd,
     env: {
       ...process.env,
+      GATEWAY_HOST: "127.0.0.1",
       GATEWAY_PORT: DESKTOP_GATEWAY_PORT,
+      MEMO_SANDBOX_ROOT: path.join(app.getPath("userData"), "workspace"),
+      ...(app.isPackaged ? {
+        PYTHONHOME: "", PYTHONPATH: "",
+        LD_LIBRARY_PATH: path.join(process.resourcesPath, "gateway", "runtime", "lib"),
+        DYLD_FALLBACK_LIBRARY_PATH: path.join(process.resourcesPath, "gateway", "runtime", "lib"),
+        MEMO_WHISPER_DEVICE: "cpu", MEMO_POCKETTTS_DEVICE: "cpu",
+      } : {}),
       MEMO_COMPUTER_ENABLED: "1",
       // Loading both local speech models can monopolize startup long enough
       // for the desktop health check to treat the gateway as unavailable.
@@ -249,7 +262,7 @@ async function startGateway() {
       state: "error",
       running: false,
       latencyMs: null,
-      message: "Gateway did not become ready within 30 seconds.",
+      message: "Gateway did not become ready within 90 seconds.",
     };
   }
 }
@@ -288,6 +301,7 @@ export async function ensureGatewayRunning() {
 }
 
 export function registerGatewayLifecycle() {
+  ipcMain.handle("gateway:restart", () => restartManagedGateway());
   ipcMain.handle("gateway:status", async () => {
     const current = await probeGateway();
     if (current.running) {

@@ -17,5 +17,5 @@
     },
     "resolvePackageJsonImports": true
   },
-  "exclude": ["src/api/**/*"]
+  "exclude": ["src/api/**/*", "node_modules", "out", "dist", ".vite"]
 }

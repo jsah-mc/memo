@@ -264,28 +264,60 @@ The program and future messaging integrations can use `from utils.tools.ai impor
 
 ## Release prebuilds
 
-The **Release prebuilds** workflow builds Windows x64 Squirrel installers,
-Linux x64 DEB/RPM packages and a portable ZIP, and a macOS Apple Silicon ZIP.
-Run it manually from GitHub Actions to test packaging without publishing;
-installers are available as workflow artifacts for 14 days.
+Installers include the Electron desktop app, Python 3.13, and the gateway's
+runtime dependencies. Memo starts its gateway automatically and shows a loading
+screen until it is ready. Startup errors offer a retry button. No Python
+installation, uv, or source checkout is needed to run an installed release.
+The bundled speech runtime uses CPU packages; speech models download on first
+use. AI backends still need their own login, CLI installation, or credentials.
 
-To publish, update `apps/desktop/package.json` to the intended version, refresh
-and commit the JavaScript lockfiles, then push a matching tag, for example:
+Available packages:
+
+- Windows x64: Squirrel setup executable.
+- macOS Apple Silicon: DMG (drag Memo to Applications) and ZIP.
+- Debian/Ubuntu x64: DEB (`sudo apt install ./memo_*.deb`).
+- RPM distributions x64: RPM (install with your distribution's package manager).
+- Arch Linux x64: `.pkg.tar.zst` (`sudo pacman -U ./memo-*.pkg.tar.zst`).
+- Other Linux x64 systems: portable ZIP; system desktop/audio libraries are required.
+
+Chat history, agent profiles, and computer-tool workspace files live in Memo's
+user-data directory, outside the installed application. Reinstalling or
+updating the application does not remove those files. `MEMO_CHAT_DATABASE` can
+select another chat database. Developers can still override the bundled gateway
+with `MEMO_GATEWAY_ROOT` and `MEMO_GATEWAY_PYTHON`.
+
+The **Release prebuilds** workflow builds and smoke-tests the standalone gateway
+on each platform before building installers. Run it manually from GitHub Actions
+to test packaging without publishing; artifacts remain available for 14 days.
+To publish, commit the desktop package version and matching lockfile, then push
+a matching tag, for example:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
-The tag must match the desktop package version. After all builds pass, the
-workflow publishes a GitHub Release with installers and `SHA256SUMS.txt`.
-Tags containing a hyphen, such as `v1.1.0-beta.1`, create prereleases.
-Builds are unsigned; macOS builds are not notarized.
+After all builds pass, the workflow publishes installers and `SHA256SUMS.txt`.
+Tags containing a hyphen create prereleases. Windows builds are unsigned.
+macOS packaging clears extended attributes with `xattr -cr`, then ad-hoc signs
+and verifies the complete app with `codesign`. Clearing attributes alone does
+not sign an app. macOS builds are not Apple Developer signed or notarized.
 
-These prebuilds contain the Electron desktop app, **not the Python gateway**.
-Prepare a Memo checkout with the Python dependencies as described above, then
-set `MEMO_GATEWAY_ROOT` to that checkout before launching the installed app.
-You can also set `MEMO_GATEWAY_PYTHON` to the environment's Python executable.
-The app starts and manages that gateway locally. Chat data for installed builds
-is stored in the application's user-data directory unless `MEMO_CHAT_DATABASE`
-is set.
+For local packaging, install PortAudio development headers on Linux or
+`brew install portaudio` on macOS, plus Python 3.13 and uv. From the repository
+root:
+
+```bash
+python scripts/build_gateway.py
+python scripts/smoke_gateway.py
+pnpm make
+# Linux only, after packaging the app:
+python scripts/build_arch.py
+```
+
+The builder uses a relocatable uv-managed Python on Linux/macOS and a complete
+Python installation on Windows. It preserves the lockfile's dependency versions
+and replaces CUDA speech packages with CPU PyTorch wheels for release builds.
+Build environments and dependencies are excluded from Git. Native code and
+package makers must run on the matching target platform; Windows/macOS installers
+are validated by their GitHub Actions runners.

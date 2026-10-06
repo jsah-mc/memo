@@ -29,12 +29,16 @@ jobs:
             platform: darwin
             arch: arm64
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
       - name: Check release version
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -43,7 +47,14 @@ jobs:
           node -e "const p = require('./apps/desktop/package.json'); if (process.env.RELEASE_TAG !== 'v' + p.version) { throw new Error('Release tag must match apps/desktop/package.json version: v' + p.version); }"
       - name: Install Linux packaging tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y fakeroot rpm
+        run: sudo apt-get update && sudo apt-get install -y fakeroot rpm zstd portaudio19-dev
+      - name: Install macOS audio build dependencies
+        if: runner.os == 'macOS'
+        run: brew install portaudio
+      - name: Build bundled Python gateway
+        run: python scripts/build_gateway.py
+      - name: Verify standalone gateway
+        run: python scripts/smoke_gateway.py
       - name: Install locked dependencies
         run: npm exec --yes --package=pnpm@11.15.1 -- pnpm install --frozen-lockfile
       - name: Install Electron binary
@@ -57,9 +68,20 @@ jobs:
       - name: Lint
         working-directory: apps/desktop
         run: npm run lint
+      - name: Test packaged gateway launch paths
+        run: node scripts/tests/gateway-runtime.test.mjs
       - name: Build installers
         working-directory: apps/desktop
         run: npm run make -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+      - name: Verify packaged gateway resources
+        if: runner.os == 'Linux'
+        run: python scripts/smoke_gateway.py --bundle apps/desktop/out/Memo-linux-x64/resources/gateway
+      - name: Verify desktop loading, error and retry screens
+        if: runner.os == 'Linux'
+        run: apps/desktop/out/Memo-linux-x64/resources/gateway/runtime/bin/python3 scripts/smoke_desktop.py
+      - name: Build Arch Linux package
+        if: runner.os == 'Linux'
+        run: python scripts/build_arch.py
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
@@ -67,6 +89,7 @@ jobs:
           path: apps/desktop/out/make/**
           if-no-files-found: error
           retention-days: 14
+          compression-level: 0
 
   release:
     name: Publish GitHub Release
@@ -114,6 +137,8 @@ jobs:
           body: |
             Prebuilt Memo desktop app for Windows x64, Linux x64, and macOS Apple Silicon.
 
-            The Python gateway is not bundled. Install its dependencies from a Memo checkout, set MEMO_GATEWAY_ROOT to that checkout, and optionally set MEMO_GATEWAY_PYTHON to its virtual environment's Python executable before launching the app. See README.md for setup.
+            Includes the Python gateway and runtime; no Python installation or source checkout is needed. The gateway starts automatically with the desktop app. AI sign-in and speech model downloads are still required when those features are used.
 
-            Builds are unsigned and the macOS app is not notarized. SHA256SUMS.txt contains checksums for the uploaded assets.
+            Linux assets include an Arch Linux .pkg.tar.zst package (install with sudo pacman -U). macOS includes a DMG (drag Memo to Applications).
+
+            Windows builds are unsigned. The macOS app is ad-hoc signed and verified, but is not Apple Developer signed or notarized. SHA256SUMS.txt contains checksums for the uploaded assets.

@@ -24,3 +24,6 @@ data.sqlite
 data.sqlite-journal
 .memo-sandbox/
 node_modules
+
+# Bundled gateway build environment and runtime
+.gateway-build/

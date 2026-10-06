@@ -1,3 +1,7 @@
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { MakerDMG } from "@electron-forge/maker-dmg";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
@@ -11,11 +15,30 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     executableName: "Memo",
+    extraResource: [path.resolve(__dirname, "../../.gateway-build/gateway")],
+  },
+  hooks: {
+    prePackage: async () => {
+      if (!existsSync(path.resolve(__dirname, "../../.gateway-build/gateway/manifest.json"))) {
+        throw new Error("Build the bundled gateway first: python scripts/build_gateway.py");
+      }
+    },
+    postPackage: async (_config, { outputPaths, platform }) => {
+      if (platform !== "darwin") return;
+      for (const output of outputPaths) {
+        const bundle = path.join(output, "Memo.app");
+        // Clearing extended attributes is cleanup, not code signing.
+        execFileSync("xattr", ["-cr", bundle]);
+        execFileSync("codesign", ["--force", "--deep", "--sign", "-", bundle], { stdio: "inherit" });
+        execFileSync("codesign", ["--verify", "--deep", "--strict", bundle], { stdio: "inherit" });
+      }
+    },
   },
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({ name: "Memo" }),
     new MakerZIP({}, ["darwin", "linux"]),
+    new MakerDMG({ format: "ULFO" }),
     new MakerRpm({ options: { name: "memo", bin: "Memo" } }),
     new MakerDeb({ options: { name: "memo", bin: "Memo" } }),
   ],

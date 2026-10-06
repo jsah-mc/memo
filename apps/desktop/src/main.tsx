@@ -7,6 +7,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { RuntimeProvider } from "@/runtime-provider";
 import { PermissionDialog } from "@/components/permission-dialog";
 import { AgentProvider } from "@/agents/agent-provider";
+import { GatewayStartup } from "@/components/gateway-startup";
 import "./index.css";
 
 const rootElement = document.getElementById("root");
@@ -19,6 +20,7 @@ document.documentElement.classList.add("dark");
 
 createRoot(rootElement).render(
   <React.StrictMode>
+    <GatewayStartup>
     <AgentProvider>
       <RuntimeProvider>
         <PermissionDialog />
@@ -31,5 +33,6 @@ createRoot(rootElement).render(
         </SidebarProvider>
       </RuntimeProvider>
     </AgentProvider>
+    </GatewayStartup>
   </React.StrictMode>,
 );

@@ -39,6 +39,7 @@ declare global {
         onRequest: (request: PermissionRequest) => void,
       ): () => void;
       respondPermission(response: { id: string; allowed: boolean }): void;
+      restartGateway(): Promise<void>;
       getGatewayStatus(): Promise<{
         state: "connecting" | "online" | "offline" | "error";
         running: boolean;
