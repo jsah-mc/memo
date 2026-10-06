@@ -293,8 +293,8 @@ To publish, commit the desktop package version and matching lockfile, then push
 a matching tag, for example:
 
 ```bash
-git tag v1.1.1
-git push origin v1.1.1
+git tag v1.1.2
+git push origin v1.1.2
 ```
 
 After all builds pass, the workflow publishes installers and `SHA256SUMS.txt`.

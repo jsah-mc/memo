@@ -78,7 +78,12 @@ jobs:
         run: python scripts/smoke_gateway.py --bundle apps/desktop/out/Memo-linux-x64/resources/gateway
       - name: Verify desktop loading, error and retry screens
         if: runner.os == 'Linux'
-        run: apps/desktop/out/Memo-linux-x64/resources/gateway/runtime/bin/python3 scripts/smoke_desktop.py
+        run: |
+          # The unpacked CI app needs Chromium's sandbox helper configured just
+          # as it is in a system installation. Keep sandboxing enabled.
+          sudo chown root:root apps/desktop/out/Memo-linux-x64/chrome-sandbox
+          sudo chmod 4755 apps/desktop/out/Memo-linux-x64/chrome-sandbox
+          apps/desktop/out/Memo-linux-x64/resources/gateway/runtime/bin/python3 scripts/smoke_desktop.py
       - name: Build Arch Linux package
         if: runner.os == 'Linux'
         run: python scripts/build_arch.py
