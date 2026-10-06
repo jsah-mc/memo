@@ -1,14 +1,14 @@
 [project]
 name = "memo"
 version = "0.1.0"
-description = "An OpenAI-compatible LiteLLM gateway"
+description = "An OpenAI-compatible agent gateway"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "audioop-lts>=0.2.2",
     "bleak>=3.0.2",
     "fastapi>=0.139.0",
-    "litellm>=1.93.0",
+    "httpx>=0.28.1",
     "nvidia-cublas-cu12==12.8.4.1; sys_platform == 'win32'",
     "nvidia-cudnn-cu12==9.19.0.56; sys_platform == 'win32'",
     "numpy>=2.3.0",

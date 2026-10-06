@@ -100,7 +100,7 @@ class GatewayStreamingTests(TestCase):
 
         with (
             patch(
-                "utils.gateway.sdk.LiteLLMSDK.responses",
+                "utils.gateway.sdk.ModelSDK.responses",
                 new=AsyncMock(return_value=FakeResponseStream()),
             ),
             TestClient(
@@ -137,7 +137,7 @@ class GatewayStreamingTests(TestCase):
 
         with (
             patch(
-                "utils.gateway.sdk.LiteLLMSDK.responses",
+                "utils.gateway.sdk.ModelSDK.responses",
                 new=AsyncMock(return_value=FakeToolResponseStream()),
             ),
             TestClient(
@@ -170,7 +170,7 @@ class GatewayStreamingTests(TestCase):
     def test_desktop_stream_exposes_shell_permission_event(self) -> None:
         with (
             patch(
-                "utils.gateway.sdk.LiteLLMSDK.responses",
+                "utils.gateway.sdk.ModelSDK.responses",
                 new=AsyncMock(return_value=FakePermissionResponseStream()),
             ),
             TestClient(create_app(GatewaySettings())) as client,
@@ -202,7 +202,7 @@ class GatewayStreamingTests(TestCase):
 
         with (
             patch(
-                "utils.gateway.sdk.LiteLLMSDK.responses",
+                "utils.gateway.sdk.ModelSDK.responses",
                 new=AsyncMock(side_effect=AssertionError("model was called")),
             ),
             TestClient(create_app(settings, moonkart_tool=tool)) as client,
@@ -262,7 +262,7 @@ class GatewayStreamingTests(TestCase):
             )
             with (
                 patch(
-                    "utils.gateway.sdk.LiteLLMSDK.responses",
+                    "utils.gateway.sdk.ModelSDK.responses",
                     new=upstream,
                 ),
                 TestClient(create_app(settings, computer_tool=computer)) as client,
@@ -313,7 +313,7 @@ class GatewayStreamingTests(TestCase):
             )
             with (
                 patch(
-                    "utils.gateway.sdk.LiteLLMSDK.responses",
+                    "utils.gateway.sdk.ModelSDK.responses",
                     new=upstream,
                 ),
                 TestClient(create_app(settings, computer_tool=computer)) as client,
@@ -351,7 +351,7 @@ class GatewayStreamingTests(TestCase):
         )
         with (
             patch(
-                "utils.gateway.sdk.LiteLLMSDK.responses",
+                "utils.gateway.sdk.ModelSDK.responses",
                 new=upstream,
             ),
             TestClient(create_app(settings)) as client,
@@ -375,7 +375,7 @@ class GatewayStreamingTests(TestCase):
             process = Mock(pid=42)
             with (
                 patch(
-                    "utils.gateway.sdk.LiteLLMSDK.responses",
+                    "utils.gateway.sdk.ModelSDK.responses",
                     new=AsyncMock(side_effect=AssertionError("model was called")),
                 ),
                 patch(
@@ -413,7 +413,7 @@ class GatewayStreamingTests(TestCase):
             }
             with (
                 patch(
-                    "utils.gateway.sdk.LiteLLMSDK.responses",
+                    "utils.gateway.sdk.ModelSDK.responses",
                     new=AsyncMock(
                         side_effect=AssertionError("model must not promise a launch")
                     ),
@@ -458,7 +458,7 @@ class GatewayStreamingTests(TestCase):
             computer = ComputerSandboxTool(root)
             with (
                 patch(
-                    "utils.gateway.sdk.LiteLLMSDK.responses",
+                    "utils.gateway.sdk.ModelSDK.responses",
                     new=AsyncMock(
                         side_effect=AssertionError("model must not claim it opened a folder")
                     ),

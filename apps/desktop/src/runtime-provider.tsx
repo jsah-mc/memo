@@ -19,6 +19,7 @@ import {
 } from "@assistant-ui/core/react";
 import { gatewaySpeechAdapter } from "@/lib/gateway-speech-adapter";
 import { nativeSpeechDictationAdapter } from "@/lib/native-speech-dictation";
+import { agentSystemPrompt } from "@/agents/agent-personality";
 import { useAgents } from "@/agents/agent-provider";
 import type { AgentProfile } from "@/agents/agent-provider";
 
@@ -144,7 +145,7 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
         composioToolkits: agent.composioToolkits,
       },
       messages: [
-        { role: "system" as const, content: agent.instructions },
+        { role: "system" as const, content: agentSystemPrompt(agent) },
         ...messages
         .map((message) => {
           const content: DesktopContentPart[] = [];

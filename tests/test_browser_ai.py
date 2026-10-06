@@ -98,8 +98,8 @@ class BrowserIntentTests(TestCase):
 
 
 class BrowserToolSchemaTests(TestCase):
-    def test_exposes_litellm_function_schema(self) -> None:
-        definition = BrowserUseTool().litellm_definition
+    def test_exposes_openai_function_schema(self) -> None:
+        definition = BrowserUseTool().function_definition
         self.assertEqual(definition["type"], "function")
         self.assertEqual(definition["function"]["name"], "browse_web")
         self.assertIn("task", definition["function"]["parameters"]["properties"])
@@ -156,7 +156,7 @@ class BrowserAIToolTests(IsolatedAsyncioTestCase):
         )
         tool = AsyncMock()
         tool.name = "browse_web"
-        tool.litellm_definition = {
+        tool.function_definition = {
             "type": "function",
             "function": {"name": "browse_web", "parameters": {}},
         }

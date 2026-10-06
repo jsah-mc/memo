@@ -4,6 +4,7 @@ Run with the bundled Python after Electron packaging. All app data and processes
 are isolated. Only the generated output's entry file is temporarily moved, then
 restored, to simulate an incomplete installation.
 """
+
 from __future__ import annotations
 
 import json
@@ -36,25 +37,48 @@ def check(*, broken: bool) -> None:
         entry.rename(hidden)
     process = None
     connection = None
-    with tempfile.TemporaryDirectory() as data, tempfile.TemporaryFile(mode="w+") as log:
+    with (
+        tempfile.TemporaryDirectory() as data,
+        tempfile.TemporaryFile(mode="w+") as log,
+    ):
         try:
             debug = port()
-            env = {key: value for key, value in os.environ.items()
-                   if key not in {"MEMO_GATEWAY_ROOT", "MEMO_GATEWAY_PYTHON"}}
+            env = {
+                key: value
+                for key, value in os.environ.items()
+                if key not in {"MEMO_GATEWAY_ROOT", "MEMO_GATEWAY_PYTHON"}
+            }
             env.update(XDG_CONFIG_HOME=data, MEMO_DESKTOP_GATEWAY_PORT=str(port()))
-            process = subprocess.Popen([str(APP / "Memo"), "--ozone-platform=headless",
-                        f"--remote-debugging-port={debug}", f"--user-data-dir={data}/chromium"],
-                        cwd=data, env=env, stdout=log, stderr=log, start_new_session=True)
+            process = subprocess.Popen(
+                [
+                    str(APP / "Memo"),
+                    "--ozone-platform=headless",
+                    f"--remote-debugging-port={debug}",
+                    f"--user-data-dir={data}/chromium",
+                ],
+                cwd=data,
+                env=env,
+                stdout=log,
+                stderr=log,
+                start_new_session=True,
+            )
             for _ in range(120):
                 if process.poll() is not None:
                     raise RuntimeError(f"Desktop exited: {process.returncode}")
                 try:
-                    with CLIENT.open(f"http://127.0.0.1:{debug}/json", timeout=1) as response:
+                    with CLIENT.open(
+                        f"http://127.0.0.1:{debug}/json", timeout=1
+                    ) as response:
                         pages = json.load(response)
-                    page = next((page for page in pages if page["type"] == "page"), None)
+                    page = next(
+                        (page for page in pages if page["type"] == "page"), None
+                    )
                     if page:
-                        connection = websocket.create_connection(page["webSocketDebuggerUrl"],
-                                                                 suppress_origin=True, timeout=5)
+                        connection = websocket.create_connection(
+                            page["webSocketDebuggerUrl"],
+                            suppress_origin=True,
+                            timeout=5,
+                        )
                         break
                 except OSError:
                     pass
@@ -63,35 +87,108 @@ def check(*, broken: bool) -> None:
                 raise RuntimeError("Desktop debugger did not become ready")
             next_id = 0
 
-            def evaluate(expression: str):
+            def command(method: str, params: dict):
                 nonlocal next_id
                 next_id += 1
-                connection.send(json.dumps({"id": next_id, "method": "Runtime.evaluate",
-                                           "params": {"expression": expression}}))
+                connection.send(
+                    json.dumps({"id": next_id, "method": method, "params": params})
+                )
                 while True:
                     reply = json.loads(connection.recv())
                     if reply.get("id") == next_id:
-                        return reply.get("result", {}).get("result", {}).get("value")
+                        return reply.get("result", {})
+
+            def evaluate(expression: str):
+                return (
+                    command("Runtime.evaluate", {"expression": expression})
+                    .get("result", {})
+                    .get("value")
+                )
+
+            def wait_text(text: str):
+                for _ in range(900):
+                    if text in (evaluate("document.body.innerText") or ""):
+                        return
+                    time.sleep(0.1)
+                raise RuntimeError(f"Desktop did not show: {text}")
+
+            def fill(selector: str, value: str):
+                evaluate(
+                    f"document.querySelector({json.dumps(selector)}).focus(); document.querySelector({json.dumps(selector)}).select()"
+                )
+                command("Input.insertText", {"text": value})
+
+            def onboard():
+                wait_text("Meet your first agent")
+                evaluate("document.querySelector('form').requestSubmit()")
+                wait_text("Warm")
+                evaluate(
+                    "Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('Warm')).click()"
+                )
+                evaluate("document.querySelector('form').requestSubmit()")
+                wait_text("Description")
+                fill("form input", "Nova")
+                fill("form textarea", "A patient research partner.")
+                evaluate("document.querySelector('form').requestSubmit()")
+                wait_text("Working instructions")
+                fill("form textarea", "Be curious, honest, and kind.")
+                evaluate("document.querySelector('form').requestSubmit()")
+                wait_text("Model")
+                evaluate("document.querySelector('form').requestSubmit()")
+                wait_text("Enable app integrations for this agent")
+                evaluate("document.querySelector('form').requestSubmit()")
+                wait_text("New agent")
+                assert "Nova" in evaluate("document.body.innerText")
+                saved = list(Path(data).rglob("agents.json"))
+                assert len(saved) == 1, saved
+                profiles = json.loads(saved[0].read_text())
+                assert profiles[0]["name"] == "Nova"
+                assert profiles[0]["style"] == "warm"
+                assert profiles[0]["description"] == "A patient research partner."
+                assert profiles[0]["soul"] == "Be curious, honest, and kind."
+                # A renderer reload must restore the agent and skip onboarding.
+                command("Page.reload", {})
+                wait_text("New agent")
+                assert "Meet your first agent" not in evaluate(
+                    "document.body.innerText"
+                )
+                assert "Nova" in evaluate("document.body.innerText")
+                # Removing the last agent should return to onboarding.
+                evaluate(
+                    "document.querySelector('[aria-label=\"Delete Nova\"]').click()"
+                )
+                wait_text("Meet your first agent")
+                assert json.loads(saved[0].read_text()) == []
+                print(
+                    "Agent onboarding, personality persistence, reload and last-agent deletion passed"
+                )
 
             saw_loading = False
-            for _ in range(240):
+            for _ in range(900):
                 text = evaluate("document.body.innerText") or ""
                 saw_loading |= "Starting Memo" in text
                 if broken and "Memo couldn’t start" in text:
                     assert "bundled gateway is missing" in text
                     assert "Try again" in text
                     hidden.rename(entry)
-                    evaluate("Array.from(document.querySelectorAll('button')).find(b => b.innerText === 'Try again').click()")
+                    evaluate(
+                        "Array.from(document.querySelectorAll('button')).find(b => b.innerText === 'Try again').click()"
+                    )
                     break
-                if not broken and "New agent" in text:
-                    assert saw_loading, "Expected the loading screen before the app became ready"
-                    print("Packaged desktop loading screen -> ready passed")
+                if not broken and "Meet your first agent" in text:
+                    assert (
+                        saw_loading
+                    ), "Expected the loading screen before the app became ready"
+                    onboard()
+                    print("Packaged desktop loading screen -> onboarding passed")
                     return
                 time.sleep(0.1)
             else:
                 raise RuntimeError("Expected startup screen state was not reached")
-            for _ in range(240):
-                if "New agent" in (evaluate("document.body.innerText") or ""):
+            for _ in range(900):
+                if "Meet your first agent" in (
+                    evaluate("document.body.innerText") or ""
+                ):
                     print("Packaged desktop error screen -> retry -> ready passed")
                     return
                 time.sleep(0.1)

@@ -29,10 +29,10 @@ from .browser import detect_browser_task, run_browser_tool_turn
 from .moonkart import detect_moonkart_action, run_moonkart_tool_turn
 from .prompt import load_system_prompt
 from .router import ModelRouter
-from .sdk import LiteLLMSDK, SDKResponseStream
+from .sdk import ModelSDK, SDKResponseStream
 from .settings import ProgramSettings
 
-SDKFactory = Callable[..., LiteLLMSDK]
+SDKFactory = Callable[..., ModelSDK]
 
 
 class ProgramAI:
@@ -46,7 +46,7 @@ class ProgramAI:
         moonkart_tool: MoonKartTool | None = None,
         computer_tool: ComputerSandboxTool | None = None,
         permission_broker: PermissionBroker | None = None,
-        sdk_factory: SDKFactory = LiteLLMSDK,
+        sdk_factory: SDKFactory = ModelSDK,
         system_prompt: str | None = None,
     ) -> None:
         self.settings = settings or ProgramSettings.from_environment()
@@ -67,7 +67,7 @@ class ProgramAI:
         )
         self.history: list[dict[str, Any]] = []
 
-    def _sdk(self, model: str) -> LiteLLMSDK:
+    def _sdk(self, model: str) -> ModelSDK:
         return self.sdk_factory(
             model,
             api_base=self.settings.upstream_api_base,
@@ -75,7 +75,7 @@ class ProgramAI:
 
     async def _dispatch(
         self,
-        sdk: LiteLLMSDK,
+        sdk: ModelSDK,
         payload: dict[str, Any],
     ) -> SDKResponseStream:
         action = (

@@ -172,7 +172,7 @@ class MoonKartClient:
 
 
 class MoonKartTool:
-    """LiteLLM function tool backed by one reusable MoonKart BLE connection."""
+    """direct provider function tool backed by one reusable MoonKart BLE connection."""
 
     name = "control_moonkart"
     COMMANDS: ClassVar[dict[str, str]] = {"start": "H", "stop": "S"}
@@ -182,20 +182,20 @@ class MoonKartTool:
         self._lock = asyncio.Lock()
 
     @property
-    def litellm_definition(self) -> dict:
-        """Return this tool's schema for ``litellm.acompletion``."""
+    def function_definition(self) -> dict:
+        """Return this tool's schema for ``OpenAI Chat Completions``."""
 
         return copy.deepcopy(_MOONKART_LITELLM_DEFINITION)
 
     @property
     def responses_definition(self) -> dict:
-        """Return this tool's flat schema for ``litellm.aresponses``."""
+        """Return this tool's flat schema for ``OpenAI Responses``."""
 
-        definition = self.litellm_definition
+        definition = self.function_definition
         return {"type": definition["type"], **definition["function"]}
 
     async def execute(self, arguments: dict) -> dict[str, str | bool]:
-        """Validate LiteLLM function arguments and execute the requested action."""
+        """Validate direct provider function arguments and execute the requested action."""
 
         action = arguments.get("action")
         if not isinstance(action, str):

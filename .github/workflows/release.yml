@@ -69,7 +69,9 @@ jobs:
         working-directory: apps/desktop
         run: npm run lint
       - name: Test packaged gateway launch paths
-        run: node scripts/tests/gateway-runtime.test.mjs
+        run: |
+          node scripts/tests/gateway-runtime.test.mjs
+          node scripts/tests/agent-personality.test.mjs
       - name: Build installers
         working-directory: apps/desktop
         run: npm run make -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}

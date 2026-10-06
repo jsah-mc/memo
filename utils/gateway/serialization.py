@@ -1,4 +1,4 @@
-"""Serialization helpers for LiteLLM SDK response objects."""
+"""Serialization helpers for direct provider SDK response objects."""
 
 from __future__ import annotations
 
@@ -13,4 +13,4 @@ def as_dict(value: Any) -> dict[str, Any]:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="Pydantic serializer warnings:.*")
             return value.model_dump(mode="json", exclude_none=True)
-    raise TypeError(f"Unsupported LiteLLM response type: {type(value).__name__}")
+    raise TypeError(f"Unsupported direct provider response type: {type(value).__name__}")

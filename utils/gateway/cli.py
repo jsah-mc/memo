@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the Memo LiteLLM SDK gateway.")
+    parser = argparse.ArgumentParser(description="Run the Memo direct provider SDK gateway.")
     parser.add_argument(
         "--host",
         default=os.environ.get("GATEWAY_HOST", "127.0.0.1"),

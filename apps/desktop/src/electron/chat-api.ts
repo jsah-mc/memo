@@ -475,6 +475,29 @@ export function registerChatApi() {
     return { configured: payload.configured };
   });
 
+  ipcMain.handle("composio:toolkits", async (_event, search: unknown) => {
+    if (typeof search !== "string" || search.length > 100) throw new Error("Invalid app search.");
+    await ensureGatewayRunning();
+    const query = new URLSearchParams({ search });
+    const response = await fetch(`${GATEWAY_BASE_URL}/v1/composio/toolkits?${query}`);
+    const payload = await gatewayPayload(response) as { data?: unknown };
+    if (!response.ok || !Array.isArray(payload.data)) throw new Error(gatewayError(payload, "Could not search app integrations."));
+    return payload;
+  });
+  ipcMain.handle("composio:connections", async () => {
+    await ensureGatewayRunning();
+    const response = await fetch(`${GATEWAY_BASE_URL}/v1/composio/connections`);
+    const payload = await gatewayPayload(response) as { data?: unknown };
+    if (!response.ok || !Array.isArray(payload.data)) throw new Error(gatewayError(payload, "Could not load app connections."));
+    return payload;
+  });
+  ipcMain.handle("composio:disconnect", async (_event, connectionId: unknown) => {
+    if (typeof connectionId !== "string" || !connectionId) throw new Error("Invalid app connection.");
+    await ensureGatewayRunning();
+    const response = await fetch(`${GATEWAY_BASE_URL}/v1/composio/connections/${encodeURIComponent(connectionId)}`, { method: "DELETE" });
+    if (!response.ok) throw new Error(gatewayError(await gatewayPayload(response), "Could not disconnect the app."));
+  });
+
   ipcMain.handle("composio:key-status", () => ({ hasKey: Boolean(getComposioKey()) }));
   ipcMain.handle("composio:set-key", async (_event, key: unknown) => {
     if (typeof key !== "string" || !key.trim()) throw new Error("Enter a Composio API key.");
@@ -488,7 +511,9 @@ export function registerChatApi() {
     const response = await fetch(`${GATEWAY_BASE_URL}/v1/composio/authorize/${encodeURIComponent(toolkit)}`, { method: "POST" });
     const payload = await gatewayPayload(response) as { redirect_url?: unknown; detail?: unknown };
     if (!response.ok || typeof payload.redirect_url !== "string") throw new Error(gatewayError(payload, "Could not start Composio sign in."));
-    await shell.openExternal(payload.redirect_url);
+    const url = new URL(payload.redirect_url);
+    if (url.protocol !== "https:") throw new Error("Composio returned an invalid sign-in URL.");
+    await shell.openExternal(url.href);
     return { opened: true };
   });
 

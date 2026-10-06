@@ -6,6 +6,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { RuntimeProvider } from "@/runtime-provider";
 import { PermissionDialog } from "@/components/permission-dialog";
+import { AgentSetupGate } from "@/agents/agent-setup-gate";
 import { AgentProvider } from "@/agents/agent-provider";
 import { GatewayStartup } from "@/components/gateway-startup";
 import "./index.css";
@@ -21,18 +22,20 @@ document.documentElement.classList.add("dark");
 createRoot(rootElement).render(
   <React.StrictMode>
     <GatewayStartup>
-    <AgentProvider>
-      <RuntimeProvider>
-        <PermissionDialog />
-        <SidebarProvider className="h-dvh min-h-0 overflow-hidden">
-          <Titlebar />
-          <AppSidebar />
-          <div className="ml-72 min-w-0 flex-1">
-            <App />
-          </div>
-        </SidebarProvider>
-      </RuntimeProvider>
-    </AgentProvider>
+      <AgentProvider>
+        <AgentSetupGate>
+          <RuntimeProvider>
+            <PermissionDialog />
+            <SidebarProvider className="h-dvh min-h-0 overflow-hidden">
+              <Titlebar />
+              <AppSidebar />
+              <div className="ml-72 min-w-0 flex-1">
+                <App />
+              </div>
+            </SidebarProvider>
+          </RuntimeProvider>
+        </AgentSetupGate>
+      </AgentProvider>
     </GatewayStartup>
   </React.StrictMode>,
 );

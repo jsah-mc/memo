@@ -1,79 +1,107 @@
+import json
+import os
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-from utils.gateway.sdk import LiteLLMSDK, SDKResponseStream
+import httpx
+
+from utils.gateway.sdk import ModelSDK, SDKResponseStream
 from utils.tools.moonkart import MoonKartClient, MoonKartTool
 
 
-class LiteLLMSDKTests(IsolatedAsyncioTestCase):
-    async def test_passes_moonkart_function_tool_to_completion(self) -> None:
+class ModelSDKTests(IsolatedAsyncioTestCase):
+    async def test_passes_moonkart_function_tool_to_completion(self):
         tool = MoonKartTool(MagicMock(spec=MoonKartClient))
-        with patch(
-            "utils.gateway.sdk.litellm.acompletion",
-            new=AsyncMock(return_value={"choices": []}),
-        ) as completion:
-            await LiteLLMSDK("chatgpt/gpt-5.4").completion(
+        requests = []
+
+        def handle(request):
+            requests.append(request)
+            return httpx.Response(200, json={"choices": []})
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handle))
+        with (
+            patch("utils.provider_transport.httpx.AsyncClient", return_value=client),
+            patch.dict(os.environ, OPENAI_API_KEY="test-key"),
+        ):
+            await ModelSDK("openai/test-model").completion(
                 {
                     "messages": [{"role": "user", "content": "start the moonkart"}],
-                    "tools": [tool.litellm_definition],
+                    "tools": [tool.function_definition],
                     "tool_choice": {
                         "type": "function",
                         "function": {"name": tool.name},
                     },
                 }
             )
-
+        body = json.loads(requests[0].content)
+        self.assertEqual(body["tools"], [tool.function_definition])
+        self.assertEqual(body["tool_choice"]["function"]["name"], "control_moonkart")
+        self.assertEqual(body["model"], "test-model")
         self.assertEqual(
-            completion.await_args.kwargs["tools"], [tool.litellm_definition]
+            str(requests[0].url), "https://api.openai.com/v1/chat/completions"
         )
-        self.assertEqual(
-            completion.await_args.kwargs["tool_choice"],
+        self.assertTrue(client.is_closed)
+
+    async def test_streaming_chat_reassembles_multiple_tool_call_chunks_and_usage(self):
+        chunks = [
             {
-                "type": "function",
-                "function": {"name": "control_moonkart"},
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": "call_1",
+                                    "function": {
+                                        "name": "SEARCH",
+                                        "arguments": '{"q":',
+                                    },
+                                }
+                            ]
+                        }
+                    }
+                ]
             },
-        )
-
-    async def test_passes_codex_model_and_normalizes_string_input(self) -> None:
-        iterator = iter(
-            [
-                {
-                "type": "response.output_text.delta",
-                "delta": "Hello",
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {"index": 0, "function": {"arguments": '"hi"}'}}
+                            ]
+                        },
+                        "finish_reason": "tool_calls",
+                    }
+                ]
+            },
+            {
+                "choices": [],
+                "usage": {
+                    "prompt_tokens": 5,
+                    "completion_tokens": 3,
+                    "total_tokens": 8,
                 },
-                {
-                "type": "response.completed",
-                "response": {"id": "response_test", "output": []},
-                },
-            ]
+            },
+        ]
+        body = (
+            "".join(f"data: {json.dumps(chunk)}\n\n" for chunk in chunks)
+            + "data: [DONE]\n\n"
         )
-
-        with patch(
-            "utils.gateway.sdk.litellm.aresponses",
-            new=AsyncMock(return_value=iterator),
-        ) as responses:
-            result = await LiteLLMSDK(
-                "chatgpt/gpt-5.6-luna",
-            ).responses({"input": "Hello"})
-
-        self.assertEqual(
-            responses.call_args.kwargs["input"],
-            [
-                {
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": "Hello"}],
-                }
-            ],
+        client = httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(200, text=body)
+            )
         )
-        self.assertEqual(
-            responses.await_args.kwargs["model"], "chatgpt/gpt-5.6-luna"
-        )
-        self.assertNotIn("api_base", responses.await_args.kwargs)
-        completed = await result.completed_response()
-        self.assertEqual(completed["output_text"], "Hello")
+        with patch("utils.provider_transport.httpx.AsyncClient", return_value=client):
+            stream = await ModelSDK("ollama/qwen3").responses({"input": "hi"})
+            result = await stream.completed_response()
+        self.assertEqual(result["output"][0]["name"], "SEARCH")
+        self.assertEqual(json.loads(result["output"][0]["arguments"]), {"q": "hi"})
+        self.assertEqual(result["usage"]["total_tokens"], 8)
+        self.assertTrue(client.is_closed)
 
-    async def test_recovers_function_call_from_output_item_event(self) -> None:
-        function_call = {
+    async def test_recovers_function_call_from_output_item_event(self):
+        call = {
             "type": "function_call",
             "name": "control_moonkart",
             "call_id": "call_test",
@@ -81,33 +109,29 @@ class LiteLLMSDKTests(IsolatedAsyncioTestCase):
         }
 
         async def events():
-            yield {
-                "type": "response.output_item.done",
-                "output_index": 0,
-                "item": function_call,
-            }
+            yield {"type": "response.output_item.done", "output_index": 0, "item": call}
             yield {
                 "type": "response.completed",
                 "response": {"id": "response_test", "output": []},
             }
 
         response = await SDKResponseStream(events()).completed_response()
+        self.assertEqual(response["output"], [call])
 
-        self.assertEqual(response["output"], [function_call])
-
-    async def test_stops_consuming_after_response_completed(self) -> None:
-        consumed_after_completion = False
+    async def test_stops_consuming_and_closes_after_response_completed(self):
+        closed = False
 
         async def events():
-            nonlocal consumed_after_completion
-            yield {
-                "type": "response.completed",
-                "response": {"id": "response_test", "output": []},
-            }
-            consumed_after_completion = True
-            raise AssertionError("stream continued after its terminal event")
+            nonlocal closed
+            try:
+                yield {
+                    "type": "response.completed",
+                    "response": {"id": "response_test", "output": []},
+                }
+                raise AssertionError("stream continued after terminal event")
+            finally:
+                closed = True
 
         received = [event async for event in SDKResponseStream(events()).events()]
-
         self.assertEqual(received[0]["type"], "response.completed")
-        self.assertFalse(consumed_after_completion)
+        self.assertTrue(closed)

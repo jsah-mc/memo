@@ -10,7 +10,6 @@ from typing import Any
 
 from .cli_backends import validate_agent_config
 
-
 DEFAULT_AGENT: dict[str, Any] = {
     "id": "memo",
     "name": "Memo",
@@ -73,6 +72,15 @@ class AgentStore:
             result[field] = item.strip()
         backend, model = validate_agent_config(value)
         result.update(cli=backend.id, model=model)
+        for field, default in (
+            ("description", result["role"]),
+            ("style", "balanced"),
+            ("soul", result["instructions"]),
+        ):
+            item = value.get(field, default)
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError(f"Agent {field} must be a non-empty string")
+            result[field] = item.strip()
         composio_enabled = value.get("composioEnabled", False)
         if not isinstance(composio_enabled, bool):
             raise ValueError("Agent composioEnabled must be a boolean")
@@ -90,18 +98,33 @@ class AgentStore:
             composioToolkits=[item.strip().lower() for item in raw_toolkits],
         )
         agent_id = value.get("id")
+        if agent_id is not None and (
+            not isinstance(agent_id, str) or not agent_id.strip()
+        ):
+            raise ValueError("Agent id must be a non-empty string")
         if require_id and (not isinstance(agent_id, str) or not agent_id.strip()):
             raise ValueError("Agent id must be a non-empty string")
-        result["id"] = agent_id.strip() if isinstance(agent_id, str) else str(uuid.uuid4())
+        result["id"] = (
+            agent_id.strip() if isinstance(agent_id, str) else str(uuid.uuid4())
+        )
         return result
 
     def list(self) -> list[dict[str, Any]]:
         with self._lock:
-            return [dict(DEFAULT_AGENT), *(dict(agent) for agent in self._agents)]
+            return [dict(agent) for agent in self._agents]
 
     def create(self, value: object) -> dict[str, Any]:
         agent = self.validate(value)
         with self._lock:
+            if agent["id"] == DEFAULT_AGENT["id"]:
+                raise ValueError("The reserved Memo profile cannot be created")
+            existing = next(
+                (item for item in self._agents if item["id"] == agent["id"]), None
+            )
+            if existing is not None:
+                if existing == agent:
+                    return dict(existing)
+                raise ValueError("An agent with this id already exists")
             self._agents.append(agent)
             self._save()
         return dict(agent)

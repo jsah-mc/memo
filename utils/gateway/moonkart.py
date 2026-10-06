@@ -8,7 +8,7 @@ from typing import Any
 from utils.tools.ai.moonkart import MoonKartAction, detect_moonkart_action
 from utils.tools.moonkart import MoonKartTool
 
-from .sdk import LiteLLMSDK, SDKResponseStream
+from .sdk import ModelSDK, SDKResponseStream
 
 __all__ = [
     "MoonKartAction",
@@ -18,7 +18,7 @@ __all__ = [
 
 
 async def run_moonkart_tool_turn(
-    _sdk: LiteLLMSDK,
+    _sdk: ModelSDK,
     _payload: dict[str, Any],
     action: MoonKartAction,
     tool: MoonKartTool,

@@ -29,9 +29,43 @@ class AgentStoreTests(TestCase):
             )
 
             reloaded = AgentStore(path)
-            self.assertEqual(reloaded.list()[1]["id"], created["id"])
+            self.assertEqual(reloaded.list()[0]["id"], created["id"])
             with self.assertRaises(ValueError):
                 reloaded.delete("memo")
+
+    def test_empty_store_personality_migration_and_last_agent_deletion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agents.json"
+            store = AgentStore(path)
+            self.assertEqual(store.list(), [])
+            legacy = {
+                "id": "legacy",
+                "name": "Nova",
+                "role": "Partner",
+                "instructions": "Think clearly.",
+                "cli": "codex",
+                "model": "test",
+                "color": "green",
+            }
+            agent = store.create(legacy)
+            self.assertEqual(agent["style"], "balanced")
+            self.assertEqual(agent["soul"], "Think clearly.")
+            self.assertEqual(store.create(legacy), agent)
+            self.assertEqual(len(store.list()), 1)
+            self.assertTrue(AgentStore(path).delete("legacy"))
+            self.assertEqual(AgentStore(path).list(), [])
+            custom = {
+                **legacy,
+                "id": "custom",
+                "description": "My writing partner",
+                "style": "playful",
+                "soul": "Be creative and honest.",
+            }
+            AgentStore(path).create(custom)
+            saved = AgentStore(path).list()[0]
+            self.assertEqual(saved["description"], custom["description"])
+            self.assertEqual(saved["style"], custom["style"])
+            self.assertEqual(saved["soul"], custom["soul"])
 
     def test_agent_crud_api(self) -> None:
         with TestClient(
@@ -50,7 +84,7 @@ class AgentStoreTests(TestCase):
             )
             self.assertEqual(response.status_code, 201)
             agent_id = response.json()["id"]
-            self.assertEqual(len(client.get("/v1/agents").json()["data"]), 2)
+            self.assertEqual(len(client.get("/v1/agents").json()["data"]), 1)
             self.assertEqual(client.delete(f"/v1/agents/{agent_id}").status_code, 204)
             self.assertEqual(client.delete("/v1/agents/memo").status_code, 409)
 
@@ -61,7 +95,7 @@ class AgentStoreTests(TestCase):
             def tools(self):
                 return [{"type": "function", "function": {"name": "TEST_TOOL"}}]
 
-            def execute(self, slug, arguments):
+            def execute(self, slug, *, arguments):
                 return {"slug": slug, "arguments": arguments}
 
         class Client:

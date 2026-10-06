@@ -1,4 +1,4 @@
-"""LiteLLM tool adapter for the isolated Browser Use agent."""
+"""direct provider tool adapter for the isolated Browser Use agent."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ class BrowserUseTool:
         self._lock = asyncio.Lock()
 
     @property
-    def litellm_definition(self) -> dict:
+    def function_definition(self) -> dict:
         return copy.deepcopy(_BROWSER_LITELLM_DEFINITION)
 
     async def execute(self, arguments: dict) -> dict[str, object]:

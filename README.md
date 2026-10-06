@@ -6,12 +6,45 @@ recognition and synthesis run fully locally.
 
 ## Stack
 
-- Chat and image understanding: `chatgpt/gpt-5.6-luna` through LiteLLM
+- Chat and image understanding: `chatgpt/gpt-5.6-luna` through direct Codex OAuth HTTP
 - Speech-to-text: RealtimeSTT with faster-whisper `small.en`
 - Text-to-speech: RealtimeTTS with PocketTTS
 - Browser automation: Browser Use with visible Chromium
 - Hardware tool: MoonKart over Bluetooth LE
 - Chat storage: SQLite in `./data.sqlite`
+
+## Agent onboarding and app integrations
+
+Memo opens agent onboarding when there are no saved agents. Choose a purpose,
+communication style, name, role, description, soul (values and personality),
+working instructions, runtime, and optional app access. Existing profiles migrate
+with a balanced style and their instructions as the initial soul. Profiles and
+chat history stay in the desktop user-data directory across updates. Deleting
+the last agent opens onboarding again.
+
+Settings searches Composio's app catalog, shows connection status, supports reconnecting or
+adding accounts, and lets you disconnect an account. Sign-in opens in your
+browser; Memo refreshes the connection status while you complete it. Each agent
+can restrict the app toolkits it uses. The gateway reuses sessions and executes
+integration tool calls, then returns their results to the model. Connection
+credentials never enter the renderer.
+
+## Direct model providers
+
+The gateway and terminal runtime share a direct HTTP adapter; LiteLLM is not a
+dependency. The default `chatgpt/<model>` reads Codex CLI OAuth credentials,
+refreshes expired tokens while preserving the login file, and uses native
+Responses streaming. Run `codex login` when a login is missing or revoked.
+
+Other configured upstream model prefixes are `openai`, `anthropic`, `ollama`,
+`lmstudio`, `minimax`, `xai`, `groq`, and `openrouter`. Anthropic uses its native
+Messages API; the others use OpenAI-compatible Chat Completions. Set the matching
+provider key (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `MINIMAX_API_KEY`,
+`XAI_API_KEY`, `GROQ_API_KEY`, or `OPENROUTER_API_KEY`). Local Ollama and LM Studio
+require no API key. Set `CODEX_MODEL=ollama/qwen3`, for example, to choose the
+upstream, and `<PROVIDER>_API_BASE` to override its URL. `CHATGPT_API_BASE` remains
+the Codex endpoint override. CLI selection is saved as agent configuration;
+Memo's gateway model transport uses the configured upstream.
 
 ## Requirements
 
@@ -175,7 +208,7 @@ manually launched gateway, set `MEMO_STT_PRELOAD=1` to get the same behavior.
 ## Browser and MoonKart tools
 
 Browser requests open visible Chromium unless `MEMO_BROWSER_HEADLESS=1`.
-MoonKart start and stop requests remain LiteLLM function calls and send `H` or
+MoonKart start and stop requests remain OpenAI-compatible function calls and send `H` or
 `S` only after an explicit user request.
 
 ## Restricted computer tools
@@ -253,7 +286,7 @@ both settings to the localhost gateway process that it manages.
 
 ```text
 utils/
-  gateway/   FastAPI, LiteLLM, routing, streaming, and tool orchestration
+  gateway/   FastAPI, direct provider HTTP, routing, streaming, and tool orchestration
   tools/     Computer, Browser, MoonKart, RealtimeSTT, and RealtimeTTS adapters
     ai/      Shared AI runtime, settings, SDK, routing, and tool turns
   browser/   Visible Browser Use agent

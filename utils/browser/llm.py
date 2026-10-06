@@ -1,4 +1,4 @@
-"""Browser Use chat model backed directly by Memo's LiteLLM SDK."""
+"""Browser Use chat model backed directly by Memo's direct provider SDK."""
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ from typing import Any, TypeVar, overload
 
 from pydantic import BaseModel
 
-from utils.tools.ai.sdk import LiteLLMSDK
+from utils.tools.ai.sdk import ModelSDK
 
 T = TypeVar("T", bound=BaseModel)
 
 
 def _configured_model(model: str) -> str:
-    """Resolve Memo's legacy ``codex`` alias to a LiteLLM ChatGPT model."""
+    """Resolve Memo's legacy ``codex`` alias to a direct provider ChatGPT model."""
 
     if model.casefold() == "codex":
         model = os.environ.get("CODEX_MODEL", "chatgpt/gpt-5.6-luna")
@@ -99,10 +99,10 @@ class MemoChatModel:
         model: str,
         *,
         api_base: str | None = None,
-        sdk: LiteLLMSDK | None = None,
+        sdk: ModelSDK | None = None,
     ) -> None:
         self.model = _configured_model(model)
-        self._sdk = sdk or LiteLLMSDK(self.model, api_base=api_base)
+        self._sdk = sdk or ModelSDK(self.model, api_base=api_base)
 
     @property
     def provider(self) -> str:

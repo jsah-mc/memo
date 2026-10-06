@@ -9,7 +9,7 @@ from typing import Any
 
 from utils.tools.browser import BrowserUseTool
 
-from .sdk import LiteLLMSDK, SDKResponseStream
+from .sdk import ModelSDK, SDKResponseStream
 
 _BROWSER_INTENT = re.compile(
     r"(?:"
@@ -123,7 +123,7 @@ def _result_stream(task: str, tool: BrowserUseTool) -> SDKResponseStream:
 
 
 async def run_browser_tool_turn(
-    _sdk: LiteLLMSDK,
+    _sdk: ModelSDK,
     _payload: dict[str, Any],
     task: str,
     tool: BrowserUseTool,

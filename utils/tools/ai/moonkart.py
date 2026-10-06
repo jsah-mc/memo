@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from utils.tools.moonkart import MoonKartTool
 
-from .sdk import LiteLLMSDK, SDKResponseStream
+from .sdk import ModelSDK, SDKResponseStream
 
 MoonKartAction = Literal["start", "stop"]
 
@@ -126,7 +126,7 @@ def _completion_messages(
 
 
 async def run_moonkart_tool_turn(
-    _sdk: LiteLLMSDK,
+    _sdk: ModelSDK,
     _payload: dict[str, Any],
     action: MoonKartAction,
     tool: MoonKartTool,

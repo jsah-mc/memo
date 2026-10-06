@@ -49,6 +49,9 @@ declare global {
       getComposioStatus(): Promise<{ configured: boolean }>;
       getComposioKeyStatus(): Promise<{ hasKey: boolean }>;
       setComposioKey(key: string): Promise<{ saved: true }>;
+      getComposioToolkits(search?: string): Promise<{ data: Array<{ id: string; label: string }> }>;
+      getComposioConnections(): Promise<{ data: ComposioConnection[] }>;
+      disconnectComposio(connectionId: string): Promise<void>;
       authorizeComposio(toolkit: string): Promise<{ opened: true }>;
       traceSpeech(stage: string): void;
       prepareSpeech(): Promise<{ ready: true }>;
@@ -93,10 +96,15 @@ declare global {
     | { id: string; type: "done" }
     | { id: string; type: "error"; message: string };
 
+  type ComposioConnection = { id: string; toolkit: string; status: string };
+
   type NewAgentData = {
     name: string;
     role: string;
     instructions: string;
+    description: string;
+    style: string;
+    soul: string;
     cli: string;
     model: string;
     color: string;

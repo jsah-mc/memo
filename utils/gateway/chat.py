@@ -94,6 +94,8 @@ def chat_to_responses(payload: dict[str, Any]) -> dict[str, Any]:
         "input": _chat_messages_to_responses(messages),
         "stream": payload.get("stream", False),
     }
+    if "memo_agent" in payload:
+        converted["memo_agent"] = payload["memo_agent"]
     direct_fields = {
         "metadata",
         "parallel_tool_calls",

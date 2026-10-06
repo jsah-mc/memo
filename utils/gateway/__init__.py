@@ -1,4 +1,4 @@
-"""LiteLLM SDK gateway package."""
+"""direct provider SDK gateway package."""
 
 from .api import create_app
 from .settings import GatewaySettings

@@ -71,10 +71,10 @@ class MoonKartResponseTests(TestCase):
 
 
 class MoonKartToolTests(IsolatedAsyncioTestCase):
-    def test_exposes_litellm_completion_function_schema(self) -> None:
+    def test_exposes_openai_completion_function_schema(self) -> None:
         tool = MoonKartTool(MagicMock(spec=MoonKartClient))
 
-        definition = tool.litellm_definition
+        definition = tool.function_definition
 
         self.assertEqual(definition["type"], "function")
         self.assertEqual(definition["function"]["name"], "control_moonkart")

@@ -18,7 +18,7 @@ from utils.program.main import MemoApp
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the Memo LiteLLM SDK gateway.")
+    parser = argparse.ArgumentParser(description="Run the Memo direct provider SDK gateway.")
     subparsers = parser.add_subparsers(dest="command", required=False)
 
     # 3. Create the 'run' subparser

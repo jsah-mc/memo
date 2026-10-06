@@ -42,7 +42,7 @@ export function AgentSidebarSection() {
                 className="h-11 rounded-xl data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
                 tooltip={`${agent.name} — ${agent.role}`}
               >
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/12 text-xs font-semibold text-primary">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold" style={{ backgroundColor: agent.color, color: "var(--background)" }}>
                   {agent.name.slice(0, 1).toUpperCase()}
                 </span>
                 <span className="min-w-0 flex-1">
