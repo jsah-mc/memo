@@ -10,13 +10,14 @@ import { FuseV1Options, FuseVersion } from "@electron/fuses";
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    executableName: "Memo",
   },
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({ name: "Memo" }),
     new MakerZIP({}, ["darwin", "linux"]),
-    new MakerRpm({ options: { name: "memo" } }),
-    new MakerDeb({ options: { name: "memo" } }),
+    new MakerRpm({ options: { name: "memo", bin: "Memo" } }),
+    new MakerDeb({ options: { name: "memo", bin: "Memo" } }),
   ],
   plugins: [
     new VitePlugin({
