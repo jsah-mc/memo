@@ -1,9 +1,4 @@
-import {
-  app,
-  ipcMain,
-  shell,
-  type IpcMainEvent,
-} from "electron";
+import { app, ipcMain, shell, type IpcMainEvent } from "electron";
 import { appendFileSync, statSync, truncateSync } from "node:fs";
 import path from "node:path";
 import {
@@ -12,6 +7,10 @@ import {
   restartManagedGateway,
 } from "./gateway-process";
 import { getComposioKey, setComposioKey } from "./settings-store";
+import {
+  startDesktopControlIndicator,
+  stopDesktopControlIndicator,
+} from "./desktop-control-indicator";
 
 type ChatContentPart =
   | { type: "text"; text: string }
@@ -31,6 +30,7 @@ type ChatRequest = {
     composioEnabled: boolean;
     composioUserId: string;
     composioToolkits: readonly string[];
+    computerTarget: "host" | "virtual";
   };
   messages: ChatMessage[];
 };
@@ -42,6 +42,7 @@ type AgentProfileRequest = {
   cli: string;
   model: string;
   color: string;
+  computerTarget: "host" | "virtual";
 };
 
 type OpenAIStreamChunk = {
@@ -154,8 +155,11 @@ function gatewayError(payload: unknown, fallback: string) {
 async function gatewayPayload(response: Response): Promise<unknown> {
   const body = await response.text();
   if (!body) return undefined;
-  try { return JSON.parse(body); }
-  catch { return { detail: body }; }
+  try {
+    return JSON.parse(body);
+  } catch {
+    return { detail: body };
+  }
 }
 
 function sendChatEvent(event: IpcMainEvent, payload: ChatStreamEvent) {
@@ -181,6 +185,7 @@ function sseData(block: string): string | null {
 
 async function resolveShellPermission(
   event: IpcMainEvent,
+  requestId: string,
   permission: NonNullable<OpenAIStreamChunk["permission"]>,
 ) {
   if (
@@ -219,6 +224,10 @@ async function resolveShellPermission(
     });
   });
 
+  if (allowed && permission.kind === "computer_control") {
+    startDesktopControlIndicator(requestId);
+  }
+
   const response = await fetch(
     `${GATEWAY_BASE_URL}/v1/permissions/${encodeURIComponent(permission.id)}`,
     {
@@ -240,10 +249,7 @@ async function resolveShellPermission(
       // Use the status fallback for non-JSON errors.
     }
     throw new Error(
-      gatewayError(
-        payload,
-        `Permission response failed (${response.status}).`,
-      ),
+      gatewayError(payload, `Permission response failed (${response.status}).`),
     );
   }
 }
@@ -267,7 +273,7 @@ async function emitSseData(
     if (!payload.permission) {
       throw new Error("Gateway returned an empty permission request.");
     }
-    await resolveShellPermission(event, payload.permission);
+    await resolveShellPermission(event, requestId, payload.permission);
     return false;
   }
 
@@ -366,11 +372,7 @@ async function streamResponse(
     if (!doneEventReceived) {
       const trailingData = sseData(buffer);
       if (trailingData) {
-        doneEventReceived = await emitSseData(
-          event,
-          requestId,
-          trailingData,
-        );
+        doneEventReceived = await emitSseData(event, requestId, trailingData);
       }
     }
     if (!doneEventReceived) {
@@ -421,6 +423,8 @@ function isChatRequest(value: unknown): value is ChatRequest {
     !!request.agent &&
     typeof request.agent.cli === "string" &&
     typeof request.agent.model === "string" &&
+    (request.agent.computerTarget === "host" ||
+      request.agent.computerTarget === "virtual") &&
     Array.isArray(request.messages) &&
     request.messages.every(
       (message) =>
@@ -455,12 +459,47 @@ export function registerChatApi() {
     if (typeof stage === "string") traceVoice(`renderer.${stage}`);
   });
 
+  ipcMain.handle("system:health", async () => {
+    await ensureGatewayRunning();
+    const startedAt = performance.now();
+    const response = await fetch(`${GATEWAY_BASE_URL}/health/readiness`, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    const payload = await gatewayPayload(response);
+    if (!response.ok || !payload || typeof payload !== "object") {
+      throw new Error(
+        gatewayError(payload, "Could not inspect provider health."),
+      );
+    }
+    return {
+      ...payload,
+      latency_ms: Math.round(performance.now() - startedAt),
+    };
+  });
+
+  ipcMain.handle("auth:open-codex-help", async () => {
+    await shell.openExternal("https://developers.openai.com/codex/auth");
+    return { opened: true };
+  });
+
   ipcMain.handle("agents:list", async () => {
     await ensureGatewayRunning();
     const response = await fetch(`${GATEWAY_BASE_URL}/v1/agents`);
     const payload = (await response.json()) as { data?: unknown };
     if (!response.ok || !Array.isArray(payload.data)) {
       throw new Error(gatewayError(payload, "Could not load agents."));
+    }
+    return payload.data;
+  });
+
+  ipcMain.handle("agents:backends", async () => {
+    await ensureGatewayRunning();
+    const response = await fetch(`${GATEWAY_BASE_URL}/v1/cli-backends`);
+    const payload = (await response.json()) as { data?: unknown };
+    if (!response.ok || !Array.isArray(payload.data)) {
+      throw new Error(
+        gatewayError(payload, "Could not load AI agent runtimes."),
+      );
     }
     return payload.data;
   });
@@ -476,60 +515,97 @@ export function registerChatApi() {
   });
 
   ipcMain.handle("composio:toolkits", async (_event, search: unknown) => {
-    if (typeof search !== "string" || search.length > 100) throw new Error("Invalid app search.");
+    if (typeof search !== "string" || search.length > 100)
+      throw new Error("Invalid app search.");
     await ensureGatewayRunning();
     const query = new URLSearchParams({ search });
-    const response = await fetch(`${GATEWAY_BASE_URL}/v1/composio/toolkits?${query}`);
-    const payload = await gatewayPayload(response) as { data?: unknown };
-    if (!response.ok || !Array.isArray(payload.data)) throw new Error(gatewayError(payload, "Could not search app integrations."));
+    const response = await fetch(
+      `${GATEWAY_BASE_URL}/v1/composio/toolkits?${query}`,
+    );
+    const payload = (await gatewayPayload(response)) as { data?: unknown };
+    if (!response.ok || !Array.isArray(payload.data))
+      throw new Error(
+        gatewayError(payload, "Could not search app integrations."),
+      );
     return payload;
   });
   ipcMain.handle("composio:connections", async () => {
     await ensureGatewayRunning();
     const response = await fetch(`${GATEWAY_BASE_URL}/v1/composio/connections`);
-    const payload = await gatewayPayload(response) as { data?: unknown };
-    if (!response.ok || !Array.isArray(payload.data)) throw new Error(gatewayError(payload, "Could not load app connections."));
+    const payload = (await gatewayPayload(response)) as { data?: unknown };
+    if (!response.ok || !Array.isArray(payload.data))
+      throw new Error(gatewayError(payload, "Could not load app connections."));
     return payload;
   });
-  ipcMain.handle("composio:disconnect", async (_event, connectionId: unknown) => {
-    if (typeof connectionId !== "string" || !connectionId) throw new Error("Invalid app connection.");
-    await ensureGatewayRunning();
-    const response = await fetch(`${GATEWAY_BASE_URL}/v1/composio/connections/${encodeURIComponent(connectionId)}`, { method: "DELETE" });
-    if (!response.ok) throw new Error(gatewayError(await gatewayPayload(response), "Could not disconnect the app."));
-  });
+  ipcMain.handle(
+    "composio:disconnect",
+    async (_event, connectionId: unknown) => {
+      if (typeof connectionId !== "string" || !connectionId)
+        throw new Error("Invalid app connection.");
+      await ensureGatewayRunning();
+      const response = await fetch(
+        `${GATEWAY_BASE_URL}/v1/composio/connections/${encodeURIComponent(connectionId)}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok)
+        throw new Error(
+          gatewayError(
+            await gatewayPayload(response),
+            "Could not disconnect the app.",
+          ),
+        );
+    },
+  );
 
-  ipcMain.handle("composio:key-status", () => ({ hasKey: Boolean(getComposioKey()) }));
+  ipcMain.handle("composio:key-status", () => ({
+    hasKey: Boolean(getComposioKey()),
+  }));
   ipcMain.handle("composio:set-key", async (_event, key: unknown) => {
-    if (typeof key !== "string" || !key.trim()) throw new Error("Enter a Composio API key.");
+    if (typeof key !== "string" || !key.trim())
+      throw new Error("Enter a Composio API key.");
     setComposioKey(key.trim());
     await restartManagedGateway();
     return { saved: true };
   });
   ipcMain.handle("composio:authorize", async (_event, toolkit: unknown) => {
-    if (typeof toolkit !== "string" || !toolkit) throw new Error("Invalid toolkit.");
+    if (typeof toolkit !== "string" || !toolkit)
+      throw new Error("Invalid toolkit.");
     await ensureGatewayRunning();
-    const response = await fetch(`${GATEWAY_BASE_URL}/v1/composio/authorize/${encodeURIComponent(toolkit)}`, { method: "POST" });
-    const payload = await gatewayPayload(response) as { redirect_url?: unknown; detail?: unknown };
-    if (!response.ok || typeof payload.redirect_url !== "string") throw new Error(gatewayError(payload, "Could not start Composio sign in."));
+    const response = await fetch(
+      `${GATEWAY_BASE_URL}/v1/composio/authorize/${encodeURIComponent(toolkit)}`,
+      { method: "POST" },
+    );
+    const payload = (await gatewayPayload(response)) as {
+      redirect_url?: unknown;
+      detail?: unknown;
+    };
+    if (!response.ok || typeof payload.redirect_url !== "string")
+      throw new Error(
+        gatewayError(payload, "Could not start Composio sign in."),
+      );
     const url = new URL(payload.redirect_url);
-    if (url.protocol !== "https:") throw new Error("Composio returned an invalid sign-in URL.");
+    if (url.protocol !== "https:")
+      throw new Error("Composio returned an invalid sign-in URL.");
     await shell.openExternal(url.href);
     return { opened: true };
   });
 
-  ipcMain.handle("agents:create", async (_event, request: AgentProfileRequest) => {
-    await ensureGatewayRunning();
-    const response = await fetch(`${GATEWAY_BASE_URL}/v1/agents`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
-    });
-    const payload = (await response.json()) as unknown;
-    if (!response.ok) {
-      throw new Error(gatewayError(payload, "Could not create agent."));
-    }
-    return payload;
-  });
+  ipcMain.handle(
+    "agents:create",
+    async (_event, request: AgentProfileRequest) => {
+      await ensureGatewayRunning();
+      const response = await fetch(`${GATEWAY_BASE_URL}/v1/agents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      const payload = (await response.json()) as unknown;
+      if (!response.ok) {
+        throw new Error(gatewayError(payload, "Could not create agent."));
+      }
+      return payload;
+    },
+  );
 
   ipcMain.handle("agents:delete", async (_event, agentId: unknown) => {
     if (typeof agentId !== "string") throw new Error("Invalid agent id.");
@@ -540,10 +616,35 @@ export function registerChatApi() {
     );
     if (!response.ok) {
       let payload: unknown;
-      try { payload = await response.json(); } catch { /* status fallback */ }
+      try {
+        payload = await response.json();
+      } catch {
+        /* status fallback */
+      }
       throw new Error(gatewayError(payload, "Could not delete agent."));
     }
   });
+
+  ipcMain.handle(
+    "agents:update",
+    async (_event, agentId: unknown, changes: unknown) => {
+      if (typeof agentId !== "string") throw new Error("Invalid agent id.");
+      await ensureGatewayRunning();
+      const response = await fetch(
+        `${GATEWAY_BASE_URL}/v1/agents/${encodeURIComponent(agentId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(changes),
+        },
+      );
+      const payload = await gatewayPayload(response);
+      if (!response.ok) {
+        throw new Error(gatewayError(payload, "Could not update agent."));
+      }
+      return payload;
+    },
+  );
 
   ipcMain.handle("speech:prepare", async () => {
     traceVoice("prepare.received");
@@ -663,23 +764,20 @@ export function registerChatApi() {
     void (async () => {
       try {
         await ensureGatewayRunning();
-        const response = await fetch(
-          `${GATEWAY_BASE_URL}/v1/audio/speech`,
-          {
-            method: "POST",
-            headers: {
-              Accept: "audio/wav",
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "pocket-tts",
-              voice: "alba",
-              input: request.text,
-              response_format: "wav",
-            }),
-            signal: controller.signal,
+        const response = await fetch(`${GATEWAY_BASE_URL}/v1/audio/speech`, {
+          method: "POST",
+          headers: {
+            Accept: "audio/wav",
+            "Content-Type": "application/json",
           },
-        );
+          body: JSON.stringify({
+            model: "pocket-tts",
+            voice: "alba",
+            input: request.text,
+            response_format: "wav",
+          }),
+          signal: controller.signal,
+        });
         if (!response.ok) {
           let payload: unknown;
           try {
@@ -811,6 +909,7 @@ export function registerChatApi() {
           });
         }
       } finally {
+        stopDesktopControlIndicator(request.id);
         if (controllers.get(request.id) === controller) {
           controllers.delete(request.id);
         }

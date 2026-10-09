@@ -1,3 +1,6 @@
+# Local diagnostics and machine-specific notes
+rf_log.csv
+
 # JavaScript workspace files
 apps/desktop/node_modules/
 apps/*/node_modules/

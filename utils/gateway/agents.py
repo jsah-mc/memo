@@ -24,6 +24,7 @@ DEFAULT_AGENT: dict[str, Any] = {
     "composioEnabled": False,
     "composioUserId": "",
     "composioToolkits": [],
+    "computerTarget": "host",
     "builtIn": True,
 }
 
@@ -97,6 +98,10 @@ class AgentStore:
             composioUserId=composio_user_id.strip(),
             composioToolkits=[item.strip().lower() for item in raw_toolkits],
         )
+        computer_target = value.get("computerTarget", "host")
+        if computer_target not in {"host", "virtual"}:
+            raise ValueError("Agent computerTarget must be host or virtual")
+        result["computerTarget"] = computer_target
         agent_id = value.get("id")
         if agent_id is not None and (
             not isinstance(agent_id, str) or not agent_id.strip()
@@ -139,3 +144,21 @@ class AgentStore:
             self._agents = remaining
             self._save()
             return True
+
+    def update(self, agent_id: str, value: object) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            raise ValueError("Agent update must be an object")
+        with self._lock:
+            existing = next(
+                (item for item in self._agents if item["id"] == agent_id), None
+            )
+            if existing is None:
+                raise KeyError(agent_id)
+            updated = self.validate(
+                {**existing, **value, "id": agent_id}, require_id=True
+            )
+            self._agents = [
+                updated if item["id"] == agent_id else item for item in self._agents
+            ]
+            self._save()
+            return dict(updated)

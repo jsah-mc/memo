@@ -199,7 +199,9 @@ class TextualProgramTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(app.query("#empty-state").first())
             self.assertFalse(input_widget.disabled)
             self.assertFalse(app.query_one("#sendbutton", Button).disabled)
-            self.assertEqual(str(app.query_one("#status", Static).content), "Ready")
+            self.assertEqual(
+                str(app.query_one("#status", Static).content), ":P  Ready"
+            )
 
     async def test_shell_command_shows_permission_modal(self) -> None:
         sdk = FakePermissionSDK()

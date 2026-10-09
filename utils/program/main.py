@@ -27,6 +27,9 @@ class MemoApp(VoiceModeMixin, App):
         "./styles/messagerow.tcss",
         "./styles/messages.tcss",
     ]
+    SPINNER: ClassVar[tuple[str, ...]] = (
+        "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"
+    )
 
     def __init__(
         self,
@@ -39,6 +42,10 @@ class MemoApp(VoiceModeMixin, App):
         self.voice = voice or VoiceModeIO()
         self._voice_mode_active = False
         self._voice_worker = None
+        self._activity = "idle"
+        self._activity_detail = "Ready · ^N new · ^D theme · /quit"
+        self._spinner_index = 0
+        self._active_desktop_calls: set[str] = set()
 
     def compose(self) -> ComposeResult:
         self.theme = "catppuccin-mocha"
@@ -61,6 +68,8 @@ class MemoApp(VoiceModeMixin, App):
 
     def on_mount(self) -> None:
         self.query_one("#messageinput", Input).focus()
+        self.set_interval(0.08, self._advance_spinner)
+        self._render_activity()
         if (
             self._preload_voice
             and os.environ.get("MEMO_SPEECH_PRELOAD", "0") == "1"
@@ -136,6 +145,37 @@ class MemoApp(VoiceModeMixin, App):
                 input_widget.focus()
             messages.scroll_end(animate=False)
 
+    def _advance_spinner(self) -> None:
+        if self._activity != "loading":
+            return
+        self._spinner_index = (self._spinner_index + 1) % len(self.SPINNER)
+        self._render_activity()
+
+    def _render_activity(self) -> None:
+        face = {
+            "idle": ":P",
+            "done": ":)",
+            "error": ":(",
+        }.get(self._activity, self.SPINNER[self._spinner_index])
+        self.query_one("#status", Static).update(
+            f"{face}  {self._activity_detail}"
+        )
+
+    def _set_activity(self, activity: str, detail: str) -> None:
+        self._activity = activity
+        self._activity_detail = detail
+        self._render_activity()
+
+    def _set_desktop_control(self, call_id: str, active: bool) -> None:
+        if active:
+            self._active_desktop_calls.add(call_id)
+        else:
+            self._active_desktop_calls.discard(call_id)
+        controlling = bool(self._active_desktop_calls)
+        self.screen.set_class(controlling, "desktop-control-active")
+        if controlling:
+            self._set_activity("loading", "Agent controlling this desktop")
+
     async def _stream_ai_response(self, prompt: str, response: Static) -> str:
         messages = self.query_one("#messages", VerticalScroll)
         output: list[str] = []
@@ -159,7 +199,7 @@ class MemoApp(VoiceModeMixin, App):
                     if isinstance(delta, str):
                         output.append(delta)
                         render_response()
-                        self.query_one("#status", Static).update("Writing…")
+                        self._set_activity("loading", "Writing…")
                 elif event_type == "memo.tool_call.started":
                     call = event.get("tool_call", {})
                     call_id = str(call.get("id", "tool"))
@@ -169,7 +209,7 @@ class MemoApp(VoiceModeMixin, App):
                         classes="chat-message tool-message",
                         markup=False,
                     )
-                    self.query_one("#status", Static).update(f"Running {name}…")
+                    self._set_activity("loading", f"Running {name}…")
                     tool_widgets[call_id] = widget
                     await messages.mount(widget, before=response)
                     messages.scroll_end(animate=False)
@@ -182,7 +222,9 @@ class MemoApp(VoiceModeMixin, App):
                     widget = tool_widgets.get(call_id)
                     if widget is not None:
                         widget.update(f"Tool\n{name} {status}")
-                    self.query_one("#status", Static).update("Thinking…")
+                    if name == "control_computer":
+                        self._set_desktop_control(call_id, False)
+                    self._set_activity("loading", "Thinking…")
                     messages.scroll_end(animate=False)
                 elif event_type == "memo.permission.requested":
                     permission = event.get("permission", {})
@@ -203,15 +245,23 @@ class MemoApp(VoiceModeMixin, App):
                         ShellPermissionScreen(command, cwd, kind)
                     )
                     self.ai.resolve_permission(permission_id, allowed)
+                    if kind == "computer_control" and allowed:
+                        self._set_desktop_control(call_id, True)
                     if widget is not None:
                         state = "approved" if allowed else "denied"
                         widget.update(f"Tool\n{tool_name} permission {state}")
                 elif event_type == "response.completed":
-                    self.query_one("#status", Static).update("Finishing…")
+                    self._set_activity("loading", "Finishing…")
         except Exception as exc:  # noqa: BLE001
+            for call_id in tuple(self._active_desktop_calls):
+                self._set_desktop_control(call_id, False)
+            self._set_activity("error", "Error")
             response.update(f"Memo\nError: {exc}")
             return ""
         render_response(force=True)
+        for call_id in tuple(self._active_desktop_calls):
+            self._set_desktop_control(call_id, False)
+        self._set_activity("done", "Done")
         return "".join(output).strip()
 
     def action_toggle_dark(self) -> None:
@@ -226,6 +276,8 @@ class MemoApp(VoiceModeMixin, App):
             self._stop_voice_mode()
         self.workers.cancel_all()
         self.ai.clear_history()
+        for call_id in tuple(self._active_desktop_calls):
+            self._set_desktop_control(call_id, False)
         await self.query_one("#messages", VerticalScroll).remove_children()
         await self.query_one("#messages", VerticalScroll).mount(
             Static(
@@ -235,6 +287,7 @@ class MemoApp(VoiceModeMixin, App):
             )
         )
         input_widget = self.query_one("#messageinput", Input)
+        self._set_activity("idle", "Ready · ^N new · ^D theme · /quit")
         self._set_composer_busy(False, "Ready")
         input_widget.focus()
 
@@ -248,9 +301,14 @@ class MemoApp(VoiceModeMixin, App):
         self.query_one("#messageinput", Input).disabled = busy
         self.query_one("#sendbutton", Button).disabled = busy
         self.query_one("#voicebutton", Button).disabled = busy and not keep_voice_enabled
-        self.query_one("#status", Static).update(status)
+        if busy:
+            self._set_activity("loading", status)
+        elif self._activity not in {"done", "error"}:
+            self._set_activity("idle", status)
 
     async def on_unmount(self) -> None:
+        for call_id in tuple(self._active_desktop_calls):
+            self._set_desktop_control(call_id, False)
         if self._voice_mode_active:
             self._stop_voice_mode()
         voice_close = asyncio.create_task(self.voice.close())

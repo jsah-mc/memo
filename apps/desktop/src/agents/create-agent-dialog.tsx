@@ -1,10 +1,11 @@
 import { useRef, useState, type FormEvent } from "react";
+import { ChevronLeftIcon, PlusIcon, SparklesIcon } from "lucide-react";
 import {
-  CheckIcon,
-  ChevronLeftIcon,
-  PlusIcon,
-  SparklesIcon,
-} from "lucide-react";
+  AGENT_TEXTAREA_CLASS,
+  AGENT_WIZARD_STEPS,
+  AgentWizardProgress,
+  DEFAULT_AGENT_SOUL,
+} from "@/agents/agent-wizard-ui";
 import { AGENT_PRESETS, type AgentPreset } from "@/agents/agent-presets";
 import { AGENT_STYLES } from "@/agents/agent-personality";
 import { useAgents } from "@/agents/agent-provider";
@@ -23,12 +24,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
-const STEPS = ["Purpose", "Style", "Identity", "Soul", "Runtime", "Apps"];
-const SOUL =
-  "Be honest, thoughtful, and curious. Respect my preferences, admit uncertainty, and help me make progress.";
-const TEXTAREA =
-  "min-h-24 resize-y rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30";
-
 export function CreateAgentDialog({
   onboarding = false,
 }: Readonly<{ onboarding?: boolean }>) {
@@ -40,7 +35,7 @@ export function CreateAgentDialog({
   const [name, setName] = useState("Assistant");
   const [role, setRole] = useState("General assistant");
   const [description, setDescription] = useState(AGENT_PRESETS[0].description);
-  const [soul, setSoul] = useState(SOUL);
+  const [soul, setSoul] = useState(DEFAULT_AGENT_SOUL);
   const [instructions, setInstructions] = useState(
     AGENT_PRESETS[0].instructions,
   );
@@ -48,6 +43,9 @@ export function CreateAgentDialog({
   const [cli, setCli] = useState<CLIBackendId>("codex");
   const [model, setModel] = useState("gpt-5.6-luna");
   const [composioEnabled, setComposioEnabled] = useState(false);
+  const [computerTarget, setComputerTarget] = useState<"host" | "virtual">(
+    "host",
+  );
   const [composioToolkits, setComposioToolkits] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -64,18 +62,19 @@ export function CreateAgentDialog({
     setStep(0);
     choosePreset(AGENT_PRESETS[0]);
     setStyle("balanced");
-    setSoul(SOUL);
+    setSoul(DEFAULT_AGENT_SOUL);
     setColor("var(--chart-5)");
     setCli("codex");
     setModel("gpt-5.6-luna");
     setComposioEnabled(false);
+    setComputerTarget("host");
     setComposioToolkits([]);
     setError("");
   };
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (submitting.current) return;
-    if (step < STEPS.length - 1) {
+    if (step < AGENT_WIZARD_STEPS.length - 1) {
       setError("");
       setStep(step + 1);
       return;
@@ -107,6 +106,7 @@ export function CreateAgentDialog({
         composioEnabled,
         composioUserId: "",
         composioToolkits,
+        computerTarget,
       });
       setOpen(false);
       reset();
@@ -161,25 +161,7 @@ export function CreateAgentDialog({
             choose is saved with its profile.
           </DialogDescription>
         </DialogHeader>
-        <div
-          className="flex items-center gap-1"
-          aria-label={`Step ${step + 1} of ${STEPS.length}`}
-        >
-          {STEPS.map((label, index) => (
-            <div key={label} className="flex min-w-0 flex-1 items-center gap-1">
-              <span
-                className={`flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${index <= step ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
-              >
-                {index < step ? <CheckIcon className="size-3" /> : index + 1}
-              </span>
-              <span
-                className={`truncate text-[10px] ${index === step ? "text-foreground" : "text-muted-foreground"}`}
-              >
-                {label}
-              </span>
-            </div>
-          ))}
-        </div>
+        <AgentWizardProgress step={step} />
         <form className="grid gap-4" onSubmit={submit}>
           {step === 0 && (
             <div className="grid grid-cols-2 gap-2">
@@ -246,7 +228,7 @@ export function CreateAgentDialog({
               <label className="grid gap-1.5 text-xs font-medium">
                 Description
                 <textarea
-                  className={TEXTAREA}
+                  className={AGENT_TEXTAREA_CLASS}
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
                   placeholder="What does this agent help you with?"
@@ -284,7 +266,7 @@ export function CreateAgentDialog({
               <label className="grid gap-1.5 text-xs font-medium">
                 Soul
                 <textarea
-                  className={TEXTAREA}
+                  className={AGENT_TEXTAREA_CLASS}
                   value={soul}
                   onChange={(event) => setSoul(event.target.value)}
                   placeholder="Values, personality, boundaries, and how your agent should treat you."
@@ -298,7 +280,7 @@ export function CreateAgentDialog({
               <label className="grid gap-1.5 text-xs font-medium">
                 Working instructions
                 <textarea
-                  className={TEXTAREA}
+                  className={AGENT_TEXTAREA_CLASS}
                   value={instructions}
                   onChange={(event) => setInstructions(event.target.value)}
                   placeholder="What should it focus on and how should it approach tasks?"
@@ -340,6 +322,31 @@ export function CreateAgentDialog({
                   required
                 />
               </label>
+              <fieldset className="grid gap-2">
+                <legend className="text-xs font-medium">Computer</legend>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant={computerTarget === "host" ? "default" : "outline"}
+                    onClick={() => setComputerTarget("host")}
+                  >
+                    This computer
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={
+                      computerTarget === "virtual" ? "default" : "outline"
+                    }
+                    onClick={() => setComputerTarget("virtual")}
+                  >
+                    Shared VM
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  All agents using Shared VM connect to the same virtual desktop
+                  configured in Settings.
+                </p>
+              </fieldset>
               <p className="rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
                 Keep your existing provider login. App connections are optional
                 and can be added next.
@@ -441,7 +448,7 @@ export function CreateAgentDialog({
             <Button type="submit" disabled={saving || invalidStep}>
               {saving
                 ? "Creating…"
-                : step === STEPS.length - 1
+                : step === AGENT_WIZARD_STEPS.length - 1
                   ? "Create agent"
                   : "Continue"}
             </Button>

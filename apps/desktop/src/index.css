@@ -92,7 +92,7 @@
   --shadow-spread: var(--shadow-spread);
   --shadow-blur: var(--shadow-blur);
   --shadow-opacity: var(--shadow-opacity);
-  --color-shadow-color: var(--shadow-color)
+  --color-shadow-color: var(--shadow-color);
 }
 
 :root {
@@ -143,7 +143,7 @@
   --accent: var(--md-sys-color-primary-container);
   --accent-foreground: var(--md-sys-color-on-primary-container);
   --destructive: var(--md-sys-color-error);
-  --destructive-foreground: oklch(1.0000 0 0);
+  --destructive-foreground: oklch(1 0 0);
   --border: var(--md-sys-color-outline-variant);
   --input: var(--md-sys-color-outline);
   --ring: var(--primary);
@@ -363,11 +363,15 @@
   --tracking-normal: -0.01em;
   --shadow-2xs: 0 4px 10px 0 hsl(0 0% 0% / 0.03);
   --shadow-xs: 0 4px 10px 0 hsl(0 0% 0% / 0.03);
-  --shadow-sm: 0 4px 10px 0 hsl(0 0% 0% / 0.05), 0 1px 2px -1px hsl(0 0% 0% / 0.05);
+  --shadow-sm:
+    0 4px 10px 0 hsl(0 0% 0% / 0.05), 0 1px 2px -1px hsl(0 0% 0% / 0.05);
   --shadow: var(--shadow-sm);
-  --shadow-md: 0 4px 10px 0 hsl(0 0% 0% / 0.05), 0 2px 4px -1px hsl(0 0% 0% / 0.05);
-  --shadow-lg: 0 4px 10px 0 hsl(0 0% 0% / 0.05), 0 4px 6px -1px hsl(0 0% 0% / 0.05);
-  --shadow-xl: 0 4px 10px 0 hsl(0 0% 0% / 0.05), 0 8px 10px -1px hsl(0 0% 0% / 0.05);
+  --shadow-md:
+    0 4px 10px 0 hsl(0 0% 0% / 0.05), 0 2px 4px -1px hsl(0 0% 0% / 0.05);
+  --shadow-lg:
+    0 4px 10px 0 hsl(0 0% 0% / 0.05), 0 4px 6px -1px hsl(0 0% 0% / 0.05);
+  --shadow-xl:
+    0 4px 10px 0 hsl(0 0% 0% / 0.05), 0 8px 10px -1px hsl(0 0% 0% / 0.05);
   --shadow-2xl: 0 4px 10px 0 hsl(0 0% 0% / 0.13);
 }
 
@@ -406,12 +410,46 @@
   --sidebar-ring: oklch(0.5017 0.0487 151.7958);
   --shadow-2xs: 0 12px 24px 0 hsl(0 0% 0% / 0.2);
   --shadow-xs: 0 12px 24px 0 hsl(0 0% 0% / 0.2);
-  --shadow-sm: 0 12px 24px 0 hsl(0 0% 0% / 0.4), 0 1px 2px -1px hsl(0 0% 0% / 0.4);
+  --shadow-sm:
+    0 12px 24px 0 hsl(0 0% 0% / 0.4), 0 1px 2px -1px hsl(0 0% 0% / 0.4);
   --shadow: var(--shadow-sm);
-  --shadow-md: 0 12px 24px 0 hsl(0 0% 0% / 0.4), 0 2px 4px -1px hsl(0 0% 0% / 0.4);
-  --shadow-lg: 0 12px 24px 0 hsl(0 0% 0% / 0.4), 0 4px 6px -1px hsl(0 0% 0% / 0.4);
-  --shadow-xl: 0 12px 24px 0 hsl(0 0% 0% / 0.4), 0 8px 10px -1px hsl(0 0% 0% / 0.4);
+  --shadow-md:
+    0 12px 24px 0 hsl(0 0% 0% / 0.4), 0 2px 4px -1px hsl(0 0% 0% / 0.4);
+  --shadow-lg:
+    0 12px 24px 0 hsl(0 0% 0% / 0.4), 0 4px 6px -1px hsl(0 0% 0% / 0.4);
+  --shadow-xl:
+    0 12px 24px 0 hsl(0 0% 0% / 0.4), 0 8px 10px -1px hsl(0 0% 0% / 0.4);
   --shadow-2xl: 0 12px 24px 0 hsl(0 0% 0% / 1);
+}
+
+/* Warm desktop palette inspired by focused creative tools. */
+.dark {
+  --background: #17130f;
+  --foreground: #e9e1d7;
+  --card: #211b16;
+  --card-foreground: #e9e1d7;
+  --popover: #211b16;
+  --popover-foreground: #e9e1d7;
+  --primary: #b47a31;
+  --primary-foreground: #fff8ed;
+  --secondary: #2a231d;
+  --secondary-foreground: #e9e1d7;
+  --muted: #29231d;
+  --muted-foreground: #a79d90;
+  --accent: #34271a;
+  --accent-foreground: #f1c27d;
+  --border: #342c24;
+  --input: #44392e;
+  --ring: #b47a31;
+  --sidebar: #14110e;
+  --sidebar-foreground: #e9e1d7;
+  --sidebar-primary: #b47a31;
+  --sidebar-primary-foreground: #fff8ed;
+  --sidebar-accent: #28211b;
+  --sidebar-accent-foreground: #fff8ed;
+  --sidebar-border: #28221c;
+  --sidebar-ring: #b47a31;
+  --memo-composer-elevation: 0 10px 32px -22px rgb(0 0 0 / 70%);
 }
 
 @utility drag {
@@ -437,21 +475,31 @@
 
   .liquid-panel {
     background:
-      linear-gradient(135deg, color-mix(in oklab, var(--sidebar) 88%, white 4%), color-mix(in oklab, var(--sidebar) 76%, transparent)),
+      linear-gradient(
+        160deg,
+        color-mix(in oklab, var(--sidebar) 96%, white 1%),
+        color-mix(in oklab, var(--sidebar) 86%, transparent)
+      ),
       color-mix(in oklab, var(--sidebar) 80%, transparent);
-    box-shadow: inset -1px 0 0 color-mix(in oklab, var(--foreground) 8%, transparent);
+    box-shadow:
+      inset -1px 0 0 color-mix(in oklab, var(--foreground) 8%, transparent),
+      10px 0 32px -28px color-mix(in oklab, black 55%, transparent);
   }
 
   .liquid-titlebar {
-    background: linear-gradient(180deg, color-mix(in oklab, var(--background) 78%, white 3%), color-mix(in oklab, var(--background) 58%, transparent));
+    background: color-mix(in oklab, var(--background) 92%, transparent);
     backdrop-filter: blur(28px) saturate(150%);
     -webkit-backdrop-filter: blur(28px) saturate(150%);
-    box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--foreground) 6%, transparent);
+    box-shadow: inset 0 -1px 0
+      color-mix(in oklab, var(--foreground) 6%, transparent);
   }
 
   .liquid-dialog {
-    background:
-      linear-gradient(145deg, color-mix(in oklab, var(--popover) 82%, white 5%), color-mix(in oklab, var(--popover) 70%, transparent));
+    background: linear-gradient(
+      145deg,
+      color-mix(in oklab, var(--popover) 82%, white 5%),
+      color-mix(in oklab, var(--popover) 70%, transparent)
+    );
     backdrop-filter: blur(36px) saturate(155%);
     -webkit-backdrop-filter: blur(36px) saturate(155%);
     box-shadow:
@@ -461,8 +509,11 @@
   }
 
   [data-slot="aui_composer-shell"] {
-    background:
-      linear-gradient(135deg, color-mix(in oklab, var(--card) 76%, white 4%), color-mix(in oklab, var(--card) 60%, transparent));
+    background: linear-gradient(
+      135deg,
+      color-mix(in oklab, var(--card) 92%, white 2%),
+      color-mix(in oklab, var(--card) 84%, transparent)
+    );
     box-shadow:
       inset 0 1px 0 color-mix(in oklab, white 14%, transparent),
       inset 0 0 0 1px color-mix(in oklab, var(--foreground) 7%, transparent),
@@ -471,7 +522,11 @@
 
   [data-slot="sidebar-menu-button"]:hover,
   [data-slot="sidebar-menu-button"][data-active] {
-    background: linear-gradient(135deg, color-mix(in oklab, var(--sidebar-accent) 82%, white 4%), color-mix(in oklab, var(--sidebar-accent) 62%, transparent));
+    background: color-mix(
+      in oklab,
+      var(--sidebar-accent) 92%,
+      var(--primary) 5%
+    );
     box-shadow: inset 0 1px 0 color-mix(in oklab, white 10%, transparent);
   }
 
@@ -503,7 +558,14 @@
   }
 
   [data-slot="aui_composer-shell"]:focus-within {
-    box-shadow: var(--shadow-md);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--primary) 30%, transparent),
+      var(--shadow-lg);
+  }
+
+  .agent-title-pill {
+    backdrop-filter: blur(20px) saturate(120%);
+    -webkit-backdrop-filter: blur(20px) saturate(120%);
   }
 
   .aui-thread-welcome-suggestion {
@@ -578,7 +640,7 @@
     @apply m-0 overflow-hidden bg-background text-foreground;
     background-image: linear-gradient(
       180deg,
-      color-mix(in srgb, var(--background) 94%, var(--primary)),
+      color-mix(in srgb, var(--background) 98%, var(--primary)),
       var(--background)
     );
     letter-spacing: var(--tracking-normal);
@@ -595,6 +657,20 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-height: 700px) {
+  .memo-thread-content {
+    padding-top: 1.75rem;
+  }
+
+  .memo-welcome {
+    margin-bottom: 1rem;
+  }
+
+  .memo-starters {
+    margin-top: 0.75rem;
   }
 }
 

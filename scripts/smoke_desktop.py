@@ -153,6 +153,17 @@ def check(*, broken: bool) -> None:
                     "document.body.innerText"
                 )
                 assert "Nova" in evaluate("document.body.innerText")
+                # Settings must expose actionable provider health and app
+                # integration state through the renderer/IPC boundary.
+                evaluate(
+                    "Array.from(document.querySelectorAll('button')).find(b => "
+                    "b.innerText.includes('Settings')).click()"
+                )
+                wait_text("System health")
+                wait_text("Gateway")
+                wait_text("Codex")
+                wait_text("App connections")
+                evaluate("""document.querySelector('[aria-label="Close"]')?.click()""")
                 # Removing the last agent should return to onboarding.
                 evaluate(
                     "document.querySelector('[aria-label=\"Delete Nova\"]').click()"

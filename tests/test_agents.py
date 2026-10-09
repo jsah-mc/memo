@@ -30,6 +30,10 @@ class AgentStoreTests(TestCase):
 
             reloaded = AgentStore(path)
             self.assertEqual(reloaded.list()[0]["id"], created["id"])
+            self.assertEqual(reloaded.list()[0]["computerTarget"], "host")
+            updated = reloaded.update(created["id"], {"computerTarget": "virtual"})
+            self.assertEqual(updated["computerTarget"], "virtual")
+            self.assertEqual(AgentStore(path).list()[0]["computerTarget"], "virtual")
             with self.assertRaises(ValueError):
                 reloaded.delete("memo")
 
@@ -85,6 +89,12 @@ class AgentStoreTests(TestCase):
             self.assertEqual(response.status_code, 201)
             agent_id = response.json()["id"]
             self.assertEqual(len(client.get("/v1/agents").json()["data"]), 1)
+            updated = client.patch(
+                f"/v1/agents/{agent_id}",
+                json={"computerTarget": "virtual"},
+            )
+            self.assertEqual(updated.status_code, 200)
+            self.assertEqual(updated.json()["computerTarget"], "virtual")
             self.assertEqual(client.delete(f"/v1/agents/{agent_id}").status_code, 204)
             self.assertEqual(client.delete("/v1/agents/memo").status_code, 409)
 

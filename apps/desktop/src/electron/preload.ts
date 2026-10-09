@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("desktopApi", {
+  platform: process.platform,
+  windowControls: {
+    minimize: () => ipcRenderer.send("window:minimize"),
+    toggleMaximize: () => ipcRenderer.send("window:toggle-maximize"),
+    close: () => ipcRenderer.send("window:close"),
+  },
   streamChat: (
     request: {
       id: string;
@@ -44,8 +50,17 @@ contextBridge.exposeInMainWorld("desktopApi", {
   cancelChat: (requestId: string) => ipcRenderer.send("chat:cancel", requestId),
   agents: {
     list: () => ipcRenderer.invoke("agents:list"),
+    backends: () => ipcRenderer.invoke("agents:backends"),
     create: (agent: unknown) => ipcRenderer.invoke("agents:create", agent),
     delete: (agentId: string) => ipcRenderer.invoke("agents:delete", agentId),
+    update: (
+      agentId: string,
+      changes: {
+        computerTarget?: "host" | "virtual";
+        cli?: string;
+        model?: string;
+      },
+    ) => ipcRenderer.invoke("agents:update", agentId, changes),
   },
   onPermissionRequest: (onRequest: (request: unknown) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, request: unknown) =>
@@ -56,14 +71,28 @@ contextBridge.exposeInMainWorld("desktopApi", {
   respondPermission: (response: { id: string; allowed: boolean }) =>
     ipcRenderer.send("permission:respond", response),
   getGatewayStatus: () => ipcRenderer.invoke("gateway:status"),
+  getSystemHealth: () => ipcRenderer.invoke("system:health"),
+  openCodexHelp: () => ipcRenderer.invoke("auth:open-codex-help"),
   restartGateway: () => ipcRenderer.invoke("gateway:restart"),
+  virtualDesktop: {
+    get: () => ipcRenderer.invoke("virtual-desktop:get"),
+    save: (settings: { endpoint: string; token?: string }) =>
+      ipcRenderer.invoke("virtual-desktop:save", settings),
+    start: () => ipcRenderer.invoke("virtual-desktop:start"),
+    stop: () => ipcRenderer.invoke("virtual-desktop:stop"),
+    open: () => ipcRenderer.invoke("virtual-desktop:open"),
+    preview: () => ipcRenderer.invoke("virtual-desktop:preview"),
+  },
   getComposioStatus: () => ipcRenderer.invoke("composio:status"),
-  getComposioToolkits: (search = "") => ipcRenderer.invoke("composio:toolkits", search),
+  getComposioToolkits: (search = "") =>
+    ipcRenderer.invoke("composio:toolkits", search),
   getComposioConnections: () => ipcRenderer.invoke("composio:connections"),
-  disconnectComposio: (connectionId: string) => ipcRenderer.invoke("composio:disconnect", connectionId),
+  disconnectComposio: (connectionId: string) =>
+    ipcRenderer.invoke("composio:disconnect", connectionId),
   getComposioKeyStatus: () => ipcRenderer.invoke("composio:key-status"),
   setComposioKey: (key: string) => ipcRenderer.invoke("composio:set-key", key),
-  authorizeComposio: (toolkit: string) => ipcRenderer.invoke("composio:authorize", toolkit),
+  authorizeComposio: (toolkit: string) =>
+    ipcRenderer.invoke("composio:authorize", toolkit),
   traceSpeech: (stage: string) => ipcRenderer.send("speech:trace", stage),
   prepareSpeech: () => ipcRenderer.invoke("speech:prepare"),
   transcribeSpeech: (request: {

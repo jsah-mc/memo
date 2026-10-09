@@ -15,12 +15,21 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     executableName: "Memo",
-    extraResource: [path.resolve(__dirname, "../../.gateway-build/gateway")],
+    extraResource: [
+      path.resolve(__dirname, "../../.gateway-build/gateway"),
+      path.resolve(__dirname, "../../deploy/cua-desktop"),
+    ],
   },
   hooks: {
     prePackage: async () => {
-      if (!existsSync(path.resolve(__dirname, "../../.gateway-build/gateway/manifest.json"))) {
-        throw new Error("Build the bundled gateway first: python scripts/build_gateway.py");
+      if (
+        !existsSync(
+          path.resolve(__dirname, "../../.gateway-build/gateway/manifest.json"),
+        )
+      ) {
+        throw new Error(
+          "Build the bundled gateway first: python scripts/build_gateway.py",
+        );
       }
     },
     postPackage: async (_config, { outputPaths, platform }) => {
@@ -29,8 +38,12 @@ const config: ForgeConfig = {
         const bundle = path.join(output, "Memo.app");
         // Clearing extended attributes is cleanup, not code signing.
         execFileSync("xattr", ["-cr", bundle]);
-        execFileSync("codesign", ["--force", "--deep", "--sign", "-", bundle], { stdio: "inherit" });
-        execFileSync("codesign", ["--verify", "--deep", "--strict", bundle], { stdio: "inherit" });
+        execFileSync("codesign", ["--force", "--deep", "--sign", "-", bundle], {
+          stdio: "inherit",
+        });
+        execFileSync("codesign", ["--verify", "--deep", "--strict", bundle], {
+          stdio: "inherit",
+        });
       }
     },
   },

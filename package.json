@@ -1,6 +1,6 @@
 {
   "name": "memo",
-  "version": "0.1.0",
+  "version": "1.1.2",
   "private": true,
   "packageManager": "pnpm@11.15.1",
   "scripts": {
@@ -12,7 +12,8 @@
     "package": "pnpm --filter @memo/desktop package",
     "make": "pnpm --filter @memo/desktop make",
     "lint": "pnpm --filter @memo/desktop lint",
-    "typecheck": "pnpm --filter @memo/desktop typecheck"
+    "typecheck": "pnpm --filter @memo/desktop typecheck",
+    "version:sync": "node scripts/sync-version.mjs"
   },
   "devDependencies": {
     "lodash": "4.17.21"

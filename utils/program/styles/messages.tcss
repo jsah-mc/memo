@@ -3,6 +3,10 @@ Screen {
   color: $text;
 }
 
+Screen.desktop-control-active {
+  border: tall $warning;
+}
+
 .chat-message {
   width: 100%;
   height: auto;

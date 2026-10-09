@@ -4,17 +4,31 @@ from __future__ import annotations
 
 import base64
 import io
+import os
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import ClassVar, TypedDict
 
 import anyio
+import cua
 from cua_driver import CuaDriver, GetDesktopStateInput
 from PIL import Image
 from pydantic import JsonValue
 
-from .cua_actions import ActionBatch, PointerAction, perform, require_success
+from .cua_actions import (
+    AGENT_CURSOR_SESSION,
+    ActionBatch,
+    HotkeyAction,
+    PointerAction,
+    PressAction,
+    ScrollAction,
+    TypeAction,
+    WaitAction,
+    normalized_key,
+    perform,
+    require_success,
+)
 from .desktop_schema import (
     CONTROL_TOOL_DEFINITION,
     MAX_SCREEN_EDGE,
@@ -65,6 +79,46 @@ async def driver_session() -> AsyncIterator[CuaDriver]:
             await driver.shutdown()
 
 
+async def remote_client():
+    endpoint = os.environ.get("MEMO_CUA_ENDPOINT", "").strip()
+    token = os.environ.get("MEMO_CUA_TOKEN", "").strip()
+    if not endpoint or not token:
+        raise DesktopInputError(
+            "The virtual desktop endpoint or access token is missing."
+        )
+    return await cua.embedded().spacesd(endpoint, token)
+
+
+async def perform_remote(client, action, point: tuple[int, int]) -> None:
+    """Dispatch the same bounded Memo actions through cua-spacesd."""
+    x, y = point
+    match action:
+        case PointerAction(action="move"):
+            await client.move_to(x, y)
+        case PointerAction(action="double_click"):
+            await client.double_click(x, y)
+        case PointerAction(button="right"):
+            await client.right_click(x, y)
+        case PointerAction(button="middle"):
+            raise DesktopInputError(
+                "Middle-click is not available on a virtual desktop."
+            )
+        case PointerAction():
+            await client.click(x, y)
+        case TypeAction():
+            await client.type_text(action.text)
+        case PressAction():
+            await client.press(normalized_key(action.key))
+        case HotkeyAction():
+            await client.hotkey([normalized_key(key) for key in action.keys])
+        case ScrollAction(amount=0):
+            return
+        case ScrollAction():
+            await client.scroll(0, -action.amount * 80)
+        case WaitAction():
+            await anyio.sleep(action.seconds)
+
+
 class CuaDesktopController:
     """Track screenshot geometry while CUA owns native desktop interaction."""
 
@@ -73,23 +127,34 @@ class CuaDesktopController:
     names: ClassVar[set[str]] = {screen_name, control_name}
     responses_definitions: ClassVar = [SCREEN_TOOL_DEFINITION, CONTROL_TOOL_DEFINITION]
 
-    def __init__(self) -> None:
+    def __init__(self, target: str = "host") -> None:
+        self._target = target
         self._geometry: ScreenGeometry | None = None
         self._point = (0, 0)
         self._lock = anyio.Lock()
 
-    async def _capture(self, driver: CuaDriver) -> ScreenCapture:
+    async def _capture(
+        self, driver: CuaDriver | None = None, remote=None
+    ) -> ScreenCapture:
         previous_geometry = self._geometry
         self._geometry = None
-        result = await driver.get_desktop_state(
-            GetDesktopStateInput(session=None, screenshot_out_file=None)
-        )
-        require_success(result)
-        if not result.images:
-            message = "CUA driver returned no desktop screenshot."
-            raise DesktopInputError(message)
-        encoded = result.images[0].data_base64
-        with Image.open(io.BytesIO(base64.b64decode(encoded, validate=True))) as source:
+        if remote is not None:
+            shot = await remote.screenshot(None)
+            raw_image = shot.image
+        else:
+            assert driver is not None
+            result = await driver.get_desktop_state(
+                GetDesktopStateInput(
+                    session=AGENT_CURSOR_SESSION,
+                    screenshot_out_file=None,
+                )
+            )
+            require_success(result)
+            if not result.images:
+                message = "CUA driver returned no desktop screenshot."
+                raise DesktopInputError(message)
+            raw_image = base64.b64decode(result.images[0].data_base64, validate=True)
+        with Image.open(io.BytesIO(raw_image)) as source:
             native = source.size
             image = source.convert("RGB")
         image.thumbnail((MAX_SCREEN_EDGE, MAX_SCREEN_EDGE), Image.Resampling.LANCZOS)
@@ -115,8 +180,11 @@ class CuaDesktopController:
         )
 
     async def capture(self) -> ScreenCapture:
-        async with self._lock, driver_session() as driver:
-            return await self._capture(driver)
+        async with self._lock:
+            if self._target == "virtual":
+                return await self._capture(remote=await remote_client())
+            async with driver_session() as driver:
+                return await self._capture(driver=driver)
 
     async def control(self, arguments: Mapping[str, JsonValue]) -> ScreenCapture:
         batch = ActionBatch.model_validate(arguments)
@@ -131,10 +199,17 @@ class CuaDesktopController:
                 if isinstance(action, PointerAction):
                     point = geometry.point(action)
                 points.append(point)
-            async with driver_session() as driver:
+            if self._target == "virtual":
+                remote = await remote_client()
                 for action, point in zip(batch.actions, points, strict=True):
-                    await perform(driver, action, point)
+                    await perform_remote(remote, action, point)
                     self._point = point
-                result = await self._capture(driver)
+                result = await self._capture(remote=remote)
+            else:
+                async with driver_session() as driver:
+                    for action, point in zip(batch.actions, points, strict=True):
+                        await perform(driver, action, point)
+                        self._point = point
+                    result = await self._capture(driver=driver)
             result["actions_completed"] = len(batch.actions)
             return result

@@ -22,6 +22,11 @@ with a balanced style and their instructions as the initial soul. Profiles and
 chat history stay in the desktop user-data directory across updates. Deleting
 the last agent opens onboarding again.
 
+Settings includes a system-health panel for the managed gateway and Codex login.
+If credentials are missing or expired, run `codex login`, return to Memo, and
+refresh the panel. Diagnostics report credential state and expiry only; tokens
+never cross into the renderer.
+
 Settings searches Composio's app catalog, shows connection status, supports reconnecting or
 adding accounts, and lets you disconnect an account. Sign-in opens in your
 browser; Memo refreshes the connection status while you complete it. Each agent
@@ -212,6 +217,11 @@ MoonKart start and stop requests remain OpenAI-compatible function calls and sen
 `S` only after an explicit user request.
 
 ## Restricted computer tools
+
+For an isolated desktop that can run locally or on a VPS, see
+[`deploy/cua-desktop`](deploy/cua-desktop/README.md). It uses CUA's canonical
+Linux sandbox image, persists `/workspace` in a Docker volume, and binds
+the control endpoint to localhost for SSH-tunnel access.
 
 The Textual program can run a deliberately small set of commands and open
 Windows apps. Command files are confined to `.memo-sandbox/`;

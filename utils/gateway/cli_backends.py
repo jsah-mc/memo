@@ -32,6 +32,7 @@ CLI_BACKENDS: tuple[CLIBackend, ...] = (
     CLIBackend("lmstudio", "LM Studio", "lms", None, "not-applicable"),
     CLIBackend("grok-build", "Grok Build", "grok-build", "--model", "isolated"),
     CLIBackend("cursor", "Cursor Agent", "cursor-agent", "--model", "isolated"),
+    CLIBackend("hermes", "Hermes Agent", "hermes", "--model", "disabled"),
     CLIBackend("pi", "Pi", "pi", "--model", "disabled"),
 )
 

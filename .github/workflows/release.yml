@@ -45,6 +45,8 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: >-
           node -e "const p = require('./apps/desktop/package.json'); if (process.env.RELEASE_TAG !== 'v' + p.version) { throw new Error('Release tag must match apps/desktop/package.json version: v' + p.version); }"
+      - name: Check synchronized project versions
+        run: node scripts/tests/version-sync.test.mjs
       - name: Install Linux packaging tools
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y fakeroot rpm zstd portaudio19-dev

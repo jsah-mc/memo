@@ -2,11 +2,14 @@ import { app, ipcMain } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { getComposioKey, getComposioUserId } from "./settings-store";
+import {
+  getComposioKey,
+  getComposioUserId,
+  getComputerSettings,
+} from "./settings-store";
 import { bundledGatewayLaunch } from "./gateway-runtime";
 
-const DESKTOP_GATEWAY_PORT =
-  process.env.MEMO_DESKTOP_GATEWAY_PORT ?? "4010";
+const DESKTOP_GATEWAY_PORT = process.env.MEMO_DESKTOP_GATEWAY_PORT ?? "4010";
 export const GATEWAY_BASE_URL = `http://127.0.0.1:${DESKTOP_GATEWAY_PORT}`;
 const GATEWAY_URL = `${GATEWAY_BASE_URL}/health/liveliness`;
 const STARTUP_TIMEOUT_MS = 90_000;
@@ -43,9 +46,7 @@ function isMemoRoot(candidate: string) {
   if (!existsSync(projectFile)) return false;
 
   try {
-    return /\bname\s*=\s*["']memo["']/.test(
-      readFileSync(projectFile, "utf8"),
-    );
+    return /\bname\s*=\s*["']memo["']/.test(readFileSync(projectFile, "utf8"));
   } catch {
     return false;
   }
@@ -121,10 +122,7 @@ async function probeGateway(timeout = 1_000): Promise<GatewayStatus> {
       memo_api_version?: unknown;
       desktop_control?: unknown;
     };
-    if (
-      payload.memo_api_version !== 2 ||
-      payload.desktop_control !== true
-    ) {
+    if (payload.memo_api_version !== 2 || payload.desktop_control !== true) {
       return {
         state: "error",
         running: false,
@@ -159,7 +157,11 @@ async function startGateway() {
   let launch: { command: string; args: string[]; cwd: string };
   try {
     if (app.isPackaged && !process.env.MEMO_GATEWAY_ROOT) {
-      launch = bundledGatewayLaunch(process.resourcesPath, app.getPath("userData"), process.platform);
+      launch = bundledGatewayLaunch(
+        process.resourcesPath,
+        app.getPath("userData"),
+        process.platform,
+      );
     } else {
       const root = findMemoRoot();
       launch = { ...gatewayCommand(root), cwd: root };
@@ -181,12 +183,26 @@ async function startGateway() {
       GATEWAY_HOST: "127.0.0.1",
       GATEWAY_PORT: DESKTOP_GATEWAY_PORT,
       MEMO_SANDBOX_ROOT: path.join(app.getPath("userData"), "workspace"),
-      ...(app.isPackaged ? {
-        PYTHONHOME: "", PYTHONPATH: "",
-        LD_LIBRARY_PATH: path.join(process.resourcesPath, "gateway", "runtime", "lib"),
-        DYLD_FALLBACK_LIBRARY_PATH: path.join(process.resourcesPath, "gateway", "runtime", "lib"),
-        MEMO_WHISPER_DEVICE: "cpu", MEMO_POCKETTTS_DEVICE: "cpu",
-      } : {}),
+      ...(app.isPackaged
+        ? {
+            PYTHONHOME: "",
+            PYTHONPATH: "",
+            LD_LIBRARY_PATH: path.join(
+              process.resourcesPath,
+              "gateway",
+              "runtime",
+              "lib",
+            ),
+            DYLD_FALLBACK_LIBRARY_PATH: path.join(
+              process.resourcesPath,
+              "gateway",
+              "runtime",
+              "lib",
+            ),
+            MEMO_WHISPER_DEVICE: "cpu",
+            MEMO_POCKETTTS_DEVICE: "cpu",
+          }
+        : {}),
       MEMO_COMPUTER_ENABLED: "1",
       // Loading both local speech models can monopolize startup long enough
       // for the desktop health check to treat the gateway as unavailable.
@@ -196,6 +212,8 @@ async function startGateway() {
       MEMO_AGENT_STORE: path.join(app.getPath("userData"), "agents.json"),
       COMPOSIO_API_KEY: getComposioKey() || process.env.COMPOSIO_API_KEY,
       MEMO_COMPOSIO_USER_ID: getComposioUserId(),
+      MEMO_CUA_ENDPOINT: getComputerSettings().endpoint,
+      MEMO_CUA_TOKEN: getComputerSettings().token,
     },
     windowsHide: true,
     stdio: ["ignore", "ignore", "pipe"],

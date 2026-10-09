@@ -1,6 +1,6 @@
 [project]
 name = "memo"
-version = "0.1.0"
+version = "1.1.2"
 description = "An OpenAI-compatible agent gateway"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
@@ -28,6 +28,7 @@ dependencies = [
     "ruff>=0.16.0",
     "cua-driver==0.23.2",
     "composio>=0.20.0",
+    "cua>=0.4.1,<0.5",
 ]
 
 [project.scripts]

@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useRef, type ReactNode } from "react";
 import {
   AssistantRuntimeProvider,
   type AttachmentAdapter,
@@ -22,6 +22,11 @@ import { nativeSpeechDictationAdapter } from "@/lib/native-speech-dictation";
 import { agentSystemPrompt } from "@/agents/agent-personality";
 import { useAgents } from "@/agents/agent-provider";
 import type { AgentProfile } from "@/agents/agent-provider";
+import { setAgentActivity } from "@/agents/agent-activity";
+import {
+  threadModelKey,
+  useThreadModels,
+} from "@/agents/thread-model-provider";
 
 const fileToDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -134,6 +139,7 @@ const appendModelPart = (
 
 const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
   async *run({ messages, abortSignal }) {
+    setAgentActivity(agent.id, "loading");
     const requestId = crypto.randomUUID();
     const request = {
       id: requestId,
@@ -143,34 +149,37 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
         composioEnabled: agent.composioEnabled,
         composioUserId: agent.composioUserId,
         composioToolkits: agent.composioToolkits,
+        computerTarget: agent.computerTarget,
       },
       messages: [
         { role: "system" as const, content: agentSystemPrompt(agent) },
         ...messages
-        .map((message) => {
-          const content: DesktopContentPart[] = [];
-          for (const part of message.content) {
-            appendModelPart(content, part);
-          }
-          if (message.role === "user") {
-            for (const attachment of message.attachments) {
-              for (const part of attachment.content) {
-                appendModelPart(content, part);
+          .map((message) => {
+            const content: DesktopContentPart[] = [];
+            for (const part of message.content) {
+              appendModelPart(content, part);
+            }
+            if (message.role === "user") {
+              for (const attachment of message.attachments) {
+                for (const part of attachment.content) {
+                  appendModelPart(content, part);
+                }
               }
             }
-          }
 
-          const hasAttachment = content.some((part) => part.type !== "text");
-          return {
-            role: message.role,
-            content: hasAttachment
-              ? content
-              : content
-                  .flatMap((part) => (part.type === "text" ? [part.text] : []))
-                  .join("\n"),
-          };
-        })
-        .filter((message) => message.content.length > 0),
+            const hasAttachment = content.some((part) => part.type !== "text");
+            return {
+              role: message.role,
+              content: hasAttachment
+                ? content
+                : content
+                    .flatMap((part) =>
+                      part.type === "text" ? [part.text] : [],
+                    )
+                    .join("\n"),
+            };
+          })
+          .filter((message) => message.content.length > 0),
       ],
     };
 
@@ -263,6 +272,10 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
           break;
         }
       }
+      setAgentActivity(agent.id, abortSignal.aborted ? "idle" : "done");
+    } catch (error) {
+      setAgentActivity(agent.id, abortSignal.aborted ? "idle" : "error");
+      throw error;
     } finally {
       streamClosed = true;
       wake = undefined;
@@ -276,9 +289,20 @@ export function RuntimeProvider({
   children,
 }: Readonly<{ children: ReactNode }>) {
   const { activeAgent } = useAgents();
-  const modelAdapter = useMemo(
-    () => createModelAdapter(activeAgent),
-    [activeAgent],
+  const { activeThreadId, selections } = useThreadModels();
+  const saved = selections[threadModelKey(activeAgent.id, activeThreadId)];
+  const effectiveAgent = {
+    ...activeAgent,
+    cli: saved?.cli ?? activeAgent.cli,
+    model: saved?.model ?? activeAgent.model,
+  };
+  const activeAgentRef = useRef(effectiveAgent);
+  activeAgentRef.current = effectiveAgent;
+  const modelAdapter = useMemo<ChatModelAdapter>(
+    () => ({
+      run: (options) => createModelAdapter(activeAgentRef.current).run(options),
+    }),
+    [],
   );
   const runtime = useRemoteThreadListRuntime({
     adapter: threadListAdapter,

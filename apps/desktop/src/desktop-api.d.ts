@@ -3,6 +3,12 @@ export {};
 declare global {
   interface Window {
     desktopApi: {
+      platform: NodeJS.Platform;
+      windowControls: {
+        minimize(): void;
+        toggleMaximize(): void;
+        close(): void;
+      };
       streamChat(
         request: {
           id: string;
@@ -12,6 +18,7 @@ declare global {
             composioEnabled: boolean;
             composioUserId: string;
             composioToolkits: readonly string[];
+            computerTarget: "host" | "virtual";
           };
           messages: Array<{
             role: "system" | "user" | "assistant";
@@ -32,24 +39,61 @@ declare global {
       cancelChat(requestId: string): void;
       agents: {
         list(): Promise<AgentProfileData[]>;
+        backends(): Promise<AgentBackendData[]>;
         create(agent: NewAgentData): Promise<AgentProfileData>;
         delete(agentId: string): Promise<void>;
+        update(
+          agentId: string,
+          changes: {
+            computerTarget?: "host" | "virtual";
+            cli?: string;
+            model?: string;
+          },
+        ): Promise<AgentProfileData>;
       };
       onPermissionRequest(
         onRequest: (request: PermissionRequest) => void,
       ): () => void;
       respondPermission(response: { id: string; allowed: boolean }): void;
       restartGateway(): Promise<void>;
+      virtualDesktop: {
+        get(): Promise<VirtualDesktopStatus>;
+        save(settings: {
+          endpoint: string;
+          token?: string;
+        }): Promise<{ saved: true }>;
+        start(): Promise<VirtualDesktopProbe>;
+        stop(): Promise<{
+          stopped: true;
+          containerEngine: "podman" | "docker";
+        }>;
+        open(): Promise<{ opened: true }>;
+        preview(): Promise<{ image: string }>;
+      };
       getGatewayStatus(): Promise<{
         state: "connecting" | "online" | "offline" | "error";
         running: boolean;
         latencyMs: number | null;
         message?: string;
       }>;
+      getSystemHealth(): Promise<{
+        status: "ok" | "degraded";
+        gateway: { status: string; api_version: number };
+        provider: {
+          id: string;
+          status: "ready" | "expired" | "missing" | "invalid";
+          message: string;
+          expires_at: number | null;
+        };
+        latency_ms: number;
+      }>;
+      openCodexHelp(): Promise<{ opened: true }>;
       getComposioStatus(): Promise<{ configured: boolean }>;
       getComposioKeyStatus(): Promise<{ hasKey: boolean }>;
       setComposioKey(key: string): Promise<{ saved: true }>;
-      getComposioToolkits(search?: string): Promise<{ data: Array<{ id: string; label: string }> }>;
+      getComposioToolkits(
+        search?: string,
+      ): Promise<{ data: Array<{ id: string; label: string }> }>;
       getComposioConnections(): Promise<{ data: ComposioConnection[] }>;
       disconnectComposio(connectionId: string): Promise<void>;
       authorizeComposio(toolkit: string): Promise<{ opened: true }>;
@@ -98,6 +142,18 @@ declare global {
 
   type ComposioConnection = { id: string; toolkit: string; status: string };
 
+  type VirtualDesktopProbe = {
+    reachable: boolean;
+    latencyMs: number | null;
+    message: string;
+    containerEngine?: "podman" | "docker" | null;
+  };
+  type VirtualDesktopStatus = VirtualDesktopProbe & {
+    endpoint: string;
+    hasToken: boolean;
+    containerEngine: "podman" | "docker" | null;
+  };
+
   type NewAgentData = {
     name: string;
     role: string;
@@ -111,11 +167,21 @@ declare global {
     composioEnabled: boolean;
     composioUserId: string;
     composioToolkits: readonly string[];
+    computerTarget: "host" | "virtual";
   };
 
   type AgentProfileData = NewAgentData & {
     id: string;
     builtIn?: boolean;
+  };
+
+  type AgentBackendData = {
+    id: string;
+    label: string;
+    executable: string;
+    model_flag: string | null;
+    native_tools_policy: string;
+    installed: boolean;
   };
 
   type PermissionRequest = {

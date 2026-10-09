@@ -45,6 +45,42 @@ class CodexAuth:
             or Path.home() / ".codex"
         ) / os.environ.get("CHATGPT_AUTH_FILE", "auth.json")
 
+    def status(self) -> dict[str, Any]:
+        """Return non-secret login diagnostics without refreshing credentials."""
+        if not self.path.is_file():
+            return {
+                "id": "chatgpt",
+                "status": "missing",
+                "message": "Codex is not signed in. Run `codex login`.",
+                "expires_at": None,
+            }
+        try:
+            tokens = self.read()
+        except RuntimeError as exc:
+            return {
+                "id": "chatgpt",
+                "status": "invalid",
+                "message": str(exc),
+                "expires_at": None,
+            }
+        access = tokens.get("access_token")
+        expiry = _claims(access or "").get("exp", tokens.get("expires_at"))
+        if not access:
+            state = "missing"
+            message = "Codex has no access token. Run `codex login`."
+        elif isinstance(expiry, (int, float)) and expiry <= time.time():
+            state = "expired"
+            message = "Codex sign-in has expired. Run `codex login` again."
+        else:
+            state = "ready"
+            message = "Codex credentials are available."
+        return {
+            "id": "chatgpt",
+            "status": state,
+            "message": message,
+            "expires_at": expiry if isinstance(expiry, (int, float)) else None,
+        }
+
     def read(self) -> dict[str, Any]:
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))

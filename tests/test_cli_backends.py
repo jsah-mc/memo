@@ -18,6 +18,7 @@ class CLIBackendRegistryTests(TestCase):
                 "lmstudio",
                 "grok-build",
                 "cursor",
+                "hermes",
                 "pi",
             },
         )
@@ -28,6 +29,13 @@ class CLIBackendRegistryTests(TestCase):
         )
         self.assertEqual(backend.executable, "claude")
         self.assertEqual(model, "sonnet")
+
+        hermes, hermes_model = validate_agent_config(
+            {"cli": "hermes", "model": "anthropic/claude-sonnet-4"}
+        )
+        self.assertEqual(hermes.executable, "hermes")
+        self.assertEqual(hermes.model_flag, "--model")
+        self.assertEqual(hermes_model, "anthropic/claude-sonnet-4")
 
         with self.assertRaisesRegex(ValueError, "Unknown CLI backend"):
             validate_agent_config({"cli": "unknown", "model": "model"})

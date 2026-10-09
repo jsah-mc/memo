@@ -20,6 +20,9 @@ from cua_driver import (
 from pydantic import BaseModel, ConfigDict, Field
 
 
+AGENT_CURSOR_SESSION = "memo-agent-control"
+
+
 class ActionModel(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
 
@@ -103,7 +106,7 @@ async def perform(driver: CuaDriver, action: Action, point: tuple[int, int]) -> 
                     y=y,
                     target=None,
                     scope=DesktopScope.DESKTOP,
-                    session=None,
+                    session=AGENT_CURSOR_SESSION,
                 )
             )
         case PointerAction():
@@ -113,7 +116,7 @@ async def perform(driver: CuaDriver, action: Action, point: tuple[int, int]) -> 
                     y=y,
                     target=None,
                     scope=DesktopScope.DESKTOP,
-                    session=None,
+                    session=AGENT_CURSOR_SESSION,
                     button={
                         "left": ClickButton.LEFT,
                         "right": ClickButton.RIGHT,
@@ -128,7 +131,7 @@ async def perform(driver: CuaDriver, action: Action, point: tuple[int, int]) -> 
                     text=action.text,
                     target=None,
                     scope=DesktopScope.DESKTOP,
-                    session=None,
+                    session=AGENT_CURSOR_SESSION,
                 )
             )
         case PressAction():
@@ -138,7 +141,7 @@ async def perform(driver: CuaDriver, action: Action, point: tuple[int, int]) -> 
                     modifiers=None,
                     target=None,
                     scope=DesktopScope.DESKTOP,
-                    session=None,
+                    session=AGENT_CURSOR_SESSION,
                 )
             )
         case HotkeyAction():
@@ -147,7 +150,7 @@ async def perform(driver: CuaDriver, action: Action, point: tuple[int, int]) -> 
                     keys=[normalized_key(key) for key in action.keys],
                     target=None,
                     scope=DesktopScope.DESKTOP,
-                    session=None,
+                    session=AGENT_CURSOR_SESSION,
                 )
             )
         case ScrollAction(amount=0):
@@ -164,7 +167,7 @@ async def perform(driver: CuaDriver, action: Action, point: tuple[int, int]) -> 
                     amount=abs(action.amount),
                     target=None,
                     scope=DesktopScope.DESKTOP,
-                    session=None,
+                    session=AGENT_CURSOR_SESSION,
                 )
             )
         case WaitAction():

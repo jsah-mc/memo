@@ -45,7 +45,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -63,6 +63,8 @@ jobs:
         run: |
           node scripts/tests/gateway-runtime.test.mjs
           node scripts/tests/agent-personality.test.mjs
+          node scripts/tests/desktop-security.test.mjs
+          node scripts/tests/version-sync.test.mjs
       - name: Typecheck
         run: npm run typecheck
       - name: Lint

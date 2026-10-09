@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import tempfile
@@ -10,6 +11,24 @@ from utils.codex_auth import CodexAuth, configure_codex_token_dir
 
 
 class CodexAuthTests(unittest.TestCase):
+    def test_status_reports_missing_without_exposing_secrets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            status = CodexAuth(Path(directory, "missing.json")).status()
+        self.assertEqual(status["status"], "missing")
+        self.assertNotIn("access_token", status)
+
+    def test_status_reports_expired_token(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "auth.json")
+            payload = base64.urlsafe_b64encode(b'{"exp":1}').decode().rstrip("=")
+            path.write_text(
+                json.dumps({"tokens": {"access_token": f"x.{payload}.x"}}),
+                encoding="utf-8",
+            )
+            status = CodexAuth(path).status()
+        self.assertEqual(status["status"], "expired")
+        self.assertEqual(status["expires_at"], 1)
+
     @unittest.skipIf(os.name == "nt", "Windows paths are native on Windows")
     def test_replaces_windows_token_directory_on_linux(self):
         with tempfile.TemporaryDirectory() as home:

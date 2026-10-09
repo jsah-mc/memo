@@ -1,0 +1,26 @@
+name: memo-cua
+
+services:
+  desktop:
+    build:
+      context: .
+    image: memo-cua-desktop:local
+    container_name: memo-cua-desktop
+    restart: unless-stopped
+    shm_size: "2gb"
+    environment:
+      CUA_ENV_TOKEN: ${CUA_ENV_TOKEN:?Set CUA_ENV_TOKEN in .env}
+      TZ: ${TZ:-America/Toronto}
+      API_PORT: 8000
+      NOVNC_PORT: 6901
+    ports:
+      # Deliberately localhost-only. On a VPS, connect through an SSH tunnel.
+      - "127.0.0.1:${CUA_PORT:-3211}:8000"
+      - "127.0.0.1:${CUA_VIEWER_PORT:-3212}:6901"
+    volumes:
+      - cua-workspace:/workspace
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  cua-workspace:

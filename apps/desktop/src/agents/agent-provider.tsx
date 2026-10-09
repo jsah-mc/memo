@@ -22,6 +22,7 @@ export type AgentProfile = Readonly<{
   composioEnabled: boolean;
   composioUserId: string;
   composioToolkits: readonly string[];
+  computerTarget: "host" | "virtual";
   color: string;
   builtIn?: boolean;
 }>;
@@ -37,6 +38,16 @@ type AgentContextValue = Readonly<{
   selectAgent: (id: string) => void;
   createAgent: (agent: NewAgent) => Promise<void>;
   deleteAgent: (id: string) => Promise<void>;
+  updateAgentComputer: (
+    id: string,
+    computerTarget: "host" | "virtual",
+  ) => Promise<void>;
+  updateAgentModel: (id: string, model: string) => Promise<void>;
+  updateAgentRuntime: (
+    id: string,
+    cli: CLIBackendId,
+    model: string,
+  ) => Promise<void>;
 }>;
 
 const DEFAULT_AGENT: AgentProfile = {
@@ -53,6 +64,7 @@ const DEFAULT_AGENT: AgentProfile = {
   composioEnabled: false,
   composioUserId: "",
   composioToolkits: [],
+  computerTarget: "host",
   color: "var(--primary)",
   builtIn: true,
 };
@@ -60,6 +72,9 @@ const DEFAULT_AGENT: AgentProfile = {
 const STORAGE_KEY = "memo.agent-profiles.v1";
 const MIGRATED_KEY = "memo.agent-profiles.gateway-migrated.v1";
 const ACTIVE_KEY = "memo.active-agent.v1";
+const BUILTIN_COMPUTER_KEY = "memo.builtin-computer.v1";
+const BUILTIN_MODEL_KEY = "memo.builtin-model.v1";
+const BUILTIN_CLI_KEY = "memo.builtin-cli.v1";
 const AgentContext = createContext<AgentContextValue | null>(null);
 
 const isAgentProfile = (value: unknown): value is AgentProfile => {
@@ -75,6 +90,7 @@ const isAgentProfile = (value: unknown): value is AgentProfile => {
     typeof record.composioEnabled === "boolean" &&
     typeof record.composioUserId === "string" &&
     Array.isArray(record.composioToolkits) &&
+    (record.computerTarget === "host" || record.computerTarget === "virtual") &&
     typeof record.color === "string"
   );
 };
@@ -104,6 +120,7 @@ const migrateAgent = (value: unknown): AgentProfile | null => {
     composioToolkits: Array.isArray(record.composioToolkits)
       ? record.composioToolkits
       : [],
+    computerTarget: record.computerTarget === "virtual" ? "virtual" : "host",
   };
   return isAgentProfile(migrated) ? migrated : null;
 };
@@ -135,8 +152,41 @@ export function AgentProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [activeId, setActiveId] = useState(
     () => window.localStorage.getItem(ACTIVE_KEY) ?? DEFAULT_AGENT.id,
   );
+  const [builtInComputer, setBuiltInComputer] = useState<"host" | "virtual">(
+    () =>
+      window.localStorage.getItem(BUILTIN_COMPUTER_KEY) === "virtual"
+        ? "virtual"
+        : "host",
+  );
+  const [builtInModel, setBuiltInModel] = useState(
+    () => window.localStorage.getItem(BUILTIN_MODEL_KEY) ?? DEFAULT_AGENT.model,
+  );
+  const [builtInCli, setBuiltInCli] = useState<CLIBackendId>(() => {
+    const saved = window.localStorage.getItem(BUILTIN_CLI_KEY);
+    return saved &&
+      [
+        "codex",
+        "claude",
+        "antigravity",
+        "opencode",
+        "ollama",
+        "lmstudio",
+        "grok-build",
+        "cursor",
+        "hermes",
+        "pi",
+      ].includes(saved)
+      ? (saved as CLIBackendId)
+      : DEFAULT_AGENT.cli;
+  });
+  const builtInAgent = {
+    ...DEFAULT_AGENT,
+    computerTarget: builtInComputer,
+    model: builtInModel,
+    cli: builtInCli,
+  };
   const activeAgent =
-    agents.find((agent) => agent.id === activeId) ?? agents[0] ?? DEFAULT_AGENT;
+    agents.find((agent) => agent.id === activeId) ?? agents[0] ?? builtInAgent;
 
   const persist = useCallback((profiles: readonly AgentProfile[]) => {
     setAgents(profiles);
@@ -221,6 +271,60 @@ export function AgentProvider({ children }: Readonly<{ children: ReactNode }>) {
     [activeId, agents, persist, selectAgent],
   );
 
+  const updateAgentComputer = useCallback(
+    async (id: string, computerTarget: "host" | "virtual") => {
+      if (id === DEFAULT_AGENT.id) {
+        setBuiltInComputer(computerTarget);
+        window.localStorage.setItem(BUILTIN_COMPUTER_KEY, computerTarget);
+        return;
+      }
+      const updated = migrateAgent(
+        await window.desktopApi.agents.update(id, { computerTarget }),
+      );
+      if (!updated) throw new Error("The gateway returned an invalid agent.");
+      persist(agents.map((agent) => (agent.id === id ? updated : agent)));
+    },
+    [agents, persist],
+  );
+
+  const updateAgentModel = useCallback(
+    async (id: string, model: string) => {
+      const value = model.trim();
+      if (!value) throw new Error("Model must not be empty.");
+      if (id === DEFAULT_AGENT.id) {
+        setBuiltInModel(value);
+        window.localStorage.setItem(BUILTIN_MODEL_KEY, value);
+        return;
+      }
+      const updated = migrateAgent(
+        await window.desktopApi.agents.update(id, { model: value }),
+      );
+      if (!updated) throw new Error("The gateway returned an invalid agent.");
+      persist(agents.map((agent) => (agent.id === id ? updated : agent)));
+    },
+    [agents, persist],
+  );
+
+  const updateAgentRuntime = useCallback(
+    async (id: string, cli: CLIBackendId, model: string) => {
+      const value = model.trim();
+      if (!value) throw new Error("Model must not be empty.");
+      if (id === DEFAULT_AGENT.id) {
+        setBuiltInCli(cli);
+        setBuiltInModel(value);
+        window.localStorage.setItem(BUILTIN_CLI_KEY, cli);
+        window.localStorage.setItem(BUILTIN_MODEL_KEY, value);
+        return;
+      }
+      const updated = migrateAgent(
+        await window.desktopApi.agents.update(id, { cli, model: value }),
+      );
+      if (!updated) throw new Error("The gateway returned an invalid agent.");
+      persist(agents.map((agent) => (agent.id === id ? updated : agent)));
+    },
+    [agents, persist],
+  );
+
   const value = useMemo(
     () => ({
       agents,
@@ -231,6 +335,9 @@ export function AgentProvider({ children }: Readonly<{ children: ReactNode }>) {
       selectAgent,
       createAgent,
       deleteAgent,
+      updateAgentComputer,
+      updateAgentModel,
+      updateAgentRuntime,
     }),
     [
       agents,
@@ -241,6 +348,9 @@ export function AgentProvider({ children }: Readonly<{ children: ReactNode }>) {
       selectAgent,
       createAgent,
       deleteAgent,
+      updateAgentComputer,
+      updateAgentModel,
+      updateAgentRuntime,
     ],
   );
 

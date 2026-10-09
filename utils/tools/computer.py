@@ -30,6 +30,7 @@ class ShellCommandArgs(BaseModel):
 class OpenAppArgs(BaseModel):
     app: str = Field(..., min_length=1, max_length=200)
 
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SANDBOX_ROOT = PROJECT_ROOT / ".memo-sandbox"
 MAX_OUTPUT_BYTES = 64 * 1024
@@ -98,8 +99,7 @@ _SHELL_DEFINITION = {
             "Windows syntax and paths such as %USERPROFILE%\\Downloads. To "
             'launch an application, use `start "" "app"` syntax. '
             if os.name == "nt"
-            else
-            "This Memo installation runs commands through POSIX /bin/sh on "
+            else "This Memo installation runs commands through POSIX /bin/sh on "
             "Linux: use Linux commands and paths such as ~/Downloads. Launch "
             "applications using their executable name or `xdg-open` for files "
             "and URLs. "
@@ -250,11 +250,13 @@ class ComputerSandboxTool:
     app_name = "open_allowed_app"
     APP_ALIASES: ClassVar[dict[str, tuple[str, ...]]] = APP_ALIASES
 
-    def __init__(self, root: str | Path | None = None) -> None:
+    def __init__(
+        self, root: str | Path | None = None, *, computer_target: str = "host"
+    ) -> None:
         configured = root or os.environ.get("MEMO_SANDBOX_ROOT")
         self.root = Path(configured or DEFAULT_SANDBOX_ROOT).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True)
-        self.desktop = CuaDesktopController()
+        self.desktop = CuaDesktopController(computer_target)
 
     @property
     def responses_definitions(self) -> list[dict[str, Any]]:

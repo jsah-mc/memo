@@ -19,6 +19,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.concurrency import iterate_in_threadpool
 
+from utils.codex_auth import CodexAuth
 from utils.tools.browser import BrowserUseTool
 from utils.tools.computer import (
     ComputerSandboxTool,
@@ -155,6 +156,9 @@ def create_app(
         allow_computer: bool,
         interactive_permissions: bool,
     ):
+        request_computer_tool = computer_tool or ComputerSandboxTool(
+            computer_target=payload.get("memo_agent", {}).get("computerTarget", "host")
+        )
         action = detect_moonkart_action(payload.get("input"))
         if action is not None:
             return await run_moonkart_tool_turn(sdk, payload, action, kart_tool)
@@ -175,7 +179,7 @@ def create_app(
 
             return SDKResponseStream(
                 direct_named_app_events(
-                    computer_tool or ComputerSandboxTool(),
+                    request_computer_tool,
                     user_text=computer_text,
                     permission_broker=approvals if interactive_permissions else None,
                     approved=has_one_time_computer_approval(payload.get("input")),
@@ -192,7 +196,7 @@ def create_app(
 
             return SDKResponseStream(
                 direct_app_events(
-                    computer_tool or ComputerSandboxTool(),
+                    request_computer_tool,
                     app=app,
                     user_text=computer_text,
                 )
@@ -207,7 +211,7 @@ def create_app(
 
             return SDKResponseStream(
                 direct_named_app_events(
-                    computer_tool or ComputerSandboxTool(),
+                    request_computer_tool,
                     user_text=computer_text,
                     permission_broker=approvals if interactive_permissions else None,
                     approved=has_one_time_computer_approval(payload.get("input")),
@@ -224,16 +228,18 @@ def create_app(
                 computer_tool_events(
                     sdk,
                     payload,
-                    computer_tool or ComputerSandboxTool(),
+                    request_computer_tool,
                     approvals if interactive_permissions else None,
                 )
             )
         agent = payload.get("memo_agent", {})
         if agent.get("composioEnabled"):
-            user_id, toolkits = _composio_scope({
-                "user_id": agent.get("composioUserId"),
-                "toolkits": agent.get("composioToolkits", []),
-            })
+            user_id, toolkits = _composio_scope(
+                {
+                    "user_id": agent.get("composioUserId"),
+                    "toolkits": agent.get("composioToolkits", []),
+                }
+            )
             return await composio_tool_turn(sdk, payload, composio, user_id, toolkits)
         return await sdk.responses(payload)
 
@@ -304,10 +310,13 @@ def create_app(
                     exc_info=True,
                 )
 
-        if os.environ.get(
-            "MEMO_SPEECH_PRELOAD",
-            os.environ.get("MEMO_STT_PRELOAD", "0"),
-        ) == "1":
+        if (
+            os.environ.get(
+                "MEMO_SPEECH_PRELOAD",
+                os.environ.get("MEMO_STT_PRELOAD", "0"),
+            )
+            == "1"
+        ):
             warmup_task = asyncio.create_task(warm_speech_models())
         try:
             yield
@@ -330,6 +339,16 @@ def create_app(
             "status": "ok",
             "memo_api_version": 2,
             "desktop_control": settings.computer_enabled,
+        }
+
+    @app.get("/health/readiness")
+    async def readiness() -> dict[str, Any]:
+        provider = CodexAuth().status()
+        ready = provider["status"] == "ready"
+        return {
+            "status": "ok" if ready else "degraded",
+            "gateway": {"status": "ok", "api_version": 2},
+            "provider": provider,
         }
 
     @app.get("/v1/models")
@@ -376,19 +395,50 @@ def create_app(
             raise HTTPException(status_code=404, detail="Agent not found")
         return Response(status_code=204)
 
+    @app.patch("/v1/agents/{agent_id}")
+    async def update_agent(agent_id: str, request: Request) -> dict[str, Any]:
+        try:
+            return agents.update(agent_id, await request.json())
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise HTTPException(status_code=400, detail="Invalid JSON body.") from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Agent not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/v1/composio/status")
     async def composio_status() -> dict[str, bool]:
         return {"configured": composio.configured}
+
+    @app.get("/v1/desktop/preview")
+    async def desktop_preview(request: Request) -> dict[str, Any]:
+        if request.headers.get("x-memo-desktop") != "1":
+            raise HTTPException(status_code=403, detail="Desktop preview denied.")
+        try:
+            capture = await ComputerSandboxTool(
+                computer_target="virtual"
+            ).desktop.capture()
+            return {"image": capture["image_url"]}
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail="Could not capture the shared virtual desktop.",
+            ) from exc
 
     @app.get("/v1/composio/connections")
     async def composio_connections() -> dict[str, Any]:
         user_id = os.environ.get("MEMO_COMPOSIO_USER_ID")
         if not user_id:
-            raise HTTPException(status_code=503, detail="Composio identity is unavailable")
+            raise HTTPException(
+                status_code=503, detail="Composio identity is unavailable"
+            )
         try:
             return {"data": await asyncio.to_thread(composio.connections, user_id)}
         except Exception as exc:
-            raise HTTPException(status_code=502, detail="Could not load app connections. Check your Composio API key and connection.") from exc
+            raise HTTPException(
+                status_code=502,
+                detail="Could not load app connections. Check your Composio API key and connection.",
+            ) from exc
 
     @app.get("/v1/composio/toolkits")
     async def composio_toolkits(search: str = "") -> dict[str, Any]:
@@ -397,19 +447,26 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:
-            raise HTTPException(status_code=502, detail="Could not search app integrations. Check your Composio API key and connection.") from exc
+            raise HTTPException(
+                status_code=502,
+                detail="Could not search app integrations. Check your Composio API key and connection.",
+            ) from exc
 
     @app.delete("/v1/composio/connections/{connection_id}", status_code=204)
     async def composio_disconnect(connection_id: str) -> Response:
         user_id = os.environ.get("MEMO_COMPOSIO_USER_ID")
         if not user_id:
-            raise HTTPException(status_code=503, detail="Composio identity is unavailable")
+            raise HTTPException(
+                status_code=503, detail="Composio identity is unavailable"
+            )
         try:
             await asyncio.to_thread(composio.disconnect, user_id, connection_id)
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except Exception as exc:
-            raise HTTPException(status_code=502, detail="Could not disconnect the app. Try again.") from exc
+            raise HTTPException(
+                status_code=502, detail="Could not disconnect the app. Try again."
+            ) from exc
         return Response(status_code=204)
 
     @app.post("/v1/composio/session-tools")
@@ -442,13 +499,17 @@ def create_app(
     async def composio_authorize(toolkit: str) -> dict[str, str]:
         user_id = os.environ.get("MEMO_COMPOSIO_USER_ID")
         if not user_id:
-            raise HTTPException(status_code=503, detail="Composio identity is unavailable")
+            raise HTTPException(
+                status_code=503, detail="Composio identity is unavailable"
+            )
         try:
             return await asyncio.to_thread(composio.authorize, user_id, toolkit)
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:
-            logging.getLogger("memo.composio").exception("Composio authorization failed")
+            logging.getLogger("memo.composio").exception(
+                "Composio authorization failed"
+            )
             raise HTTPException(
                 status_code=502,
                 detail="Composio authorization failed. Check your API key and try again.",
