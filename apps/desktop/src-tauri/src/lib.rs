@@ -11,6 +11,7 @@ use std::{
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 
 const GATEWAY_ADDRESS: &str = "127.0.0.1:4010";
+const COMPOSIO_BROKER_URL: &str = "https://memo-composio-broker.vercel.app";
 
 #[derive(Default)]
 struct GatewayProcess(Mutex<Option<Child>>);
@@ -78,8 +79,8 @@ fn write_settings(app: &AppHandle, settings: &Settings) -> Result<(), String> {
     .map_err(|error| error.to_string())
 }
 
-fn composio_key() -> String {
-    keyring::Entry::new("dev.memo.desktop", "composio")
+fn composio_broker_token() -> String {
+    keyring::Entry::new("dev.memo.desktop", "composio-broker")
         .ok()
         .and_then(|entry| entry.get_password().ok())
         .unwrap_or_default()
@@ -142,7 +143,7 @@ fn launch_gateway(state: &GatewayProcess, app: &AppHandle) -> Result<(), String>
         _ => "4",
     };
     let mut command = {
-        let key = composio_key();
+        let broker_token = composio_broker_token();
         command
             .current_dir(&cwd)
             .env("GATEWAY_HOST", "127.0.0.1")
@@ -151,7 +152,9 @@ fn launch_gateway(state: &GatewayProcess, app: &AppHandle) -> Result<(), String>
             .env("MEMO_SANDBOX_ROOT", workspace)
             .env("MEMO_RESOURCE_MODE", mode)
             .env("MEMO_SPEECH_CPU_THREADS", threads)
-            .env("COMPOSIO_API_KEY", key)
+            .env("MEMO_COMPOSIO_BROKER_URL", COMPOSIO_BROKER_URL)
+            .env("MEMO_COMPOSIO_BROKER_TOKEN", broker_token)
+            .env("MEMO_COMPOSIO_USER_ID", "memo-desktop")
             .env("MEMO_SPEECH_PRELOAD", "0")
             .env("MEMO_STT_PRELOAD", "0");
         command
@@ -195,6 +198,28 @@ fn toggle_maximize(window: WebviewWindow) -> Result<(), String> {
 #[tauri::command]
 fn close(window: WebviewWindow) -> Result<(), String> {
     window.close().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") {
+        return Err("Only secure web links can be opened.".into());
+    }
+    let status = if cfg!(target_os = "windows") {
+        Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", &url])
+            .status()
+    } else if cfg!(target_os = "macos") {
+        Command::new("open").arg(&url).status()
+    } else {
+        Command::new("xdg-open").arg(&url).status()
+    }
+    .map_err(|error| error.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("Could not open the sign-in page.".into())
+    }
 }
 
 #[tauri::command]
@@ -336,28 +361,6 @@ fn resource_set(
     Ok(serde_json::json!({ "mode": mode }))
 }
 
-#[tauri::command]
-fn composio_key_status() -> serde_json::Value {
-    serde_json::json!({ "hasKey": !composio_key().is_empty() })
-}
-
-#[tauri::command]
-fn set_composio_key(
-    key: String,
-    app: AppHandle,
-    state: State<'_, GatewayProcess>,
-) -> Result<serde_json::Value, String> {
-    if key.trim().is_empty() {
-        return Err("Composio API key is required.".into());
-    }
-    keyring::Entry::new("dev.memo.desktop", "composio")
-        .map_err(|error| error.to_string())?
-        .set_password(key.trim())
-        .map_err(|error| error.to_string())?;
-    restart_gateway(state, app)?;
-    Ok(serde_json::json!({ "saved": true }))
-}
-
 pub fn run() {
     tauri::Builder::default()
         .manage(GatewayProcess::default())
@@ -374,15 +377,14 @@ pub fn run() {
             minimize,
             toggle_maximize,
             close,
+            open_external,
             gateway_status,
             restart_gateway,
             workspace_get,
             workspace_choose,
             workspace_checkpoint,
             resource_get,
-            resource_set,
-            composio_key_status,
-            set_composio_key
+            resource_set
         ])
         .run(tauri::generate_context!())
         .expect("error while running Memo");

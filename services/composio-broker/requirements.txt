@@ -1,0 +1,2 @@
+composio==0.21.1
+fastapi==0.139.0

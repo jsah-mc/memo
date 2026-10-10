@@ -113,9 +113,7 @@ def create_app(
             return computer_tool
         agent = payload.get("memo_agent", {})
         target = (
-            agent.get("computerTarget", "host")
-            if isinstance(agent, dict)
-            else "host"
+            agent.get("computerTarget", "host") if isinstance(agent, dict) else "host"
         )
         if not isinstance(target, str) or not target.strip():
             target = "host"
@@ -441,13 +439,17 @@ def create_app(
         return {"configured": composio.configured}
 
     @app.get("/v1/desktop/preview")
-    async def desktop_preview(request: Request, target: str = "local_vm") -> dict[str, Any]:
+    async def desktop_preview(
+        request: Request, target: str = "local_vm"
+    ) -> dict[str, Any]:
         if request.headers.get("x-memo-desktop") != "1":
             raise HTTPException(status_code=403, detail="Desktop preview denied.")
         try:
             if target not in {"local_vm", "vps"}:
                 raise ValueError("Unknown virtual desktop target")
-            capture = await ComputerSandboxTool(computer_target=target).desktop.capture()
+            capture = await ComputerSandboxTool(
+                computer_target=target
+            ).desktop.capture()
             return {"image": capture["image_url"]}
         except Exception as exc:
             raise HTTPException(
@@ -467,7 +469,7 @@ def create_app(
         except Exception as exc:
             raise HTTPException(
                 status_code=502,
-                detail="Could not load app connections. Check your Composio API key and connection.",
+                detail="Could not load app connections. Try again shortly.",
             ) from exc
 
     @app.get("/v1/composio/toolkits")
@@ -479,7 +481,7 @@ def create_app(
         except Exception as exc:
             raise HTTPException(
                 status_code=502,
-                detail="Could not search app integrations. Check your Composio API key and connection.",
+                detail="Could not search app integrations. Try again shortly.",
             ) from exc
 
     @app.delete("/v1/composio/connections/{connection_id}", status_code=204)
@@ -542,7 +544,7 @@ def create_app(
             )
             raise HTTPException(
                 status_code=502,
-                detail="Composio authorization failed. Check your API key and try again.",
+                detail="App authorization failed. Try again shortly.",
             ) from exc
 
     @app.post("/v1/permissions/{permission_id}")

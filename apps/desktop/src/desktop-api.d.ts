@@ -110,8 +110,6 @@ declare global {
       }>;
       openCodexHelp(): Promise<{ opened: true }>;
       getComposioStatus(): Promise<{ configured: boolean }>;
-      getComposioKeyStatus(): Promise<{ hasKey: boolean }>;
-      setComposioKey(key: string): Promise<{ saved: true }>;
       getComposioToolkits(
         search?: string,
       ): Promise<{

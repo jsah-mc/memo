@@ -9,9 +9,39 @@ import time
 from collections import OrderedDict
 from typing import Any
 
+import httpx
+
 
 def as_object(value: Any) -> dict[str, Any]:
     return value.model_dump(mode="json") if hasattr(value, "model_dump") else value
+
+
+class BrokerSession:
+    def __init__(
+        self,
+        owner: "ComposioTools",
+        toolkits: tuple[str, ...],
+        session_id: str,
+        tools: list[dict[str, Any]],
+    ) -> None:
+        self._owner = owner
+        self._toolkits = toolkits
+        self.session_id = session_id
+        self._tools = tools
+
+    def tools(self) -> list[dict[str, Any]]:
+        return self._tools
+
+    def execute(self, slug: str, *, arguments: dict[str, Any]) -> Any:
+        return self._owner._broker_request(
+            "POST",
+            "/api/execute",
+            json={
+                "toolkits": list(self._toolkits),
+                "slug": slug,
+                "arguments": arguments,
+            },
+        )
 
 
 class ComposioTools:
@@ -24,7 +54,39 @@ class ComposioTools:
 
     @property
     def configured(self) -> bool:
-        return self._client is not None or bool(os.environ.get("COMPOSIO_API_KEY"))
+        return (
+            self._client is not None
+            or bool(os.environ.get("COMPOSIO_API_KEY"))
+            or bool(self._broker_url and self._broker_token)
+        )
+
+    @property
+    def _broker_url(self) -> str:
+        return os.environ.get("MEMO_COMPOSIO_BROKER_URL", "").strip().rstrip("/")
+
+    @property
+    def _broker_token(self) -> str:
+        return os.environ.get("MEMO_COMPOSIO_BROKER_TOKEN", "").strip()
+
+    def _broker_request(self, method: str, path: str, **kwargs: Any) -> Any:
+        if not self._broker_url or not self._broker_token:
+            raise RuntimeError("Memo's app-connection service is unavailable.")
+        response = httpx.request(
+            method,
+            f"{self._broker_url}{path}",
+            headers={"Authorization": f"Bearer {self._broker_token}"},
+            timeout=30,
+            **kwargs,
+        )
+        if response.status_code >= 400:
+            try:
+                detail = response.json().get("detail")
+            except ValueError:
+                detail = None
+            raise RuntimeError(
+                detail or f"App-connection service failed ({response.status_code})."
+            )
+        return None if response.status_code == 204 else response.json()
 
     def _get_client(self) -> Any:
         if self._client is None:
@@ -57,9 +119,20 @@ class ComposioTools:
             if cached and now - cached[0] < 900:
                 self._sessions.move_to_end(key)
                 return cached[1]
-            session = self._get_client().sessions.create(
-                user_id=key[0], **({"toolkits": list(key[1])} if key[1] else {})
-            )
+            if self._broker_url and self._broker_token:
+                payload = self._broker_request(
+                    "POST", "/api/session", json={"toolkits": list(key[1])}
+                )
+                session = BrokerSession(
+                    self,
+                    key[1],
+                    payload["session_id"],
+                    payload["tools"],
+                )
+            else:
+                session = self._get_client().sessions.create(
+                    user_id=key[0], **({"toolkits": list(key[1])} if key[1] else {})
+                )
             self._sessions[key] = (now, session)
             self._sessions.move_to_end(key)
             while len(self._sessions) > 64:
@@ -78,6 +151,8 @@ class ComposioTools:
 
     def authorize(self, user_id: str, toolkit: str) -> dict[str, str]:
         toolkit = self.scope(user_id, [toolkit])[1][0]
+        if self._broker_url and self._broker_token:
+            return self._broker_request("POST", f"/api/authorize/{toolkit}")
         request = self.create_session(user_id, [toolkit]).authorize(toolkit)
         self.invalidate(user_id)
         if not request.redirect_url:
@@ -91,6 +166,9 @@ class ComposioTools:
         return as_object(session.execute(slug, arguments=arguments))
 
     def connections(self, user_id: str) -> list[dict[str, str]]:
+        self.scope(user_id, [])
+        if self._broker_url and self._broker_token:
+            return self._broker_request("GET", "/api/connections")["data"]
         records = []
         cursor = None
         seen: set[str] = set()
@@ -120,6 +198,11 @@ class ComposioTools:
             seen.add(cursor)
 
     def disconnect(self, user_id: str, connection_id: str) -> None:
+        if self._broker_url and self._broker_token:
+            self.scope(user_id, [])
+            self._broker_request("DELETE", f"/api/connections/{connection_id}")
+            self.invalidate(user_id)
+            return
         if not any(item["id"] == connection_id for item in self.connections(user_id)):
             raise ValueError("Connection not found for this Memo user.")
         self._get_client().connected_accounts.delete(nanoid=connection_id)
@@ -128,6 +211,10 @@ class ComposioTools:
     def toolkits(self, search: str = "") -> dict[str, Any]:
         if len(search) > 100:
             raise ValueError("App search must be 100 characters or fewer.")
+        if self._broker_url and self._broker_token:
+            return self._broker_request(
+                "GET", "/api/toolkits", params={"search": search}
+            )
         items = self._get_client().toolkits.get(
             query={
                 "limit": 100,

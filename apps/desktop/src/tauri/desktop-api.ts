@@ -286,12 +286,14 @@ export function installTauriDesktopApi() {
       set: (mode) => command("resource_set", { mode }),
     },
     getComposioStatus: () => gateway("/v1/composio/status"),
-    getComposioKeyStatus: () => command("composio_key_status"),
-    setComposioKey: (key) => command("set_composio_key", { key }),
     getComposioToolkits: (search = "") => gateway(`/v1/composio/toolkits?search=${encodeURIComponent(search)}`),
     getComposioConnections: () => gateway("/v1/composio/connections"),
     disconnectComposio: (connectionId) => gateway(`/v1/composio/connections/${encodeURIComponent(connectionId)}`, { method: "DELETE" }),
-    authorizeComposio: async (toolkit) => { await gateway(`/v1/composio/authorize/${encodeURIComponent(toolkit)}`, { method: "POST" }); return { opened: true }; },
+    authorizeComposio: async (toolkit) => {
+      const result = await gateway<{ redirect_url: string }>(`/v1/composio/authorize/${encodeURIComponent(toolkit)}`, { method: "POST" });
+      await command("open_external", { url: result.redirect_url });
+      return { opened: true };
+    },
     traceSpeech: () => undefined,
     prepareSpeech: () => gateway("/v1/audio/transcriptions/prepare", { method: "POST" }),
     transcribeSpeech: ({ audio, mimeType, filename }) => {
