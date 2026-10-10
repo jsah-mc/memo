@@ -13,6 +13,39 @@ from utils.gateway.settings import GatewaySettings
 
 
 class ComposioConnectionTests(TestCase):
+    def test_broker_session_works_without_local_composio_key(self):
+        response = MagicMock(status_code=200)
+        response.json.return_value = {
+            "session_id": "session1",
+            "tools": [{"type": "function", "function": {"name": "SEARCH"}}],
+        }
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "MEMO_COMPOSIO_BROKER_URL": "https://broker.example",
+                    "MEMO_COMPOSIO_BROKER_TOKEN": "broker-token",
+                },
+                clear=True,
+            ),
+            patch(
+                "utils.gateway.composio_tools.httpx.request", return_value=response
+            ) as request,
+        ):
+            composio = ComposioTools()
+            self.assertTrue(composio.configured)
+            session = composio.create_session("alice", ["gmail"])
+
+        self.assertEqual(session.session_id, "session1")
+        self.assertEqual(session.tools()[0]["function"]["name"], "SEARCH")
+        self.assertEqual(
+            request.call_args.args[:2], ("POST", "https://broker.example/api/session")
+        )
+        self.assertEqual(
+            request.call_args.kwargs["headers"],
+            {"Authorization": "Bearer broker-token"},
+        )
+
     def test_reuses_sessions_and_isolates_user_and_toolkit_scope(self):
         client = MagicMock()
         composio = ComposioTools(client)
@@ -104,7 +137,10 @@ class ComposioConnectionTests(TestCase):
                 {
                     "slug": "outlook",
                     "name": "Microsoft Outlook",
-                    "meta": {"secret": "hidden", "logo": "https://assets.composio.dev/outlook.png"},
+                    "meta": {
+                        "secret": "hidden",
+                        "logo": "https://assets.composio.dev/outlook.png",
+                    },
                 }
             ]
         )
