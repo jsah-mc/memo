@@ -6,6 +6,7 @@ import {
   UserMessageAttachments,
 } from "@/components/attachment";
 import { ThreadFollowupSuggestions } from "@/components/follow-up-suggestions";
+import { PermissionPrompt } from "@/components/permission-dialog";
 import { MarkdownText } from "@/components/markdown-text";
 import {
   Reasoning,
@@ -149,6 +150,7 @@ const ThreadRoot: FC = () => {
           >
             <ThreadScrollToBottom />
             <ThreadFollowupSuggestions />
+            <PermissionPrompt />
             <Composer />
             <AuiIf condition={(s) => isNewChatView(s) && s.composer.isEmpty}>
               <ThreadSuggestions />

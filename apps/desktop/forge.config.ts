@@ -18,10 +18,29 @@ const config: ForgeConfig = {
     extraResource: [
       path.resolve(__dirname, "../../.gateway-build/gateway"),
       path.resolve(__dirname, "../../deploy/cua-desktop"),
+      ...(process.platform === "win32"
+        ? [path.resolve(__dirname, "../../.sandbox-build/MemoSandbox.exe")]
+        : []),
     ],
   },
   hooks: {
     prePackage: async () => {
+      if (process.platform === "win32") {
+        execFileSync(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            path.resolve(
+              __dirname,
+              "../../scripts/build_windows_sandbox.ps1",
+            ),
+          ],
+          { stdio: "inherit" },
+        );
+      }
       if (
         !existsSync(
           path.resolve(__dirname, "../../.gateway-build/gateway/manifest.json"),

@@ -10,7 +10,6 @@ recognition and synthesis run fully locally.
 - Speech-to-text: RealtimeSTT with faster-whisper `small.en`
 - Text-to-speech: RealtimeTTS with PocketTTS
 - Browser automation: Browser Use with visible Chromium
-- Hardware tool: MoonKart over Bluetooth LE
 - Chat storage: SQLite in `./data.sqlite`
 
 ## Agent onboarding and app integrations
@@ -156,8 +155,8 @@ lint, and the renderer build on Linux and macOS. macOS runners install PortAudio
 with Homebrew and use standard PyTorch packages rather than CUDA builds. These tests do not validate a live ChatGPT account or
 physical devices. For manual integration testing, verify authenticated chat
 first, then speech (model downloads and audio devices), browser automation
-(Chromium), and finally MoonKart/desktop control with the required hardware,
-desktop session, and explicit permissions.
+(Chromium), and finally desktop control with the required desktop session and
+explicit permissions.
 
 ## OpenAI-compatible endpoints
 
@@ -210,11 +209,9 @@ TTS when voice input starts. Its managed gateway enables background STT preload,
 so the persistent `small.en` model is normally ready before dictation. For a
 manually launched gateway, set `MEMO_STT_PRELOAD=1` to get the same behavior.
 
-## Browser and MoonKart tools
+## Browser tools
 
 Browser requests open visible Chromium unless `MEMO_BROWSER_HEADLESS=1`.
-MoonKart start and stop requests remain OpenAI-compatible function calls and send `H` or
-`S` only after an explicit user request.
 
 ## Restricted computer tools
 
@@ -297,13 +294,13 @@ both settings to the localhost gateway process that it manages.
 ```text
 utils/
   gateway/   FastAPI, direct provider HTTP, routing, streaming, and tool orchestration
-  tools/     Computer, Browser, MoonKart, RealtimeSTT, and RealtimeTTS adapters
+  tools/     Computer, Browser, RealtimeSTT, and RealtimeTTS adapters
     ai/      Shared AI runtime, settings, SDK, routing, and tool turns
   browser/   Visible Browser Use agent
   program/   Desktop/runtime integration
 ```
 
-The program and future messaging integrations can use `from utils.tools.ai import AI, AISettings`. Each `AI` instance owns its conversation history and permission broker; create one per conversation, consume `events()` or `stream()`, and call `close()` when finished. The gateway uses shared MoonKart detection while retaining its HTTP-specific response handling. Legacy `utils.program` AI imports remain compatible.
+The program and future messaging integrations can use `from utils.tools.ai import AI, AISettings`. Each `AI` instance owns its conversation history and permission broker; create one per conversation, consume `events()` or `stream()`, and call `close()` when finished. Legacy `utils.program` AI imports remain compatible.
 
 ## Release prebuilds
 

@@ -28,6 +28,13 @@ test("model sidebar updates only the active agent", () => {
   assert.match(modelSidebar, /updateAgentRuntime\(activeAgent\.id, cli/);
 });
 
+test("model sidebar only lists installed agent CLIs", () => {
+  assert.match(modelSidebar, /window\.desktopApi\.agents/);
+  assert.match(modelSidebar, /filter\(\(backend\) => backend\.installed\)/);
+  assert.match(modelSidebar, /availableRuntimes\.map/);
+  assert.doesNotMatch(modelSidebar, /\{CLI_OPTIONS\.map/);
+});
+
 test("threads retain their runtime and model while the agent default advances", () => {
   assert.match(threadModels, /memo\.thread-agent-models\.v2/);
   assert.match(modelSidebar, /updateAgentModel\(activeAgent\.id, model\)/);

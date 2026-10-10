@@ -10,20 +10,24 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-export function VirtualDesktopPanel() {
-  const [endpoint, setEndpoint] = useState("http://127.0.0.1:3211");
-  const [token, setToken] = useState("");
-  const [hasToken, setHasToken] = useState(false);
+export function VirtualDesktopPanel({ target = "local_vm" }: Readonly<{ target?: "local_vm" | "vps" }>) {
+  const local = target === "local_vm";
+  const [host, setHost] = useState("");
+  const [user, setUser] = useState("");
+  const [port, setPort] = useState(22);
+  const [identityFile, setIdentityFile] = useState("");
   const [status, setStatus] = useState<VirtualDesktopProbe | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
   const refresh = useCallback(async () => {
-    const next = await window.desktopApi.virtualDesktop.get();
-    setEndpoint(next.endpoint);
-    setHasToken(next.hasToken);
+    const next = await window.desktopApi.virtualDesktop.get(target);
+    setHost(next.host ?? "");
+    setUser(next.user ?? "");
+    setPort(next.port ?? 22);
+    setIdentityFile(next.identityFile ?? "");
     setStatus(next);
-  }, []);
+  }, [target]);
 
   useEffect(() => {
     void refresh().catch((reason: unknown) =>
@@ -40,7 +44,6 @@ export function VirtualDesktopPanel() {
     setError("");
     try {
       await action();
-      setToken("");
       await refresh();
     } catch (reason) {
       setError(
@@ -62,10 +65,12 @@ export function VirtualDesktopPanel() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p id="virtual-desktop-title" className="text-sm font-medium">
-            Local VM setup
+            {local ? "Local VM setup" : "VPS connection"}
           </p>
           <p className="text-xs text-muted-foreground">
-            Configure the one virtual desktop shared by every agent.
+            {local
+              ? "Run the packaged desktop locally with Podman or Docker."
+              : "Connect agents to a separately hosted remote desktop."}
           </p>
         </div>
         {connected ? (
@@ -77,51 +82,53 @@ export function VirtualDesktopPanel() {
 
       <div className="grid gap-2">
         <div>
-          <p className="text-xs font-medium">Shared virtual desktop</p>
+          <p className="text-xs font-medium">{local ? "Local virtual desktop" : "Remote VPS desktop"}</p>
           <p className="text-xs text-muted-foreground">
-            One endpoint and one running VM are used by every virtual agent.
+            {local ? "This environment runs on this computer." : "This endpoint is stored separately from Local VM."}
           </p>
         </div>
-        <label className="grid gap-1 text-xs text-muted-foreground">
-          Endpoint
-          <Input
-            value={endpoint}
-            onChange={(event) => setEndpoint(event.target.value)}
-            placeholder="http://127.0.0.1:3211"
-          />
-        </label>
-        <label className="grid gap-1 text-xs text-muted-foreground">
-          Access token
-          <Input
-            type="password"
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            placeholder={
-              hasToken
-                ? "Saved — leave blank to keep"
-                : "Paste the CUA_ENV_TOKEN"
-            }
-            autoComplete="off"
-          />
-        </label>
+        {!local && <label className="grid gap-1 text-xs text-muted-foreground">
+          SSH host
+          <Input value={host} onChange={(event) => setHost(event.target.value)} placeholder="vps.example.com" />
+        </label>}
+        {!local && <div className="grid grid-cols-[1fr_100px] gap-2">
+          <label className="grid gap-1 text-xs text-muted-foreground">
+            SSH user
+            <Input value={user} onChange={(event) => setUser(event.target.value)} placeholder="ubuntu" />
+          </label>
+          <label className="grid gap-1 text-xs text-muted-foreground">
+            Port
+            <Input type="number" value={port} onChange={(event) => setPort(Number(event.target.value))} />
+          </label>
+        </div>}
+        {!local && <label className="grid gap-1 text-xs text-muted-foreground">
+          SSH identity file <span className="text-muted-foreground/70">(optional; uses your SSH agent by default)</span>
+          <Input value={identityFile} onChange={(event) => setIdentityFile(event.target.value)} placeholder="C:\\Users\\you\\.ssh\\id_ed25519" />
+        </label>}
+        {!local && <p className="text-xs text-muted-foreground">
+          Memo copies its desktop package over SSH, starts it with Docker or Podman, and creates a private local tunnel automatically.
+        </p>}
         <p className="text-xs text-muted-foreground">
-          {status?.message ?? "Configure a local container or remote VPS."}
+          {status?.message ??
+            (local ? "Start the Local VM." : "Enter the VPS SSH connection details.")}
         </p>
-        <p className="text-xs text-muted-foreground">
+        {local && <p className="text-xs text-muted-foreground">
           Local engine:{" "}
           {status?.containerEngine ?? "Podman or Docker not found"}
           {status?.containerEngine === "podman" ? " (preferred)" : ""}
-        </p>
+        </p>}
         <div className="flex flex-wrap gap-2">
-          <Button
+          {!local && <Button
             type="button"
             size="sm"
             disabled={Boolean(busy)}
             onClick={() =>
               void run("save", () =>
-                window.desktopApi.virtualDesktop.save({
-                  endpoint,
-                  token: token || undefined,
+                window.desktopApi.virtualDesktop.setupVps({
+                  host,
+                  user,
+                  port,
+                  identityFile: identityFile || undefined,
                 }),
               )
             }
@@ -131,9 +138,9 @@ export function VirtualDesktopPanel() {
             ) : (
               <SaveIcon className="size-3.5" />
             )}{" "}
-            Save & use
-          </Button>
-          <Button
+            Set up VPS
+          </Button>}
+          {local && <Button
             type="button"
             size="sm"
             variant="outline"
@@ -148,17 +155,17 @@ export function VirtualDesktopPanel() {
               <PowerIcon className="size-3.5" />
             )}{" "}
             Start local
-          </Button>
+          </Button>}
           <Button
             type="button"
             size="sm"
             variant="ghost"
             disabled={Boolean(busy)}
-            onClick={() => void window.desktopApi.virtualDesktop.open()}
+            onClick={() => void window.desktopApi.virtualDesktop.open(target)}
           >
             View <ExternalLinkIcon className="size-3.5" />
           </Button>
-          <Button
+          {local && <Button
             type="button"
             size="sm"
             variant="ghost"
@@ -168,7 +175,7 @@ export function VirtualDesktopPanel() {
             }
           >
             Stop local
-          </Button>
+          </Button>}
         </div>
       </div>
 

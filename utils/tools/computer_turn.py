@@ -18,7 +18,6 @@ from .computer import (
 from .desktop import detect_desktop_control_request
 from .permissions import PermissionBroker
 
-MAX_TOOL_ROUNDS = 12
 APP_LABELS = {
     "notepad": "Notepad",
     "calculator": "Calculator",
@@ -362,7 +361,7 @@ async def computer_tool_events(
     else:
         conversation = []
 
-    for _round in range(MAX_TOOL_ROUNDS):
+    while True:
         response = await (await sdk.responses(next_payload)).completed_response()
         calls = _function_calls(response, tool.names)
         if not calls:
@@ -540,5 +539,3 @@ async def computer_tool_events(
             if key not in {"input", "previous_response_id", "tool_choice"}
         }
         next_payload["input"] = conversation
-
-    raise RuntimeError("Local computer tool exceeded its maximum number of rounds.")

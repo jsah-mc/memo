@@ -23,6 +23,7 @@ import { agentSystemPrompt } from "@/agents/agent-personality";
 import { useAgents } from "@/agents/agent-provider";
 import type { AgentProfile } from "@/agents/agent-provider";
 import { setAgentActivity } from "@/agents/agent-activity";
+import { useTaskActivity } from "@/agents/task-activity";
 import {
   threadModelKey,
   useThreadModels,
@@ -141,6 +142,10 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
   async *run({ messages, abortSignal }) {
     setAgentActivity(agent.id, "loading");
     const requestId = crypto.randomUUID();
+    const activity = useTaskActivity.getState();
+    const lastUserMessage = [...messages].reverse().find((message) => message.role === "user");
+    const titlePart = lastUserMessage?.content.find((part) => part.type === "text");
+    activity.start({ id: requestId, agentId: agent.id, title: titlePart?.type === "text" ? titlePart.text.slice(0, 80) : "Agent task", status: "running", startedAt: Date.now(), tools: [] });
     const request = {
       id: requestId,
       agent: {
@@ -251,6 +256,7 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
               : {}),
           };
           const index = toolPartIndexes.get(toolCall.id);
+          activity.tool(requestId, { id: toolCall.id, name: toolCall.name, status: toolCall.isError ? "error" : "result" in toolCall ? "done" : "running" });
           if (index === undefined) {
             toolPartIndexes.set(toolCall.id, content.length);
             content.push(part);
@@ -273,8 +279,10 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
         }
       }
       setAgentActivity(agent.id, abortSignal.aborted ? "idle" : "done");
+      activity.finish(requestId, abortSignal.aborted ? "cancelled" : "done");
     } catch (error) {
       setAgentActivity(agent.id, abortSignal.aborted ? "idle" : "error");
+      activity.finish(requestId, abortSignal.aborted ? "cancelled" : "error", error instanceof Error ? error.message : String(error));
       throw error;
     } finally {
       streamClosed = true;

@@ -6,6 +6,8 @@ import {
   getComposioKey,
   getComposioUserId,
   getComputerSettings,
+  getResourceMode,
+  getWorkspacePath,
 } from "./settings-store";
 import { bundledGatewayLaunch } from "./gateway-runtime";
 
@@ -14,6 +16,8 @@ export const GATEWAY_BASE_URL = `http://127.0.0.1:${DESKTOP_GATEWAY_PORT}`;
 const GATEWAY_URL = `${GATEWAY_BASE_URL}/health/liveliness`;
 const STARTUP_TIMEOUT_MS = 90_000;
 const RESTART_BACKOFF_MS = 5_000;
+const ONLINE_PROBE_CACHE_MS = 5_000;
+const OFFLINE_PROBE_CACHE_MS = 250;
 
 export type GatewayStatus = {
   state: "connecting" | "online" | "offline" | "error";
@@ -32,6 +36,9 @@ let startup: Promise<void> | null = null;
 let lastStartAttempt = 0;
 let quitting = false;
 let lastGatewayError = "";
+let lastProbeAt = 0;
+let lastProbe: GatewayStatus | null = null;
+let probeInFlight: Promise<GatewayStatus> | null = null;
 
 function managedGatewayIsAlive() {
   return managedGateway !== null && managedGateway.exitCode === null;
@@ -104,7 +111,21 @@ function gatewayCommand(root: string) {
   };
 }
 
-async function probeGateway(timeout = 1_000): Promise<GatewayStatus> {
+function resourceEnvironment() {
+  const mode = getResourceMode();
+  const threads = mode === "low" ? "2" : mode === "performance" ? "8" : "4";
+  return {
+    MEMO_RESOURCE_MODE: mode,
+    MEMO_SPEECH_CPU_THREADS: threads,
+    OMP_NUM_THREADS: threads,
+    OPENBLAS_NUM_THREADS: threads,
+    MKL_NUM_THREADS: threads,
+    MEMO_SPEECH_IDLE_TIMEOUT_SECONDS:
+      mode === "low" ? "10" : mode === "performance" ? "90" : "30",
+  };
+}
+
+async function runGatewayProbe(timeout: number): Promise<GatewayStatus> {
   const startedAt = performance.now();
   try {
     const response = await fetch(GATEWAY_URL, {
@@ -139,6 +160,35 @@ async function probeGateway(timeout = 1_000): Promise<GatewayStatus> {
   } catch {
     return { state: "offline", running: false, latencyMs: null };
   }
+}
+
+async function probeGateway(
+  timeout = 1_000,
+  { force = false }: { force?: boolean } = {},
+): Promise<GatewayStatus> {
+  const cacheLifetime = lastProbe?.running
+    ? ONLINE_PROBE_CACHE_MS
+    : OFFLINE_PROBE_CACHE_MS;
+  if (!force && lastProbe && Date.now() - lastProbeAt < cacheLifetime) {
+    return lastProbe;
+  }
+  if (probeInFlight) return probeInFlight;
+
+  probeInFlight = runGatewayProbe(timeout)
+    .then((result) => {
+      lastProbe = result;
+      lastProbeAt = Date.now();
+      return result;
+    })
+    .finally(() => {
+      probeInFlight = null;
+    });
+  return probeInFlight;
+}
+
+function invalidateProbeCache() {
+  lastProbe = null;
+  lastProbeAt = 0;
 }
 
 const wait = (milliseconds: number) =>
@@ -180,9 +230,11 @@ async function startGateway() {
     cwd: launch.cwd,
     env: {
       ...process.env,
+      ...resourceEnvironment(),
       GATEWAY_HOST: "127.0.0.1",
       GATEWAY_PORT: DESKTOP_GATEWAY_PORT,
-      MEMO_SANDBOX_ROOT: path.join(app.getPath("userData"), "workspace"),
+      MEMO_SANDBOX_ROOT:
+        getWorkspacePath() || path.join(app.getPath("userData"), "workspace"),
       ...(app.isPackaged
         ? {
             PYTHONHOME: "",
@@ -204,6 +256,14 @@ async function startGateway() {
           }
         : {}),
       MEMO_COMPUTER_ENABLED: "1",
+      ...(process.platform === "win32"
+        ? {
+            MEMO_WINDOWS_PROCESS_SANDBOX: "required",
+            MEMO_WINDOWS_SANDBOX_RUNNER: app.isPackaged
+              ? path.join(process.resourcesPath, "MemoSandbox.exe")
+              : path.join(findMemoRoot(), ".sandbox-build", "MemoSandbox.exe"),
+          }
+        : {}),
       // Loading both local speech models can monopolize startup long enough
       // for the desktop health check to treat the gateway as unavailable.
       // The speech endpoints already initialize their models on first use.
@@ -212,8 +272,10 @@ async function startGateway() {
       MEMO_AGENT_STORE: path.join(app.getPath("userData"), "agents.json"),
       COMPOSIO_API_KEY: getComposioKey() || process.env.COMPOSIO_API_KEY,
       MEMO_COMPOSIO_USER_ID: getComposioUserId(),
-      MEMO_CUA_ENDPOINT: getComputerSettings().endpoint,
-      MEMO_CUA_TOKEN: getComputerSettings().token,
+      MEMO_CUA_ENDPOINT: getComputerSettings("local_vm").endpoint,
+      MEMO_CUA_TOKEN: getComputerSettings("local_vm").token,
+      MEMO_VPS_CUA_ENDPOINT: getComputerSettings("vps").endpoint,
+      MEMO_VPS_CUA_TOKEN: getComputerSettings("vps").token,
     },
     windowsHide: true,
     stdio: ["ignore", "ignore", "pipe"],
@@ -223,6 +285,7 @@ async function startGateway() {
   child.stderr?.on("data", rememberGatewayError);
 
   child.once("error", (error) => {
+    invalidateProbeCache();
     if (managedGateway === child) managedGateway = null;
     status = {
       state: "error",
@@ -232,6 +295,7 @@ async function startGateway() {
     };
   });
   child.once("exit", (code, signal) => {
+    invalidateProbeCache();
     if (managedGateway === child) managedGateway = null;
     if (quitting) return;
     void probeGateway(2_000)
@@ -358,12 +422,14 @@ export function registerGatewayLifecycle() {
 
 export function stopManagedGateway() {
   quitting = true;
+  invalidateProbeCache();
   managedGateway?.kill();
   managedGateway = null;
 }
 
 export async function restartManagedGateway() {
   quitting = false;
+  invalidateProbeCache();
   const child = managedGateway;
   if (child) {
     child.kill();

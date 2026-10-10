@@ -104,7 +104,7 @@ class ComposioConnectionTests(TestCase):
                 {
                     "slug": "outlook",
                     "name": "Microsoft Outlook",
-                    "meta": {"secret": "hidden"},
+                    "meta": {"secret": "hidden", "logo": "https://assets.composio.dev/outlook.png"},
                 }
             ]
         )
@@ -112,7 +112,15 @@ class ComposioConnectionTests(TestCase):
         composio = ComposioTools(SimpleNamespace(toolkits=wrapper))
         self.assertEqual(
             composio.toolkits("outlook"),
-            {"data": [{"id": "outlook", "label": "Microsoft Outlook"}]},
+            {
+                "data": [
+                    {
+                        "id": "outlook",
+                        "label": "Microsoft Outlook",
+                        "icon": "https://assets.composio.dev/outlook.png",
+                    }
+                ]
+            },
         )
         transport.toolkits.list.assert_called_once_with(
             limit=100, sort_by="usage", search="outlook"

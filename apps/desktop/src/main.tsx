@@ -6,18 +6,18 @@ import Titlebar from "@/components/titlebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { RuntimeProvider } from "@/runtime-provider";
-import { PermissionDialog } from "@/components/permission-dialog";
 import { AgentSetupGate } from "@/agents/agent-setup-gate";
 import { AgentProvider, useAgents } from "@/agents/agent-provider";
 import { ModelSidebar } from "@/agents/model-sidebar";
 import { ThreadModelProvider } from "@/agents/thread-model-provider";
 import { GatewayStartup } from "@/components/gateway-startup";
 import { WorkspaceShortcuts } from "@/components/workspace-shortcuts";
+import { TaskActivitySidebar } from "@/agents/task-activity-sidebar";
 import "./index.css";
 
 function WorkspaceShell() {
   const { activeAgent } = useAgents();
-  const [rightPanel, setRightPanel] = useState<"desktop" | "models" | null>(
+  const [rightPanel, setRightPanel] = useState<"desktop" | "models" | "activity" | null>(
     null,
   );
   return (
@@ -31,6 +31,8 @@ function WorkspaceShell() {
         onModelToggle={() =>
           setRightPanel((value) => (value === "models" ? null : "models"))
         }
+        activityOpen={rightPanel === "activity"}
+        onActivityToggle={() => setRightPanel((value) => value === "activity" ? null : "activity")}
       />
       <AppSidebar />
       <div className="ml-72 min-w-0 flex-1">
@@ -38,6 +40,7 @@ function WorkspaceShell() {
       </div>
       {rightPanel === "desktop" && <AgentDesktopPanel agent={activeAgent} />}
       {rightPanel === "models" && <ModelSidebar />}
+      {rightPanel === "activity" && <TaskActivitySidebar />}
     </SidebarProvider>
   );
 }
@@ -58,7 +61,6 @@ createRoot(rootElement).render(
           <AgentSetupGate>
             <RuntimeProvider>
               <WorkspaceShortcuts />
-              <PermissionDialog />
               <WorkspaceShell />
             </RuntimeProvider>
           </AgentSetupGate>

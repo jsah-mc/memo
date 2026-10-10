@@ -11,6 +11,7 @@ import {
   startDesktopControlIndicator,
   stopDesktopControlIndicator,
 } from "./desktop-control-indicator";
+import { createWorkspaceCheckpoint } from "./workspace";
 
 type ChatContentPart =
   | { type: "text"; text: string }
@@ -30,7 +31,7 @@ type ChatRequest = {
     composioEnabled: boolean;
     composioUserId: string;
     composioToolkits: readonly string[];
-    computerTarget: "host" | "virtual";
+    computerTarget: "host" | "local_vm" | "vps";
   };
   messages: ChatMessage[];
 };
@@ -42,7 +43,7 @@ type AgentProfileRequest = {
   cli: string;
   model: string;
   color: string;
-  computerTarget: "host" | "virtual";
+  computerTarget: "host" | "local_vm" | "vps";
 };
 
 type OpenAIStreamChunk = {
@@ -226,6 +227,13 @@ async function resolveShellPermission(
 
   if (allowed && permission.kind === "computer_control") {
     startDesktopControlIndicator(requestId);
+  }
+  if (allowed && permission.kind === "shell_command") {
+    try {
+      await createWorkspaceCheckpoint(`Before ${permission.command.slice(0, 36)}`);
+    } catch {
+      // Non-Git workspaces still receive the normal explicit permission gate.
+    }
   }
 
   const response = await fetch(
@@ -423,8 +431,7 @@ function isChatRequest(value: unknown): value is ChatRequest {
     !!request.agent &&
     typeof request.agent.cli === "string" &&
     typeof request.agent.model === "string" &&
-    (request.agent.computerTarget === "host" ||
-      request.agent.computerTarget === "virtual") &&
+    ["host", "local_vm", "vps"].includes(request.agent.computerTarget) &&
     Array.isArray(request.messages) &&
     request.messages.every(
       (message) =>

@@ -30,3 +30,4 @@ node_modules
 
 # Bundled gateway build environment and runtime
 .gateway-build/
+.sandbox-build/

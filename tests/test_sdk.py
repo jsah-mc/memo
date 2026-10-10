@@ -1,47 +1,13 @@
 import json
-import os
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import httpx
 
 from utils.gateway.sdk import ModelSDK, SDKResponseStream
-from utils.tools.moonkart import MoonKartClient, MoonKartTool
 
 
 class ModelSDKTests(IsolatedAsyncioTestCase):
-    async def test_passes_moonkart_function_tool_to_completion(self):
-        tool = MoonKartTool(MagicMock(spec=MoonKartClient))
-        requests = []
-
-        def handle(request):
-            requests.append(request)
-            return httpx.Response(200, json={"choices": []})
-
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handle))
-        with (
-            patch("utils.provider_transport.httpx.AsyncClient", return_value=client),
-            patch.dict(os.environ, OPENAI_API_KEY="test-key"),
-        ):
-            await ModelSDK("openai/test-model").completion(
-                {
-                    "messages": [{"role": "user", "content": "start the moonkart"}],
-                    "tools": [tool.function_definition],
-                    "tool_choice": {
-                        "type": "function",
-                        "function": {"name": tool.name},
-                    },
-                }
-            )
-        body = json.loads(requests[0].content)
-        self.assertEqual(body["tools"], [tool.function_definition])
-        self.assertEqual(body["tool_choice"]["function"]["name"], "control_moonkart")
-        self.assertEqual(body["model"], "test-model")
-        self.assertEqual(
-            str(requests[0].url), "https://api.openai.com/v1/chat/completions"
-        )
-        self.assertTrue(client.is_closed)
-
     async def test_streaming_chat_reassembles_multiple_tool_call_chunks_and_usage(self):
         chunks = [
             {
@@ -103,7 +69,7 @@ class ModelSDKTests(IsolatedAsyncioTestCase):
     async def test_recovers_function_call_from_output_item_event(self):
         call = {
             "type": "function_call",
-            "name": "control_moonkart",
+            "name": "search_notes",
             "call_id": "call_test",
             "arguments": '{"action":"start"}',
         }

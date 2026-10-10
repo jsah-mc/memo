@@ -36,7 +36,6 @@ from utils.tools.computer_turn import (
     has_one_time_computer_approval,
 )
 from utils.tools.desktop import detect_desktop_control_request
-from utils.tools.moonkart import MoonKartTool
 from utils.tools.permissions import PermissionBroker
 from utils.tools.stt import STT
 from utils.tools.tts import TTS
@@ -53,7 +52,6 @@ from .chat import (
 from .cli_backends import CLI_BACKENDS, validate_agent_config
 from .composio_tools import ComposioTools
 from .composio_turn import composio_tool_turn
-from .moonkart import detect_moonkart_action, run_moonkart_tool_turn
 from .router import ModelRouter
 from .sdk import ModelSDK
 from .settings import GatewaySettings
@@ -75,7 +73,6 @@ def _composio_scope(payload: object) -> tuple[str, list[str]]:
 
 def create_app(
     settings: GatewaySettings,
-    moonkart_tool: MoonKartTool | None = None,
     browser_tool: BrowserUseTool | None = None,
     computer_tool: ComputerSandboxTool | None = None,
     permission_broker: PermissionBroker | None = None,
@@ -84,7 +81,6 @@ def create_app(
     agent_store: AgentStore | None = None,
     composio_tools: ComposioTools | None = None,
 ) -> FastAPI:
-    kart_tool = moonkart_tool or MoonKartTool()
     web_tool = browser_tool or BrowserUseTool()
     approvals = permission_broker or PermissionBroker()
     router = ModelRouter(
@@ -109,6 +105,23 @@ def create_app(
         else None
     )
     composio = composio_tools or ComposioTools()
+    computer_tools: dict[str, ComputerSandboxTool] = {}
+
+    def computer_for(payload: dict[str, Any]) -> ComputerSandboxTool:
+        if computer_tool is not None:
+            return computer_tool
+        agent = payload.get("memo_agent", {})
+        target = (
+            agent.get("computerTarget", "host")
+            if isinstance(agent, dict)
+            else "host"
+        )
+        if not isinstance(target, str) or not target.strip():
+            target = "host"
+        target = target.strip()
+        if target not in computer_tools:
+            computer_tools[target] = ComputerSandboxTool(computer_target=target)
+        return computer_tools[target]
 
     def cancel_speech_release() -> None:
         nonlocal speech_idle_task
@@ -156,12 +169,6 @@ def create_app(
         allow_computer: bool,
         interactive_permissions: bool,
     ):
-        request_computer_tool = computer_tool or ComputerSandboxTool(
-            computer_target=payload.get("memo_agent", {}).get("computerTarget", "host")
-        )
-        action = detect_moonkart_action(payload.get("input"))
-        if action is not None:
-            return await run_moonkart_tool_turn(sdk, payload, action, kart_tool)
         browser_task = (
             detect_browser_task(payload.get("input")) if allow_browser else None
         )
@@ -176,6 +183,8 @@ def create_app(
             and not detect_desktop_control_request(computer_text)
         ):
             from .sdk import SDKResponseStream
+
+            request_computer_tool = computer_for(payload)
 
             return SDKResponseStream(
                 direct_named_app_events(
@@ -194,6 +203,8 @@ def create_app(
         ):
             from .sdk import SDKResponseStream
 
+            request_computer_tool = computer_for(payload)
+
             return SDKResponseStream(
                 direct_app_events(
                     request_computer_tool,
@@ -209,6 +220,8 @@ def create_app(
         ):
             from .sdk import SDKResponseStream
 
+            request_computer_tool = computer_for(payload)
+
             return SDKResponseStream(
                 direct_named_app_events(
                     request_computer_tool,
@@ -223,6 +236,8 @@ def create_app(
             and detect_computer_task(computer_text)
         ):
             from .sdk import SDKResponseStream
+
+            request_computer_tool = computer_for(payload)
 
             return SDKResponseStream(
                 computer_tool_events(
@@ -326,10 +341,7 @@ def create_app(
             cancel_speech_release()
             await release_owned_speech_models()
             approvals.cancel_all()
-            try:
-                await kart_tool.close()
-            finally:
-                access_logger.removeFilter(quiet_health_logs)
+            access_logger.removeFilter(quiet_health_logs)
 
     app = FastAPI(title="Memo Gateway", version="0.1.0", lifespan=lifespan)
 
@@ -411,13 +423,13 @@ def create_app(
         return {"configured": composio.configured}
 
     @app.get("/v1/desktop/preview")
-    async def desktop_preview(request: Request) -> dict[str, Any]:
+    async def desktop_preview(request: Request, target: str = "local_vm") -> dict[str, Any]:
         if request.headers.get("x-memo-desktop") != "1":
             raise HTTPException(status_code=403, detail="Desktop preview denied.")
         try:
-            capture = await ComputerSandboxTool(
-                computer_target="virtual"
-            ).desktop.capture()
+            if target not in {"local_vm", "vps"}:
+                raise ValueError("Unknown virtual desktop target")
+            capture = await ComputerSandboxTool(computer_target=target).desktop.capture()
             return {"image": capture["image_url"]}
         except Exception as exc:
             raise HTTPException(

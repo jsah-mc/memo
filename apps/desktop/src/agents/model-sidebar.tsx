@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckIcon, SearchIcon } from "lucide-react";
 import { useAgents } from "@/agents/agent-provider";
 import { CLI_OPTIONS, modelOptions } from "@/agents/cli-options";
@@ -13,17 +13,61 @@ export function ModelSidebar() {
   const [search, setSearch] = useState("");
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState("");
+  const [installedRuntimeIds, setInstalledRuntimeIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [loadingRuntimes, setLoadingRuntimes] = useState(true);
   const key = threadModelKey(activeAgent.id, activeThreadId);
   const saved = selections[key];
   const selectedRuntime = saved?.cli ?? activeAgent.cli;
   const selectedModel = saved?.model ?? activeAgent.model;
+  const availableRuntimes = useMemo(
+    () => CLI_OPTIONS.filter((option) => installedRuntimeIds.has(option.id)),
+    [installedRuntimeIds],
+  );
+  const selectedRuntimeInstalled = installedRuntimeIds.has(selectedRuntime);
   const models = useMemo(
     () =>
-      modelOptions(selectedRuntime, selectedModel).filter((model) =>
-        model.toLowerCase().includes(search.trim().toLowerCase()),
-      ),
-    [search, selectedModel, selectedRuntime],
+      selectedRuntimeInstalled
+        ? modelOptions(selectedRuntime, selectedModel).filter((model) =>
+            model.toLowerCase().includes(search.trim().toLowerCase()),
+          )
+        : [],
+    [search, selectedModel, selectedRuntime, selectedRuntimeInstalled],
   );
+
+  useEffect(() => {
+    let current = true;
+    void window.desktopApi.agents
+      .backends()
+      .then((backends) => {
+        if (current) {
+          setInstalledRuntimeIds(
+            new Set(
+              backends
+                .filter((backend) => backend.installed)
+                .map((backend) => backend.id),
+            ),
+          );
+          setError("");
+        }
+      })
+      .catch((reason: unknown) => {
+        if (current) {
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : "Could not detect installed runtimes.",
+          );
+        }
+      })
+      .finally(() => {
+        if (current) setLoadingRuntimes(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, []);
 
   const selectModel = async (model: string) => {
     setUpdating(true);
@@ -67,22 +111,31 @@ export function ModelSidebar() {
         <label className="grid gap-1.5 rounded-xl border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
           Runtime for {activeAgent.name}
           <select
-            value={selectedRuntime}
-            disabled={updating}
+            value={selectedRuntimeInstalled ? selectedRuntime : ""}
+            disabled={updating || loadingRuntimes || availableRuntimes.length === 0}
             onChange={(event) =>
               void selectRuntime(event.target.value as typeof activeAgent.cli)
             }
             className="h-9 rounded-lg border border-input bg-background px-2.5 text-sm font-medium text-foreground outline-none focus-visible:border-ring"
             aria-label={`Runtime for ${activeAgent.name}`}
           >
-            {CLI_OPTIONS.map((option) => (
+            {!selectedRuntimeInstalled && (
+              <option value="" disabled>
+                {loadingRuntimes
+                  ? "Detecting installed CLIs…"
+                  : "Select an installed CLI"}
+              </option>
+            )}
+            {availableRuntimes.map((option) => (
               <option key={option.id} value={option.id}>
                 {option.label}
               </option>
             ))}
           </select>
           <span>
-            Changing runtime immediately selects its default model.
+            {availableRuntimes.length === 0 && !loadingRuntimes
+              ? "No supported agent CLI is installed. Connect one in Settings → AI agents."
+              : "Only installed agent CLIs are shown."}
           </span>
         </label>
         <label className="flex h-9 items-center gap-2 rounded-lg border border-input bg-background px-3">

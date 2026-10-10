@@ -10,6 +10,7 @@ import {
 } from "./gateway-process";
 import { registerVirtualDesktop } from "./virtual-desktop";
 import { stopAllDesktopControlIndicators } from "./desktop-control-indicator";
+import { registerWorkspace } from "./workspace";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -25,6 +26,7 @@ registerChatApi();
 registerChatHistory();
 registerGatewayLifecycle();
 registerVirtualDesktop();
+registerWorkspace();
 
 ipcMain.on("window:minimize", (event) =>
   BrowserWindow.fromWebContents(event.sender)?.minimize(),

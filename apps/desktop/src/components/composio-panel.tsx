@@ -7,12 +7,10 @@ import { Input } from "@/components/ui/input";
 
 export function ComposioPanel() {
   const [configured, setConfigured] = useState(false);
-  const [hasKey, setHasKey] = useState(false);
-  const [key, setKey] = useState("");
   const [connections, setConnections] = useState<ComposioConnection[]>([]);
   const [search, setSearch] = useState("");
   const [catalog, setCatalog] =
-    useState<readonly { id: string; label: string }[]>(COMPOSIO_TOOLKITS);
+    useState<readonly { id: string; label: string; icon?: string }[]>(COMPOSIO_TOOLKITS);
   const [catalogError, setCatalogError] = useState("");
   const [catalogRevision, setCatalogRevision] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
@@ -25,12 +23,8 @@ export function ComposioPanel() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [status, keyStatus] = await Promise.all([
-        window.desktopApi.getComposioStatus(),
-        window.desktopApi.getComposioKeyStatus(),
-      ]);
+      const status = await window.desktopApi.getComposioStatus();
       setConfigured(status.configured);
-      setHasKey(keyStatus.hasKey);
       const result = status.configured
         ? await window.desktopApi.getComposioConnections()
         : { data: [] };
@@ -111,22 +105,6 @@ export function ComposioPanel() {
     };
   }, [configured, search, catalogRevision]);
 
-  const save = async () => {
-    setBusy("key");
-    setError("");
-    try {
-      await window.desktopApi.setComposioKey(key.trim());
-      setKey("");
-      await refresh();
-      setCatalogRevision((value) => value + 1);
-    } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Could not save API key.",
-      );
-    } finally {
-      setBusy(null);
-    }
-  };
   const connect = async (toolkit: string) => {
     setBusy(toolkit);
     setError("");
@@ -167,6 +145,9 @@ export function ComposioPanel() {
     label:
       COMPOSIO_TOOLKITS.find((toolkit) => toolkit.id === item.toolkit)?.label ??
       item.toolkit.replaceAll("_", " "),
+    icon:
+      catalog.find((toolkit) => toolkit.id === item.toolkit)?.icon ??
+      `https://logos.composio.dev/api/${encodeURIComponent(item.toolkit)}`,
   }));
   const allApps = Array.from(
     new Map([...connected, ...catalog].map((item) => [item.id, item])).values(),
@@ -176,31 +157,6 @@ export function ComposioPanel() {
   );
   return (
     <div className="grid gap-4">
-      <section className="grid gap-3 rounded-xl bg-muted/35 p-3">
-        <div>
-          <p className="text-sm font-medium">Composio API key</p>
-          <p className="text-xs text-muted-foreground">
-            Used by the gateway for your shared app connections.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Input
-            aria-label="Composio API key"
-            type="password"
-            autoComplete="off"
-            value={key}
-            onChange={(event) => setKey(event.target.value)}
-            placeholder={hasKey ? "Replace saved key" : "Enter API key"}
-          />
-          <Button
-            type="button"
-            disabled={!key.trim() || busy !== null}
-            onClick={() => void save()}
-          >
-            {busy === "key" ? "Saving…" : "Save"}
-          </Button>
-        </div>
-      </section>
       <section className="grid gap-3">
         <div className="flex items-center justify-between">
           <div>
@@ -231,7 +187,7 @@ export function ComposioPanel() {
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
-        <div className="grid max-h-64 gap-2 overflow-y-auto">
+        <div className="grid max-h-80 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
           {visible.map((toolkit) => {
             const accounts = connections.filter(
               (item) => item.toolkit === toolkit.id,
@@ -241,6 +197,7 @@ export function ComposioPanel() {
                 key={toolkit.id}
                 id={toolkit.id}
                 label={toolkit.label}
+                icon={toolkit.icon}
                 accounts={accounts}
                 configured={configured}
                 busy={busy}
@@ -255,8 +212,7 @@ export function ComposioPanel() {
         </div>
         {!configured && !loading && (
           <p className="text-xs text-muted-foreground">
-            Save a Composio API key to connect apps. You can also do this later
-            in Settings.
+            Add a Composio API key in Settings → API keys to connect apps.
           </p>
         )}
         {pollUntil > 0 && (

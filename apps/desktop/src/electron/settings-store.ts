@@ -8,7 +8,17 @@ type DesktopSettings = {
   composioUserId?: string;
   cuaEndpoint?: string;
   cuaToken?: string;
+  vpsCuaEndpoint?: string;
+  vpsCuaToken?: string;
+  vpsSshHost?: string;
+  vpsSshUser?: string;
+  vpsSshPort?: number;
+  vpsSshIdentityFile?: string;
+  resourceMode?: ResourceMode;
+  workspacePath?: string;
 };
+
+export type ResourceMode = "low" | "balanced" | "performance";
 
 function settingsPath() {
   return path.join(app.getPath("userData"), "settings.json");
@@ -77,20 +87,74 @@ function encrypt(value: string) {
   return data.toString("base64");
 }
 
-export function getComputerSettings() {
+export function getComputerSettings(target: "local_vm" | "vps" = "local_vm") {
   const settings = readSettings();
+  const isVps = target === "vps";
   return {
-    endpoint: settings.cuaEndpoint ?? "http://127.0.0.1:3211",
-    token: decrypt(settings.cuaToken),
+    endpoint: isVps
+      ? (settings.vpsCuaEndpoint ?? "")
+      : (settings.cuaEndpoint ?? "http://127.0.0.1:3211"),
+    token: decrypt(isVps ? settings.vpsCuaToken : settings.cuaToken),
   } as const;
 }
 
 export function setComputerSettings(input: {
+  target?: "local_vm" | "vps";
   endpoint: string;
   token?: string;
 }) {
   const settings = readSettings();
-  settings.cuaEndpoint = input.endpoint;
-  if (input.token) settings.cuaToken = encrypt(input.token);
+  if (input.target === "vps") {
+    settings.vpsCuaEndpoint = input.endpoint;
+    if (input.token) settings.vpsCuaToken = encrypt(input.token);
+  } else {
+    settings.cuaEndpoint = input.endpoint;
+    if (input.token) settings.cuaToken = encrypt(input.token);
+  }
+  writeSettings(settings);
+}
+
+export function getVpsSshSettings() {
+  const settings = readSettings();
+  return {
+    host: settings.vpsSshHost ?? "",
+    user: settings.vpsSshUser ?? "",
+    port: settings.vpsSshPort ?? 22,
+    identityFile: settings.vpsSshIdentityFile ?? "",
+  } as const;
+}
+
+export function setVpsSshSettings(input: {
+  host: string;
+  user: string;
+  port: number;
+  identityFile?: string;
+}) {
+  const settings = readSettings();
+  settings.vpsSshHost = input.host;
+  settings.vpsSshUser = input.user;
+  settings.vpsSshPort = input.port;
+  settings.vpsSshIdentityFile = input.identityFile ?? "";
+  writeSettings(settings);
+}
+
+export function getResourceMode(): ResourceMode {
+  const value = readSettings().resourceMode;
+  return value === "low" || value === "performance" ? value : "balanced";
+}
+
+export function setResourceMode(mode: ResourceMode) {
+  const settings = readSettings();
+  settings.resourceMode = mode;
+  writeSettings(settings);
+}
+
+export function getWorkspacePath() {
+  return readSettings().workspacePath ?? "";
+}
+
+export function setWorkspacePath(workspacePath: string) {
+  const settings = readSettings();
+  settings.workspacePath = workspacePath;
   writeSettings(settings);
 }

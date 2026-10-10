@@ -19,7 +19,6 @@ class ProgramSettings:
     vision_model: str = DEFAULT_MODEL
     upstream_api_base: str | None = None
     browser_enabled: bool = True
-    moonkart_enabled: bool = True
     computer_enabled: bool = True
 
     @classmethod
@@ -33,6 +32,5 @@ class ProgramSettings:
             ),
             upstream_api_base=os.environ.get("CHATGPT_API_BASE") or None,
             browser_enabled=os.environ.get("MEMO_BROWSER_ENABLED", "1") != "0",
-            moonkart_enabled=os.environ.get("MEMO_MOONKART_ENABLED", "1") != "0",
             computer_enabled=os.environ.get("MEMO_COMPUTER_ENABLED", "1") != "0",
         )

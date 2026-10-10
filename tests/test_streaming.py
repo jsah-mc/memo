@@ -75,26 +75,31 @@ def completed_stream(response: dict, text: str = "") -> SDKResponseStream:
     return SDKResponseStream(events())
 
 
-class FakeMoonKartTool:
-    name = "control_moonkart"
-
-    def __init__(self) -> None:
-        self.actions: list[str] = []
-
-    async def execute(self, arguments: dict) -> dict:
-        action = arguments["action"]
-        self.actions.append(action)
-        return {
-            "ok": True,
-            "action": action,
-            "command": "H" if action == "start" else "S",
-        }
-
-    async def close(self) -> None:
-        pass
-
-
 class GatewayStreamingTests(TestCase):
+    def test_plain_chat_does_not_initialize_computer_control(self) -> None:
+        settings = GatewaySettings()
+
+        with (
+            patch(
+                "utils.gateway.sdk.ModelSDK.responses",
+                new=AsyncMock(return_value=FakeResponseStream()),
+            ),
+            patch("utils.gateway.api.ComputerSandboxTool") as computer_type,
+            TestClient(create_app(settings)) as client,
+        ):
+            response = client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "codex",
+                    "messages": [{"role": "user", "content": "Hello"}],
+                    "stream": True,
+                },
+            )
+            list(response.iter_lines())
+
+        self.assertEqual(response.status_code, 200)
+        computer_type.assert_not_called()
+
     def test_chat_completions_emits_each_text_delta_before_done(self) -> None:
         settings = GatewaySettings()
 
@@ -103,9 +108,7 @@ class GatewayStreamingTests(TestCase):
                 "utils.gateway.sdk.ModelSDK.responses",
                 new=AsyncMock(return_value=FakeResponseStream()),
             ),
-            TestClient(
-                create_app(settings, moonkart_tool=FakeMoonKartTool())
-            ) as client,
+            TestClient(create_app(settings)) as client,
         ):
             response = client.post(
                 "/v1/chat/completions",
@@ -140,9 +143,7 @@ class GatewayStreamingTests(TestCase):
                 "utils.gateway.sdk.ModelSDK.responses",
                 new=AsyncMock(return_value=FakeToolResponseStream()),
             ),
-            TestClient(
-                create_app(settings, moonkart_tool=FakeMoonKartTool())
-            ) as client,
+            TestClient(create_app(settings)) as client,
         ):
             response = client.post(
                 "/v1/chat/completions",
@@ -196,38 +197,10 @@ class GatewayStreamingTests(TestCase):
         self.assertEqual(permission["permission"]["command"], "npm --version")
         self.assertFalse(permission["permission"]["os_isolated"])
 
-    def test_gateway_executes_spaced_moon_cart_without_upstream_model(self) -> None:
-        settings = GatewaySettings()
-        tool = FakeMoonKartTool()
-
-        with (
-            patch(
-                "utils.gateway.sdk.ModelSDK.responses",
-                new=AsyncMock(side_effect=AssertionError("model was called")),
-            ),
-            TestClient(create_app(settings, moonkart_tool=tool)) as client,
-        ):
-            response = client.post(
-                "/v1/chat/completions",
-                json={
-                    "model": "codex",
-                    "messages": [{"role": "user", "content": "start the moon cart"}],
-                },
-            )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(tool.actions, ["start"])
-        self.assertEqual(
-            response.json()["choices"][0]["message"]["content"],
-            "MoonKart start command sent (H).",
-        )
-
     def test_image_generation_endpoint_is_disabled_without_local_backend(self) -> None:
         settings = GatewaySettings()
 
-        with TestClient(
-            create_app(settings, moonkart_tool=FakeMoonKartTool())
-        ) as client:
+        with TestClient(create_app(settings)) as client:
             response = client.post(
                 "/v1/images/generations",
                 json={"prompt": "a turtle astronaut"},

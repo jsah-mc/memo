@@ -22,11 +22,9 @@ from utils.tools.computer_turn import (
     has_one_time_computer_approval,
 )
 from utils.tools.desktop import detect_desktop_control_request
-from utils.tools.moonkart import MoonKartTool
 from utils.tools.permissions import PermissionBroker
 
 from .browser import detect_browser_task, run_browser_tool_turn
-from .moonkart import detect_moonkart_action, run_moonkart_tool_turn
 from .prompt import load_system_prompt
 from .router import ModelRouter
 from .sdk import ModelSDK, SDKResponseStream
@@ -43,7 +41,6 @@ class ProgramAI:
         settings: ProgramSettings | None = None,
         *,
         browser_tool: BrowserUseTool | None = None,
-        moonkart_tool: MoonKartTool | None = None,
         computer_tool: ComputerSandboxTool | None = None,
         permission_broker: PermissionBroker | None = None,
         sdk_factory: SDKFactory = ModelSDK,
@@ -51,7 +48,6 @@ class ProgramAI:
     ) -> None:
         self.settings = settings or ProgramSettings.from_environment()
         self.browser_tool = browser_tool or BrowserUseTool()
-        self.moonkart_tool = moonkart_tool or MoonKartTool()
         self.computer_tool = computer_tool
         self.permission_broker = permission_broker or PermissionBroker()
         self.sdk_factory = sdk_factory
@@ -78,19 +74,6 @@ class ProgramAI:
         sdk: ModelSDK,
         payload: dict[str, Any],
     ) -> SDKResponseStream:
-        action = (
-            detect_moonkart_action(payload.get("input"))
-            if self.settings.moonkart_enabled
-            else None
-        )
-        if action is not None:
-            return await run_moonkart_tool_turn(
-                sdk,
-                payload,
-                action,
-                self.moonkart_tool,
-            )
-
         browser_task = (
             detect_browser_task(payload.get("input"))
             if self.settings.browser_enabled
@@ -234,4 +217,3 @@ class ProgramAI:
 
     async def close(self) -> None:
         self.permission_broker.cancel_all()
-        await self.moonkart_tool.close()

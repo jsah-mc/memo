@@ -2,13 +2,20 @@ import { useState } from "react";
 import {
   AppWindowIcon,
   BotIcon,
+  CloudIcon,
   PackageIcon,
+  FolderKanbanIcon,
+  GaugeIcon,
+  KeyRoundIcon,
   SettingsIcon,
 } from "lucide-react";
 import { AiAgentsPanel } from "@/components/ai-agents-panel";
+import { ApiKeysPanel } from "@/components/api-keys-panel";
 import { ComposioPanel } from "@/components/composio-panel";
 import { SystemHealthPanel } from "@/components/system-health-panel";
 import { VirtualDesktopPanel } from "@/components/virtual-desktop-panel";
+import { ResourceSettingsPanel } from "@/components/resource-settings-panel";
+import { WorkspaceSettingsPanel } from "@/components/workspace-settings-panel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,12 +28,16 @@ import {
 
 export function SettingsDialog() {
   const [section, setSection] = useState<
-    "general" | "computer" | "agents" | "apps"
+    "general" | "resources" | "workspace" | "computer" | "vps" | "agents" | "keys" | "apps"
   >("general");
   const sections = [
     { id: "general" as const, label: "General", icon: SettingsIcon },
+    { id: "resources" as const, label: "Resources", icon: GaugeIcon },
+    { id: "workspace" as const, label: "Project workspace", icon: FolderKanbanIcon },
     { id: "computer" as const, label: "Local VM", icon: PackageIcon },
+    { id: "vps" as const, label: "VPS", icon: CloudIcon },
     { id: "agents" as const, label: "AI agents", icon: BotIcon },
+    { id: "keys" as const, label: "API keys", icon: KeyRoundIcon },
     { id: "apps" as const, label: "App connections", icon: AppWindowIcon },
   ];
   return (
@@ -71,14 +82,23 @@ export function SettingsDialog() {
                 {section === "general" && "Gateway and provider readiness."}
                 {section === "computer" &&
                   "Configure the shared Local VM used by agents."}
+                {section === "vps" &&
+                  "Configure a separate remote VPS desktop connection."}
+                {section === "resources" && "Control CPU use and idle model retention."}
+                {section === "workspace" && "Choose a project and create safe checkpoints."}
                 {section === "agents" &&
                   "Connect and inspect AI agent runtimes."}
+                {section === "keys" && "Manage encrypted service credentials."}
                 {section === "apps" && "Connect external apps and services."}
               </DialogDescription>
             </DialogHeader>
             {section === "general" && <SystemHealthPanel />}
+            {section === "resources" && <ResourceSettingsPanel />}
+            {section === "workspace" && <WorkspaceSettingsPanel />}
             {section === "computer" && <VirtualDesktopPanel />}
+            {section === "vps" && <VirtualDesktopPanel target="vps" />}
             {section === "agents" && <AiAgentsPanel />}
+            {section === "keys" && <ApiKeysPanel />}
             {section === "apps" && <ComposioPanel />}
           </div>
         </div>

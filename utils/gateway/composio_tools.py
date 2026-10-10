@@ -136,4 +136,14 @@ class ComposioTools:
             }
         )
         items = [as_object(item) for item in items]
-        return {"data": [{"id": item["slug"], "label": item["name"]} for item in items]}
+        return {
+            "data": [
+                {
+                    "id": item["slug"],
+                    "label": item["name"],
+                    "icon": as_object(item.get("meta", {})).get("logo")
+                    or f"https://logos.composio.dev/api/{item['slug']}",
+                }
+                for item in items
+            ]
+        }

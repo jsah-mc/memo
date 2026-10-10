@@ -56,7 +56,7 @@ contextBridge.exposeInMainWorld("desktopApi", {
     update: (
       agentId: string,
       changes: {
-        computerTarget?: "host" | "virtual";
+        computerTarget?: "host" | "local_vm" | "vps";
         cli?: string;
         model?: string;
       },
@@ -75,13 +75,32 @@ contextBridge.exposeInMainWorld("desktopApi", {
   openCodexHelp: () => ipcRenderer.invoke("auth:open-codex-help"),
   restartGateway: () => ipcRenderer.invoke("gateway:restart"),
   virtualDesktop: {
-    get: () => ipcRenderer.invoke("virtual-desktop:get"),
-    save: (settings: { endpoint: string; token?: string }) =>
+    get: (target: "local_vm" | "vps" = "local_vm") =>
+      ipcRenderer.invoke("virtual-desktop:get", target),
+    save: (settings: { target?: "local_vm" | "vps"; endpoint: string; token?: string }) =>
       ipcRenderer.invoke("virtual-desktop:save", settings),
     start: () => ipcRenderer.invoke("virtual-desktop:start"),
     stop: () => ipcRenderer.invoke("virtual-desktop:stop"),
-    open: () => ipcRenderer.invoke("virtual-desktop:open"),
-    preview: () => ipcRenderer.invoke("virtual-desktop:preview"),
+    open: (target: "local_vm" | "vps" = "local_vm") =>
+      ipcRenderer.invoke("virtual-desktop:open", target),
+    preview: (target: "local_vm" | "vps" = "local_vm") =>
+      ipcRenderer.invoke("virtual-desktop:preview", target),
+    setupVps: (settings: {
+      host: string;
+      user: string;
+      port: number;
+      identityFile?: string;
+    }) => ipcRenderer.invoke("virtual-desktop:vps-setup", settings),
+  },
+  workspace: {
+    get: () => ipcRenderer.invoke("workspace:get"),
+    choose: () => ipcRenderer.invoke("workspace:choose"),
+    checkpoint: (label: string) => ipcRenderer.invoke("workspace:checkpoint", label),
+  },
+  resources: {
+    get: () => ipcRenderer.invoke("resources:get"),
+    set: (mode: "low" | "balanced" | "performance") =>
+      ipcRenderer.invoke("resources:set", mode),
   },
   getComposioStatus: () => ipcRenderer.invoke("composio:status"),
   getComposioToolkits: (search = "") =>

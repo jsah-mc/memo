@@ -22,7 +22,7 @@ export type AgentProfile = Readonly<{
   composioEnabled: boolean;
   composioUserId: string;
   composioToolkits: readonly string[];
-  computerTarget: "host" | "virtual";
+  computerTarget: "host" | "local_vm" | "vps";
   color: string;
   builtIn?: boolean;
 }>;
@@ -40,7 +40,7 @@ type AgentContextValue = Readonly<{
   deleteAgent: (id: string) => Promise<void>;
   updateAgentComputer: (
     id: string,
-    computerTarget: "host" | "virtual",
+    computerTarget: "host" | "local_vm" | "vps",
   ) => Promise<void>;
   updateAgentModel: (id: string, model: string) => Promise<void>;
   updateAgentRuntime: (
@@ -90,7 +90,9 @@ const isAgentProfile = (value: unknown): value is AgentProfile => {
     typeof record.composioEnabled === "boolean" &&
     typeof record.composioUserId === "string" &&
     Array.isArray(record.composioToolkits) &&
-    (record.computerTarget === "host" || record.computerTarget === "virtual") &&
+    (["host", "local_vm", "vps"] as const).includes(
+      record.computerTarget as "host" | "local_vm" | "vps",
+    ) &&
     typeof record.color === "string"
   );
 };
@@ -120,7 +122,12 @@ const migrateAgent = (value: unknown): AgentProfile | null => {
     composioToolkits: Array.isArray(record.composioToolkits)
       ? record.composioToolkits
       : [],
-    computerTarget: record.computerTarget === "virtual" ? "virtual" : "host",
+    computerTarget:
+      record.computerTarget === "virtual"
+        ? "local_vm"
+        : ["local_vm", "vps"].includes(String(record.computerTarget))
+          ? record.computerTarget
+          : "host",
   };
   return isAgentProfile(migrated) ? migrated : null;
 };
@@ -152,12 +159,13 @@ export function AgentProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [activeId, setActiveId] = useState(
     () => window.localStorage.getItem(ACTIVE_KEY) ?? DEFAULT_AGENT.id,
   );
-  const [builtInComputer, setBuiltInComputer] = useState<"host" | "virtual">(
-    () =>
-      window.localStorage.getItem(BUILTIN_COMPUTER_KEY) === "virtual"
-        ? "virtual"
-        : "host",
-  );
+  const [builtInComputer, setBuiltInComputer] = useState<
+    "host" | "local_vm" | "vps"
+  >(() => {
+    const saved = window.localStorage.getItem(BUILTIN_COMPUTER_KEY);
+    if (saved === "virtual") return "local_vm";
+    return saved === "local_vm" || saved === "vps" ? saved : "host";
+  });
   const [builtInModel, setBuiltInModel] = useState(
     () => window.localStorage.getItem(BUILTIN_MODEL_KEY) ?? DEFAULT_AGENT.model,
   );
@@ -272,7 +280,7 @@ export function AgentProvider({ children }: Readonly<{ children: ReactNode }>) {
   );
 
   const updateAgentComputer = useCallback(
-    async (id: string, computerTarget: "host" | "virtual") => {
+    async (id: string, computerTarget: "host" | "local_vm" | "vps") => {
       if (id === DEFAULT_AGENT.id) {
         setBuiltInComputer(computerTarget);
         window.localStorage.setItem(BUILTIN_COMPUTER_KEY, computerTarget);

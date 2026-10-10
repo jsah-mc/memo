@@ -163,7 +163,7 @@
   --font-sans: "Segoe UI Variable", "SF Pro Text", system-ui, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: "Cascadia Code", "SFMono-Regular", Menlo, monospace;
-  --radius: 0.75rem;
+  --radius: 0;
   --shadow-x: 0px;
   --shadow-y: 4px;
   --shadow-blur: 0px;
@@ -277,7 +277,7 @@
   --font-sans: "Segoe UI Variable", "SF Pro Text", system-ui, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: "Cascadia Code", "SFMono-Regular", Menlo, monospace;
-  --radius: 0.75rem;
+  --radius: 0;
   --shadow-x: 0px;
   --shadow-y: 4px;
   --shadow-blur: 0px;

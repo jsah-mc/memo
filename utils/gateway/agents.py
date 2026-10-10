@@ -99,8 +99,10 @@ class AgentStore:
             composioToolkits=[item.strip().lower() for item in raw_toolkits],
         )
         computer_target = value.get("computerTarget", "host")
-        if computer_target not in {"host", "virtual"}:
-            raise ValueError("Agent computerTarget must be host or virtual")
+        if computer_target == "virtual":
+            computer_target = "local_vm"
+        if computer_target not in {"host", "local_vm", "vps"}:
+            raise ValueError("Agent computerTarget must be host, local_vm, or vps")
         result["computerTarget"] = computer_target
         agent_id = value.get("id")
         if agent_id is not None and (

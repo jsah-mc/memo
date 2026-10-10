@@ -1,9 +1,11 @@
 import { CheckCircle2Icon, ExternalLinkIcon } from "lucide-react";
+import { ComposioIcon } from "@/components/composio-icon";
 import { Button } from "@/components/ui/button";
 
 export function ComposioConnectionCard({
   id,
   label,
+  icon,
   accounts,
   configured,
   busy,
@@ -12,6 +14,7 @@ export function ComposioConnectionCard({
 }: Readonly<{
   id: string;
   label: string;
+  icon?: string;
   accounts: ComposioConnection[];
   configured: boolean;
   busy: string | null;
@@ -22,16 +25,34 @@ export function ComposioConnectionCard({
   return (
     <div className="rounded-xl bg-muted/40 p-3">
       <div className="flex items-center justify-between gap-2">
-        <div>
-          <p className="text-sm font-medium">{label}</p>
-          <p className="flex items-center gap-1 text-xs text-muted-foreground">
-            {active && <CheckCircle2Icon className="size-3 text-primary" />}
-            {active
-              ? "Connected"
-              : accounts.length
-                ? "Needs attention"
-                : "Not connected"}
-          </p>
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-border/60 bg-background">
+            {icon ? (
+              <img
+                src={icon}
+                alt=""
+                className="size-5 object-contain"
+                onError={(event) => {
+                  event.currentTarget.hidden = true;
+                  event.currentTarget.nextElementSibling?.removeAttribute("hidden");
+                }}
+              />
+            ) : null}
+            <span hidden={Boolean(icon)}>
+              <ComposioIcon toolkit={id} />
+            </span>
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{label}</p>
+            <p className="flex items-center gap-1 text-xs text-muted-foreground">
+              {active && <CheckCircle2Icon className="size-3 text-primary" />}
+              {active
+                ? "Connected"
+                : accounts.length
+                  ? "Needs attention"
+                  : "Not connected"}
+            </p>
+          </div>
         </div>
         <Button
           type="button"

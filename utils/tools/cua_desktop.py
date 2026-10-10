@@ -79,9 +79,10 @@ async def driver_session() -> AsyncIterator[CuaDriver]:
             await driver.shutdown()
 
 
-async def remote_client():
-    endpoint = os.environ.get("MEMO_CUA_ENDPOINT", "").strip()
-    token = os.environ.get("MEMO_CUA_TOKEN", "").strip()
+async def remote_client(target: str = "local_vm"):
+    prefix = "MEMO_VPS_CUA" if target == "vps" else "MEMO_CUA"
+    endpoint = os.environ.get(f"{prefix}_ENDPOINT", "").strip()
+    token = os.environ.get(f"{prefix}_TOKEN", "").strip()
     if not endpoint or not token:
         raise DesktopInputError(
             "The virtual desktop endpoint or access token is missing."
@@ -181,8 +182,8 @@ class CuaDesktopController:
 
     async def capture(self) -> ScreenCapture:
         async with self._lock:
-            if self._target == "virtual":
-                return await self._capture(remote=await remote_client())
+            if self._target in {"virtual", "local_vm", "vps"}:
+                return await self._capture(remote=await remote_client(self._target))
             async with driver_session() as driver:
                 return await self._capture(driver=driver)
 
@@ -199,8 +200,8 @@ class CuaDesktopController:
                 if isinstance(action, PointerAction):
                     point = geometry.point(action)
                 points.append(point)
-            if self._target == "virtual":
-                remote = await remote_client()
+            if self._target in {"virtual", "local_vm", "vps"}:
+                remote = await remote_client(self._target)
                 for action, point in zip(batch.actions, points, strict=True):
                     await perform_remote(remote, action, point)
                     self._point = point

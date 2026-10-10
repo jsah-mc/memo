@@ -8,6 +8,7 @@ import {
 import {
   CalendarClockIcon,
   CalendarPlusIcon,
+  CloudIcon,
   LoaderCircleIcon,
   MonitorIcon,
   MonitorUpIcon,
@@ -110,7 +111,9 @@ export function AgentDesktopPanel({
     setLoadingPreview(true);
     setPreviewError("");
     try {
-      const result = await window.desktopApi.virtualDesktop.preview();
+      const result = await window.desktopApi.virtualDesktop.preview(
+        agent.computerTarget === "vps" ? "vps" : "local_vm",
+      );
       setPreview(result.image);
     } catch (reason) {
       setPreview("");
@@ -125,14 +128,14 @@ export function AgentDesktopPanel({
   }, [agent]);
 
   useEffect(() => {
-    if (agent.computerTarget === "virtual") void refreshPreview();
+    if (agent.computerTarget !== "host") void refreshPreview();
     else {
       setPreview("");
       setPreviewError("");
     }
   }, [agent.computerTarget, refreshPreview]);
 
-  const chooseComputer = async (target: "host" | "virtual") => {
+  const chooseComputer = async (target: "host" | "local_vm" | "vps") => {
     setSwitchingComputer(true);
     setComputerError("");
     try {
@@ -172,7 +175,7 @@ export function AgentDesktopPanel({
   return (
     <aside className="h-full w-[360px] shrink-0 overflow-y-auto border-l border-border/60 bg-background/95 pt-14 backdrop-blur-xl">
       <div className="grid gap-4 p-3">
-        <section className="grid grid-cols-3 gap-2" aria-label="Agent actions">
+        <section className="grid grid-cols-4 gap-2" aria-label="Agent actions">
           <button
             type="button"
             disabled={switchingComputer}
@@ -190,10 +193,10 @@ export function AgentDesktopPanel({
           <button
             type="button"
             disabled={switchingComputer}
-            aria-pressed={agent.computerTarget === "virtual"}
-            onClick={() => void chooseComputer("virtual")}
+            aria-pressed={agent.computerTarget === "local_vm"}
+            onClick={() => void chooseComputer("local_vm")}
             className={`grid min-h-20 place-items-center gap-1 rounded-xl border p-2 text-xs transition-colors ${
-              agent.computerTarget === "virtual"
+              agent.computerTarget === "local_vm"
                 ? "border-primary bg-primary/10 text-primary"
                 : "border-border/70 bg-muted/25 hover:bg-muted/50"
             }`}
@@ -204,6 +207,20 @@ export function AgentDesktopPanel({
               <PackageIcon className="size-5" />
             )}
             <span>Local VM</span>
+          </button>
+          <button
+            type="button"
+            disabled={switchingComputer}
+            aria-pressed={agent.computerTarget === "vps"}
+            onClick={() => void chooseComputer("vps")}
+            className={`grid min-h-20 place-items-center gap-1 rounded-xl border p-2 text-xs transition-colors ${
+              agent.computerTarget === "vps"
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border/70 bg-muted/25 hover:bg-muted/50"
+            }`}
+          >
+            <CloudIcon className="size-5" />
+            <span>VPS</span>
           </button>
           <button
             type="button"
@@ -231,12 +248,14 @@ export function AgentDesktopPanel({
             <div>
               <p className="text-sm font-medium">Desktop preview</p>
               <p className="text-xs text-muted-foreground">
-                {agent.computerTarget === "virtual"
-                  ? "Shared VM"
-                  : "This agent uses your computer"}
+                {agent.computerTarget === "local_vm"
+                  ? "Local VM on this computer"
+                  : agent.computerTarget === "vps"
+                    ? "Remote VPS"
+                    : "This agent uses your computer"}
               </p>
             </div>
-            {agent.computerTarget === "virtual" && (
+            {agent.computerTarget !== "host" && (
               <Button
                 type="button"
                 size="icon-sm"
@@ -265,8 +284,8 @@ export function AgentDesktopPanel({
                 <MonitorUpIcon className="size-6" />
                 <span>
                   {previewError ||
-                    (agent.computerTarget === "virtual"
-                      ? "Start the shared VM to see a preview."
+                    (agent.computerTarget !== "host"
+                      ? `Connect the ${agent.computerTarget === "vps" ? "VPS" : "Local VM"} to see a preview.`
                       : "Host preview stays hidden until the agent requests access.")}
                 </span>
               </div>

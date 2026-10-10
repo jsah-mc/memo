@@ -43,9 +43,9 @@ export function CreateAgentDialog({
   const [cli, setCli] = useState<CLIBackendId>("codex");
   const [model, setModel] = useState("gpt-5.6-luna");
   const [composioEnabled, setComposioEnabled] = useState(false);
-  const [computerTarget, setComputerTarget] = useState<"host" | "virtual">(
-    "host",
-  );
+  const [computerTarget, setComputerTarget] = useState<
+    "host" | "local_vm" | "vps"
+  >("host");
   const [composioToolkits, setComposioToolkits] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -324,7 +324,7 @@ export function CreateAgentDialog({
               </label>
               <fieldset className="grid gap-2">
                 <legend className="text-xs font-medium">Computer</legend>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <Button
                     type="button"
                     variant={computerTarget === "host" ? "default" : "outline"}
@@ -335,16 +335,23 @@ export function CreateAgentDialog({
                   <Button
                     type="button"
                     variant={
-                      computerTarget === "virtual" ? "default" : "outline"
+                      computerTarget === "local_vm" ? "default" : "outline"
                     }
-                    onClick={() => setComputerTarget("virtual")}
+                    onClick={() => setComputerTarget("local_vm")}
                   >
-                    Shared VM
+                    Local VM
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={computerTarget === "vps" ? "default" : "outline"}
+                    onClick={() => setComputerTarget("vps")}
+                  >
+                    VPS
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  All agents using Shared VM connect to the same virtual desktop
-                  configured in Settings.
+                  Local VM runs on this machine. VPS uses the separate remote
+                  connection configured in Settings.
                 </p>
               </fieldset>
               <p className="rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">

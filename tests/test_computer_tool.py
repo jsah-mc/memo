@@ -300,6 +300,40 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second_input[-1]["type"], "function_call_output")
         self.assertIn('"stdout":"hello\\n"', second_input[-1]["output"])
 
+    async def test_tool_loop_continues_past_the_old_round_limit(self) -> None:
+        tool_rounds = [
+            {
+                "output": [
+                    {
+                        "type": "function_call",
+                        "call_id": f"call_echo_{index}",
+                        "name": "run_sandboxed_command",
+                        "arguments": '{"argv":["echo","continue"]}',
+                    }
+                ]
+            }
+            for index in range(13)
+        ]
+        sdk = SequentialSDK(
+            [*tool_rounds, {"output": [], "output_text": "Finished."}]
+        )
+
+        events = [
+            event
+            async for event in computer_tool_events(
+                sdk,
+                {
+                    "model": "chatgpt/test",
+                    "input": "run echo continue until finished",
+                },
+                self.tool,
+            )
+        ]
+
+        self.assertEqual(len(sdk.payloads), 14)
+        self.assertEqual(events[-2]["delta"], "Finished.")
+        self.assertEqual(events[-1]["type"], "response.completed")
+
     async def test_shell_executor_rejects_missing_permission(self) -> None:
         with self.assertRaises(PermissionError):
             await self.tool.execute(
@@ -317,12 +351,13 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_approved_shell_command_runs_in_configured_workspace(self) -> None:
-        result = await self.tool.execute(
-            "run_shell_command",
-            {"command": "echo hello"},
-            user_text="run command echo hello",
-            permission_granted=True,
-        )
+        with patch.dict(os.environ, MEMO_WINDOWS_PROCESS_SANDBOX="off"):
+            result = await self.tool.execute(
+                "run_shell_command",
+                {"command": "echo hello"},
+                user_text="run command echo hello",
+                permission_granted=True,
+            )
 
         self.assertTrue(result["ok"])
         self.assertIn("hello", result["stdout"])

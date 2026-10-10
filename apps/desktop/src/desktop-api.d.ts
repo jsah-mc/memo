@@ -18,7 +18,7 @@ declare global {
             composioEnabled: boolean;
             composioUserId: string;
             composioToolkits: readonly string[];
-            computerTarget: "host" | "virtual";
+            computerTarget: "host" | "local_vm" | "vps";
           };
           messages: Array<{
             role: "system" | "user" | "assistant";
@@ -45,7 +45,7 @@ declare global {
         update(
           agentId: string,
           changes: {
-            computerTarget?: "host" | "virtual";
+            computerTarget?: "host" | "local_vm" | "vps";
             cli?: string;
             model?: string;
           },
@@ -57,8 +57,9 @@ declare global {
       respondPermission(response: { id: string; allowed: boolean }): void;
       restartGateway(): Promise<void>;
       virtualDesktop: {
-        get(): Promise<VirtualDesktopStatus>;
+        get(target?: "local_vm" | "vps"): Promise<VirtualDesktopStatus>;
         save(settings: {
+          target?: "local_vm" | "vps";
           endpoint: string;
           token?: string;
         }): Promise<{ saved: true }>;
@@ -67,8 +68,28 @@ declare global {
           stopped: true;
           containerEngine: "podman" | "docker";
         }>;
-        open(): Promise<{ opened: true }>;
-        preview(): Promise<{ image: string }>;
+        open(target?: "local_vm" | "vps"): Promise<{ opened: true }>;
+        preview(target?: "local_vm" | "vps"): Promise<{ image: string }>;
+        setupVps(settings: {
+          host: string;
+          user: string;
+          port: number;
+          identityFile?: string;
+        }): Promise<VirtualDesktopProbe>;
+      };
+      workspace: {
+        get(): Promise<WorkspaceStatus>;
+        choose(): Promise<WorkspaceStatus>;
+        checkpoint(label: string): Promise<{
+          id: string;
+          path: string;
+          changes: number;
+          untrackedFiles: number;
+        }>;
+      };
+      resources: {
+        get(): Promise<{ mode: ResourceMode }>;
+        set(mode: ResourceMode): Promise<{ mode: ResourceMode }>;
       };
       getGatewayStatus(): Promise<{
         state: "connecting" | "online" | "offline" | "error";
@@ -93,7 +114,9 @@ declare global {
       setComposioKey(key: string): Promise<{ saved: true }>;
       getComposioToolkits(
         search?: string,
-      ): Promise<{ data: Array<{ id: string; label: string }> }>;
+      ): Promise<{
+        data: Array<{ id: string; label: string; icon?: string }>;
+      }>;
       getComposioConnections(): Promise<{ data: ComposioConnection[] }>;
       disconnectComposio(connectionId: string): Promise<void>;
       authorizeComposio(toolkit: string): Promise<{ opened: true }>;
@@ -152,6 +175,17 @@ declare global {
     endpoint: string;
     hasToken: boolean;
     containerEngine: "podman" | "docker" | null;
+    host?: string;
+    user?: string;
+    port?: number;
+    identityFile?: string;
+  };
+  type ResourceMode = "low" | "balanced" | "performance";
+  type WorkspaceStatus = {
+    path: string;
+    name: string;
+    git: boolean;
+    changes: number;
   };
 
   type NewAgentData = {
@@ -167,7 +201,7 @@ declare global {
     composioEnabled: boolean;
     composioUserId: string;
     composioToolkits: readonly string[];
-    computerTarget: "host" | "virtual";
+    computerTarget: "host" | "local_vm" | "vps";
   };
 
   type AgentProfileData = NewAgentData & {

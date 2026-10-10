@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from .cua_desktop import CuaDesktopController
 from .desktop import detect_desktop_control_request
+from .windows_process_sandbox import sandboxed_command
 
 
 class SandboxedCommandArgs(BaseModel):
@@ -254,6 +255,7 @@ class ComputerSandboxTool:
         self, root: str | Path | None = None, *, computer_target: str = "host"
     ) -> None:
         configured = root or os.environ.get("MEMO_SANDBOX_ROOT")
+        self.computer_target = computer_target
         self.root = Path(configured or DEFAULT_SANDBOX_ROOT).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.desktop = CuaDesktopController(computer_target)
@@ -903,6 +905,14 @@ class ComputerSandboxTool:
                 Path(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "cmd.exe")
             )
             shell_args = ["/d", "/s", "/c", command]
+            sandbox = "working_directory_only"
+            os_isolated = False
+            if self.computer_target == "host":
+                sandboxed = sandboxed_command(command, self.root)
+                if sandboxed is not None:
+                    shell, shell_args = sandboxed
+                    sandbox = "memo_windows_native"
+                    os_isolated = True
             creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         else:
             app_launch = _START_APP_COMMAND.fullmatch(command)
@@ -925,6 +935,8 @@ class ComputerSandboxTool:
             shell = "/bin/sh"
             shell_args = ["-c", command]
             creationflags = 0
+            sandbox = "working_directory_only"
+            os_isolated = False
 
         process = await asyncio.create_subprocess_exec(
             shell,
@@ -947,8 +959,8 @@ class ComputerSandboxTool:
             return {
                 "ok": False,
                 "permission_granted": True,
-                "sandbox": "working_directory_only",
-                "os_isolated": False,
+                "sandbox": sandbox,
+                "os_isolated": os_isolated,
                 "command": command,
                 "cwd": str(self.root),
                 "exit_code": None,
@@ -959,8 +971,8 @@ class ComputerSandboxTool:
         return {
             "ok": process.returncode == 0,
             "permission_granted": True,
-            "sandbox": "working_directory_only",
-            "os_isolated": False,
+            "sandbox": sandbox,
+            "os_isolated": os_isolated,
             "command": command,
             "cwd": str(self.root),
             "exit_code": process.returncode,
