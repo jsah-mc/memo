@@ -34,6 +34,14 @@ async function gateway<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function gatewayList<T>(path: string): Promise<T[]> {
+  const payload = await gateway<{ data?: unknown }>(path);
+  if (!Array.isArray(payload.data)) {
+    throw new Error("Gateway returned an invalid list response.");
+  }
+  return payload.data as T[];
+}
+
 function sseData(block: string) {
   const value = block
     .split("\n")
@@ -241,8 +249,8 @@ export function installTauriDesktopApi() {
     },
     cancelChat: (requestId) => chatControllers.get(requestId)?.abort(),
     agents: {
-      list: () => gateway("/v1/agents"),
-      backends: () => gateway("/v1/cli-backends"),
+      list: () => gatewayList<AgentProfileData>("/v1/agents"),
+      backends: () => gatewayList<AgentBackendData>("/v1/cli-backends"),
       create: (agent) => gateway("/v1/agents", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(agent) }),
       delete: (agentId) => gateway(`/v1/agents/${encodeURIComponent(agentId)}`, { method: "DELETE" }),
       update: (agentId, changes) => gateway(`/v1/agents/${encodeURIComponent(agentId)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(changes) }),

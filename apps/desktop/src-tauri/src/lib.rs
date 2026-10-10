@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
+    io::{Read, Write},
     net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
     process::{Child, Command, Output, Stdio},
@@ -30,11 +31,26 @@ fn memo_root() -> PathBuf {
 }
 
 fn gateway_online() -> bool {
-    GATEWAY_ADDRESS
-        .parse::<SocketAddr>()
-        .ok()
-        .and_then(|address| TcpStream::connect_timeout(&address, Duration::from_millis(350)).ok())
-        .is_some()
+    let Some(address) = GATEWAY_ADDRESS.parse::<SocketAddr>().ok() else {
+        return false;
+    };
+    let Some(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(350)).ok()
+    else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+    if stream
+        .write_all(
+            b"GET /health/liveliness HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+        )
+        .is_err()
+    {
+        return false;
+    }
+    let mut response = [0_u8; 64];
+    stream
+        .read(&mut response)
+        .is_ok_and(|size| response[..size].starts_with(b"HTTP/1.1 200"))
 }
 
 fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {

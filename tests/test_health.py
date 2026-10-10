@@ -10,6 +10,27 @@ from utils.gateway.settings import GatewaySettings
 
 
 class HealthTests(unittest.TestCase):
+    def test_tauri_renderer_can_reach_gateway(self) -> None:
+        with TestClient(create_app(GatewaySettings())) as client:
+            response = client.options(
+                "/v1/agents",
+                headers={
+                    "Origin": "http://tauri.localhost",
+                    "Access-Control-Request-Method": "GET",
+                    "Access-Control-Request-Headers": "x-memo-desktop",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.headers["access-control-allow-origin"],
+            "http://tauri.localhost",
+        )
+        self.assertIn(
+            "x-memo-desktop",
+            response.headers["access-control-allow-headers"].lower(),
+        )
+
     def test_readiness_reports_provider_state_without_credentials(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             auth_file = Path(directory, "missing.json")

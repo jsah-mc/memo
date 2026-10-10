@@ -16,6 +16,7 @@ from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.concurrency import iterate_in_threadpool
 
@@ -344,6 +345,23 @@ def create_app(
             access_logger.removeFilter(quiet_health_logs)
 
     app = FastAPI(title="Memo Gateway", version="0.1.0", lifespan=lifespan)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://tauri.localhost",
+            "https://tauri.localhost",
+            "tauri://localhost",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=[
+            "Accept",
+            "Content-Type",
+            "X-Memo-Computer-Tools",
+            "X-Memo-Desktop",
+        ],
+    )
 
     @app.get("/health/liveliness")
     async def liveliness() -> dict[str, Any]:
