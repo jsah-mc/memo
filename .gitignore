@@ -6,6 +6,7 @@ apps/desktop/node_modules/
 apps/*/node_modules/
 apps/*/out/
 apps/*/.vite/
+apps/desktop/src-tauri/target/
 
 # Python-generated files
 __pycache__/

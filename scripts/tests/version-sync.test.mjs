@@ -13,6 +13,6 @@ test("package versions stay synchronized", () => {
 });
 
 test("published metadata is not placeholder content", () => {
-  assert.notEqual(desktop.description, "My Electron application description");
+  assert.notEqual(desktop.description, "My application description");
   assert.ok(desktop.description.length > 20);
 });

@@ -323,7 +323,7 @@
 }
 
 /* Green-neutral shadcn theme supplied for Memo. Kept as the final token layer so
-   existing chat layout and Electron window behavior remain unchanged. */
+   existing chat layout and native window behavior remain unchanged. */
 :root {
   --background: oklch(0.9711 0.0034 145.5494);
   --foreground: oklch(0.2235 0.0049 145.4099);

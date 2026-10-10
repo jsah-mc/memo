@@ -14,6 +14,9 @@ import { GatewayStartup } from "@/components/gateway-startup";
 import { WorkspaceShortcuts } from "@/components/workspace-shortcuts";
 import { TaskActivitySidebar } from "@/agents/task-activity-sidebar";
 import "./index.css";
+import { installTauriDesktopApi } from "./tauri/desktop-api";
+
+installTauriDesktopApi();
 
 function WorkspaceShell() {
   const { activeAgent } = useAgents();

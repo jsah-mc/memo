@@ -4,13 +4,13 @@
   "private": true,
   "packageManager": "pnpm@11.15.1",
   "scripts": {
-    "dev": "pnpm --filter @memo/desktop start",
-    "dev:desktop": "pnpm --filter @memo/desktop start",
+    "dev": "pnpm --filter @memo/desktop tauri:dev",
+    "dev:desktop": "pnpm --filter @memo/desktop tauri:dev",
     "dev:vite": "pnpm --filter @memo/desktop start:vite",
     "dev:gateway": "uv run memo gateway",
-    "build": "pnpm --filter @memo/desktop package",
-    "package": "pnpm --filter @memo/desktop package",
-    "make": "pnpm --filter @memo/desktop make",
+    "build": "pnpm --filter @memo/desktop tauri:build",
+    "package": "pnpm --filter @memo/desktop tauri:build",
+    "make": "pnpm --filter @memo/desktop tauri:build",
     "lint": "pnpm --filter @memo/desktop lint",
     "typecheck": "pnpm --filter @memo/desktop typecheck",
     "version:sync": "node scripts/sync-version.mjs"

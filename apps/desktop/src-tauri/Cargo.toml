@@ -1,0 +1,22 @@
+[package]
+name = "memo-desktop"
+version = "1.1.2"
+description = "Memo local-first AI desktop workbench"
+authors = ["jsah-mc"]
+edition = "2024"
+
+[lib]
+name = "memo_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.1", features = [] }
+
+[dependencies]
+keyring = "3"
+rfd = "0.15"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.12.2", features = [] }
+uuid = { version = "1", features = ["v4"] }
+

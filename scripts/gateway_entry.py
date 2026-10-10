@@ -13,7 +13,7 @@ def main() -> None:
         os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = str(runtime_lib)
     if sys.platform == "win32":
         sys.coinit_flags = 0
-    # User data lives in the Electron-selected working directory, not resources.
+    # User data lives in the desktop-selected working directory, not resources.
     os.environ.setdefault("MEMO_SANDBOX_ROOT", str(Path.cwd() / "workspace"))
     os.environ.setdefault("MEMO_WHISPER_DEVICE", "cpu")
     os.environ.setdefault("MEMO_POCKETTTS_DEVICE", "cpu")

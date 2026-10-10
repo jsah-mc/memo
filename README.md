@@ -52,6 +52,10 @@ Memo's gateway model transport uses the configured upstream.
 
 ## Requirements
 
+Memo uses a lightweight Rust/Tauri shell while retaining its React interface
+and Python gateway. Run `pnpm dev` or `pnpm dev:desktop` for desktop development.
+The final Electron release is preserved on the `legacy-electron` branch.
+
 - Python 3.13
 - uv
 - A signed-in Codex installation with `%USERPROFILE%\.codex\auth.json`
@@ -137,7 +141,7 @@ Live chat requires a signed-in Codex installation, normally at
 Keep credentials out of the repository.
 
 `pnpm dev:vite` serves the React frontend for layout development. It does not
-provide Electron IPC or the desktop-managed gateway. Use `pnpm dev:desktop`
+provide Tauri commands or the desktop-managed gateway. Use `pnpm dev:desktop`
 from a graphical desktop session to test the complete application.
 
 Run the same checks as CI:
@@ -304,7 +308,7 @@ The program and future messaging integrations can use `from utils.tools.ai impor
 
 ## Release prebuilds
 
-Installers include the Electron desktop app, Python 3.13, and the gateway's
+Installers include the Tauri desktop app, Python 3.13, and the gateway's
 runtime dependencies. Memo starts its gateway automatically and shows a loading
 screen until it is ready. Startup errors offer a retry button. No Python
 installation, uv, or source checkout is needed to run an installed release.
@@ -313,8 +317,8 @@ use. AI backends still need their own login, CLI installation, or credentials.
 
 Available packages:
 
-- Windows x64: Squirrel setup executable.
-- macOS Apple Silicon: DMG (drag Memo to Applications) and ZIP.
+- Windows x64: NSIS and MSI installers.
+- macOS Apple Silicon: DMG (drag Memo to Applications).
 - Debian/Ubuntu x64: DEB (`sudo apt install ./memo_*.deb`).
 - RPM distributions x64: RPM (install with your distribution's package manager).
 - Arch Linux x64: `.pkg.tar.zst` (`sudo pacman -U ./memo-*.pkg.tar.zst`).

@@ -17,5 +17,12 @@
     },
     "resolvePackageJsonImports": true
   },
-  "exclude": ["src/api/**/*", "node_modules", "out", "dist", ".vite"]
+  "exclude": [
+    "src/api/**/*",
+    "src-tauri/**/*",
+    "node_modules",
+    "out",
+    "dist",
+    ".vite"
+  ]
 }

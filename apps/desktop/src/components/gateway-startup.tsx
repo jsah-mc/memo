@@ -10,7 +10,7 @@ export function GatewayStartup({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!window.desktopApi) {
-      // Vite remains available for frontend development without Electron.
+      // Vite remains available for frontend development without the native shell.
       setStatus({ state: "online" });
       return;
     }

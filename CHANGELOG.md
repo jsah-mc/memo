@@ -9,5 +9,5 @@ Semantic Versioning and must match the root, Python, and desktop package files.
 
 - Provider and gateway health diagnostics in desktop settings.
 - Guided recovery for expired Codex authentication.
-- Explicit Electron renderer sandboxing, navigation guards, and CSP.
+- Lightweight Rust/Tauri desktop shell with a locked-down webview CSP.
 - Cross-platform version, security, and frontend CI checks.
