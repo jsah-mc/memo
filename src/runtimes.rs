@@ -7,7 +7,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-const MEMO_MCP_URL: &str = "http://127.0.0.1:6734/mcp";
 const MEMO_ONLY_INSTRUCTIONS: &str = "You are running inside Memo. Use only tools exposed by the required Memo MCP server. Memo exposes these tools: mcp__memo__list_models, mcp__memo__chat, mcp__memo__cua_list_tools, mcp__memo__cua_observe, mcp__memo__cua_call, and mcp__memo__run_command. When asked to list your tools, report this catalog. When a request needs one of them, call it instead of claiming the catalog is unavailable. Do not use built-in shell, filesystem, browser, web, computer-control, delegation, plugin, skill, memory, or other external tools. If a required capability is not available through Memo, explain that it is unavailable instead of using another tool.";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -174,9 +173,13 @@ impl Runtime {
                     }
                     _ => return Err(format!("Unknown permission mode: {permission_mode}")),
                 }
+                let memo_mcp_url = format!(
+                    "http://{}/mcp",
+                    env::var("MEMO_API_ADDR").unwrap_or_else(|_| "127.0.0.1:6734".into())
+                );
                 args.extend([
                     "--config".into(),
-                    format!("mcp_servers.memo.url=\"{MEMO_MCP_URL}\""),
+                    format!("mcp_servers.memo.url=\"{memo_mcp_url}\""),
                     "--config".into(),
                     "mcp_servers.memo.enabled=true".into(),
                     "--config".into(),
