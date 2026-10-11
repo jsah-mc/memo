@@ -81,7 +81,7 @@ jobs:
       - name: Prepare CLI for installers
         run: node scripts/prepare_cli_sidecar.mjs
       - name: Build installers
-        run: pnpm build
+        run: npm exec --yes --package=pnpm@11.15.1 -- pnpm build
       - name: Verify packaged gateway resources
         if: runner.os == 'Linux'
         run: python scripts/smoke_gateway.py --bundle .gateway-build/gateway
