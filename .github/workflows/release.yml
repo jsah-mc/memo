@@ -4,12 +4,6 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      platform:
-        description: Platform to build
-        type: choice
-        options: [all, linux, win32, darwin]
-        default: all
 
 permissions:
   contents: read
@@ -21,7 +15,6 @@ concurrency:
 jobs:
   build:
     name: Build ${{ matrix.platform }}-${{ matrix.arch }}
-    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == matrix.platform
     strategy:
       fail-fast: false
       matrix:
