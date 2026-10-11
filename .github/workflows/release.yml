@@ -78,23 +78,13 @@ jobs:
         run: node --test scripts/tests/*.test.mjs
       - name: Build native CLI
         run: cargo build --release
+      - name: Prepare CLI for installers
+        run: node scripts/prepare_cli_sidecar.mjs
       - name: Build installers
         run: pnpm build
       - name: Verify packaged gateway resources
         if: runner.os == 'Linux'
         run: python scripts/smoke_gateway.py --bundle .gateway-build/gateway
-      - name: Build Arch Linux package
-        if: runner.os == 'Linux'
-        run: python scripts/build_arch.py
-      - name: Package native CLI
-        shell: bash
-        run: |
-          mkdir -p apps/desktop/src-tauri/target/release/bundle/cli
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cp target/release/memo.exe apps/desktop/src-tauri/target/release/bundle/cli/memo-${{ matrix.platform }}-${{ matrix.arch }}.exe
-          else
-            cp target/release/memo apps/desktop/src-tauri/target/release/bundle/cli/memo-${{ matrix.platform }}-${{ matrix.arch }}
-          fi
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
@@ -148,12 +138,12 @@ jobs:
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           body: |
-            Prebuilt Memo desktop app and native CLI for Windows x64, Linux x64, and macOS Apple Silicon.
+            Prebuilt Memo installers for Windows x64, Linux x64, and macOS Apple Silicon.
 
-            Includes the standalone Codex-style `memo` CLI with direct runtime streaming, the background gateway lifecycle, and the Tauri desktop app.
+            Every installer contains both the Tauri desktop app and the Codex-style native `memo` CLI, including direct runtime streaming and the background gateway lifecycle. There is no separate CLI download.
 
-            Desktop installers include the bundled Python gateway and runtime; no Python installation or source checkout is needed. AI sign-in and speech model downloads are still required when those features are used.
+            Installers also include the bundled Python gateway and runtime; no Python installation or source checkout is needed. AI sign-in and speech model downloads are still required when those features are used.
 
-            Linux assets include an Arch Linux .pkg.tar.zst package (install with sudo pacman -U) and the standalone `memo` CLI. macOS includes a DMG (drag Memo to Applications) and CLI. Windows includes installer and CLI executable.
+            Linux assets include DEB, RPM, and AppImage packages. macOS includes a DMG (drag Memo to Applications). Windows includes NSIS and MSI installers.
 
             Windows builds are unsigned. The macOS app is ad-hoc signed and verified, but is not Apple Developer signed or notarized. SHA256SUMS.txt contains checksums for the uploaded assets.
