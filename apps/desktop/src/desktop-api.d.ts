@@ -229,6 +229,7 @@ declare global {
     command: string;
     cwd: string;
     osIsolated: boolean;
+    target?: "host" | "local_vm" | "cloud" | "vps";
   };
 
   type SpeechStreamEvent =

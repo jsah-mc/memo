@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
@@ -40,5 +40,5 @@ test("threads retain their runtime and model while the agent default advances", 
   assert.match(modelSidebar, /updateAgentModel\(activeAgent\.id, model\)/);
   assert.match(modelSidebar, /setSelection\(key, \{ cli: selectedRuntime, model \}\)/);
   assert.match(modelSidebar, /updateAgentRuntime\(activeAgent\.id, cli/);
-  assert.match(modelSidebar, /setSelection\(key, \{ cli, model: option\.defaultModel \}\)/);
+  assert.match(modelSidebar, /setSelection\(key, \{ cli, model: (?:option\.)?defaultModel \}\)/);
 });

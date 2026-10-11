@@ -24,9 +24,59 @@ function isApprovalRequiredError(error: unknown): boolean {
   const normalized = message.toLowerCase();
   return (
     normalized.includes("requires approval") ||
+    normalized.includes("requires user approval") ||
+    normalized.includes("approval required") ||
     normalized.includes("approval policy is never") ||
-    normalized.includes("permission denied")
+    normalized.includes("permission denied") ||
+    normalized.includes("not approved") ||
+    normalized.includes("tool call was rejected") ||
+    normalized.includes("tool call rejected")
   );
+}
+
+function approvalErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function decodeJsonString(value: string): string | undefined {
+  try {
+    return JSON.parse(`"${value}"`) as string;
+  } catch {
+    return undefined;
+  }
+}
+
+function pendingNativePermission(
+  id: string,
+  error: unknown,
+): PermissionRequest {
+  const message = approvalErrorMessage(error);
+  const cmdMatch = message.match(/(?:"cmd"|\bcmd\b)\s*[:=]\s*"((?:\\.|[^"\\])*)"/i);
+  const cwdMatch = message.match(/(?:"cwd"|\bcwd\b)\s*[:=]\s*"((?:\\.|[^"\\])*)"/i);
+  const targetMatch = message.match(
+    /(?:"target"|\btarget\b)\s*[:=]\s*"(host|local_vm|cloud|vps)"/i,
+  );
+  const cmd = cmdMatch ? decodeJsonString(cmdMatch[1]) : undefined;
+  const cwd = cwdMatch ? decodeJsonString(cwdMatch[1]) : undefined;
+
+  if (cmd) {
+    return {
+      id,
+      kind: "shell_command",
+      command: cmd,
+      cwd: cwd || ".",
+      osIsolated: targetMatch?.[1]?.toLowerCase() !== "host",
+      target: targetMatch?.[1]?.toLowerCase() as PermissionRequest["target"],
+    };
+  }
+
+  return {
+    id,
+    kind: "computer_control",
+    command: "Allow Memo tools for this response",
+    cwd: ".",
+    osIsolated: true,
+  };
 }
 
 async function command<T>(name: string, args?: Record<string, unknown>) {
@@ -283,22 +333,20 @@ export function installTauriDesktopApi() {
       chatControllers.get(request.id)?.abort();
       chatControllers.set(request.id, controller);
       if (NATIVE_CHAT_RUNTIMES.has(request.agent.cli)) {
-        const runNativeChat = (permissionMode: typeof request.permissionMode) =>
+        const runNativeChat = (
+          permissionMode: typeof request.permissionMode | "approved",
+        ) =>
           command<string>("runtime_chat", {
             runtime: request.agent.cli,
             model: request.agent.model,
             prompt: cliPrompt(request.messages),
             permissionMode,
           });
-        const requestApprovalAndRetry = async () => {
+        const requestApprovalAndRetry = async (approvalError: unknown) => {
           const permissionId = `native-${request.id}`;
-          const allowed = await promptForPermission({
-            id: permissionId,
-            kind: "computer_control",
-            command: "Allow Memo tools for this response",
-            cwd: ".",
-            osIsolated: true,
-          });
+          const allowed = await promptForPermission(
+            pendingNativePermission(permissionId, approvalError),
+          );
           if (!allowed) {
             throw new Error(
               "Permission denied. No computer action was performed.",
@@ -307,7 +355,10 @@ export function installTauriDesktopApi() {
           if (controller.signal.aborted) {
             throw new DOMException("Chat cancelled", "AbortError");
           }
-          return runNativeChat("auto");
+          // The user explicitly approved this one response. Use Memo's
+          // approved MCP policy for the retry instead of asking the provider's
+          // automatic reviewer, which can reject the same tool a second time.
+          return runNativeChat("approved");
         };
         void (async () => {
           try {
@@ -317,7 +368,7 @@ export function installTauriDesktopApi() {
               isApprovalRequiredError(content) &&
               !controller.signal.aborted
             ) {
-              return requestApprovalAndRetry();
+              return requestApprovalAndRetry(content);
             }
             return content;
           } catch (error) {
@@ -326,7 +377,7 @@ export function installTauriDesktopApi() {
               isApprovalRequiredError(error) &&
               !controller.signal.aborted
             ) {
-              return requestApprovalAndRetry();
+              return requestApprovalAndRetry(error);
             }
             throw error;
           }

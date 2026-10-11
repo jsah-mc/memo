@@ -42,7 +42,7 @@ function WorkspaceShell() {
         <App />
       </div>
       {rightPanel === "desktop" && <AgentDesktopPanel agent={activeAgent} />}
-      {rightPanel === "models" && <ModelSidebar />}
+      {rightPanel === "models" && <ModelSidebar onClose={() => setRightPanel(null)} />}
       {rightPanel === "activity" && <TaskActivitySidebar />}
     </SidebarProvider>
   );

@@ -7,9 +7,15 @@ edition = "2024"
 axum = "0.8"
 cua-driver-sdk = { git = "https://github.com/trycua/cua", tag = "cua-driver-rs-v0.34.0" }
 futures-util = "0.3"
+crossterm = { version = "0.29", features = ["event-stream"] }
+ratatui = "0.30"
 regex = "1.12"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
 rmcp = { version = "3.5.1", features = ["server", "transport-streamable-http-server", "schemars"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["macros", "net", "process", "rt-multi-thread"] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "sync", "time"] }
+toml = "0.8"
 tower-http = { version = "0.6", features = ["cors"] }
+unicode-width = "0.2"

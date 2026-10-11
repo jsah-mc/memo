@@ -21,6 +21,17 @@ services:
       - cua-workspace:/workspace
     security_opt:
       - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl --fail --silent --show-error
+          --header "Authorization: Bearer $${CUA_ENV_TOKEN}"
+          http://127.0.0.1:8000/health >/dev/null
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 45s
 
 volumes:
   cua-workspace:

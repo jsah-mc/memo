@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.scripts]
-memo = "utils.cli:main"
+memo-legacy = "utils.cli:main"
 memo-browser = "utils.browser.main:main"
 memo-stt = "utils.tools.stt:main"
 memo-tts = "utils.tools.tts:main"

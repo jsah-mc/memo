@@ -58,16 +58,31 @@ jobs:
       - name: Install locked workspace dependencies
         working-directory: .
         run: npm exec --yes --package=pnpm@11.15.1 -- pnpm install --frozen-lockfile
-      - name: Test packaged gateway launch paths
+      - name: Test desktop shell
         working-directory: .
-        run: |
-          node scripts/tests/gateway-runtime.test.mjs
-          node scripts/tests/agent-personality.test.mjs
-          node scripts/tests/desktop-security.test.mjs
-          node scripts/tests/version-sync.test.mjs
+        run: node --test scripts/tests/*.test.mjs
       - name: Typecheck
         run: npm run typecheck
       - name: Lint
         run: npm run lint
       - name: Build renderer
         run: npx --no-install vite build
+
+  rust:
+    name: Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Run Rust tests
+        run: cargo test
+      - name: Run Clippy
+        run: cargo clippy -- -D warnings
+      - name: Check formatting
+        run: cargo fmt --check

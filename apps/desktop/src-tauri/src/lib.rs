@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::{
-    collections::BTreeMap,
     fs,
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
@@ -17,7 +16,6 @@ const GATEWAY_ADDRESS: &str = "127.0.0.1:4010";
 const RUST_API_ADDRESS: &str = "127.0.0.1:6734";
 const MEMO_MCP_URL: &str = "http://127.0.0.1:6734/mcp";
 const COMPOSIO_BROKER_URL: &str = "https://memo-composio-broker.vercel.app";
-static CHAT_HISTORY_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Default)]
 struct GatewayProcess(Mutex<Option<Child>>);
@@ -29,6 +27,16 @@ struct Settings {
     resource_mode: Option<String>,
     composio_user_id: Option<String>,
     permission_mode: Option<String>,
+    vps: Option<VpsSettings>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VpsSettings {
+    host: String,
+    user: String,
+    port: Option<u16>,
+    identity_file: Option<String>,
 }
 
 fn memo_root() -> PathBuf {
@@ -147,33 +155,25 @@ fn write_settings(app: &AppHandle, settings: &Settings) -> Result<(), String> {
     .map_err(|error| error.to_string())
 }
 
-fn chat_history_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(memo_data_dir(app)?.join("chat-history.json"))
-}
-
-fn read_chat_history(app: &AppHandle) -> BTreeMap<String, String> {
-    chat_history_path(app)
-        .ok()
-        .and_then(|path| fs::read_to_string(path).ok())
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
-}
-
-fn write_chat_history(app: &AppHandle, history: &BTreeMap<String, String>) -> Result<(), String> {
-    fs::write(
-        chat_history_path(app)?,
-        serde_json::to_vec_pretty(history).map_err(|error| error.to_string())?,
-    )
-    .map_err(|error| error.to_string())
-}
-
 #[tauri::command]
 async fn chat_history_get(app: AppHandle, key: String) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let _guard = CHAT_HISTORY_LOCK
-            .lock()
-            .map_err(|_| "Chat history lock poisoned")?;
-        Ok(read_chat_history(&app).remove(&key))
+        let store = memo::storage::MemoStore::in_home()?;
+        if let Some(value) = store.get(&key)? {
+            return Ok(Some(value));
+        }
+        let legacy_path = memo_data_dir(&app)?.join("chat-history.json");
+        let legacy = fs::read_to_string(legacy_path)
+            .ok()
+            .and_then(|text| {
+                serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&text).ok()
+            })
+            .and_then(|mut values| values.remove(&key))
+            .and_then(|value| value.as_str().map(str::to_owned));
+        if let Some(value) = &legacy {
+            store.set(&key, value)?;
+        }
+        Ok(legacy)
     })
     .await
     .map_err(|error| format!("Chat history read task failed: {error}"))?
@@ -182,12 +182,8 @@ async fn chat_history_get(app: AppHandle, key: String) -> Result<Option<String>,
 #[tauri::command]
 async fn chat_history_set(app: AppHandle, key: String, value: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let _guard = CHAT_HISTORY_LOCK
-            .lock()
-            .map_err(|_| "Chat history lock poisoned")?;
-        let mut history = read_chat_history(&app);
-        history.insert(key, value);
-        write_chat_history(&app, &history)
+        let _ = app;
+        memo::storage::MemoStore::in_home()?.set(&key, &value)
     })
     .await
     .map_err(|error| format!("Chat history write task failed: {error}"))?
@@ -196,12 +192,8 @@ async fn chat_history_set(app: AppHandle, key: String, value: String) -> Result<
 #[tauri::command]
 async fn chat_history_remove(app: AppHandle, key: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let _guard = CHAT_HISTORY_LOCK
-            .lock()
-            .map_err(|_| "Chat history lock poisoned")?;
-        let mut history = read_chat_history(&app);
-        history.remove(&key);
-        write_chat_history(&app, &history)
+        let _ = app;
+        memo::storage::MemoStore::in_home()?.remove(&key)
     })
     .await
     .map_err(|error| format!("Chat history write task failed: {error}"))?
@@ -283,6 +275,14 @@ fn launch_gateway(state: &GatewayProcess, app: &AppHandle) -> Result<(), String>
     };
     let settings = read_settings(app);
     let data_directory = memo_data_dir(app).unwrap_or_else(|_| root.join(".memo"));
+    let bots_path = data_directory.join("bots.json");
+    let legacy_agents_path = data_directory.join("agents.json");
+    if !bots_path.exists() && legacy_agents_path.exists() {
+        let _ = fs::copy(&legacy_agents_path, &bots_path);
+    }
+    if !bots_path.exists() {
+        let _ = fs::write(&bots_path, b"[]\n");
+    }
     let workspace = settings.workspace_path.unwrap_or_else(|| {
         data_directory
             .clone()
@@ -303,7 +303,7 @@ fn launch_gateway(state: &GatewayProcess, app: &AppHandle) -> Result<(), String>
             .env("GATEWAY_HOST", "127.0.0.1")
             .env("GATEWAY_PORT", "4010")
             .env("MEMO_COMPUTER_ENABLED", "1")
-            .env("MEMO_AGENT_STORE", data_directory.join("agents.json"))
+            .env("MEMO_AGENT_STORE", bots_path)
             .env("MEMO_SANDBOX_ROOT", workspace)
             .env("MEMO_RESOURCE_MODE", mode)
             .env("MEMO_SPEECH_CPU_THREADS", threads)
@@ -358,8 +358,7 @@ async fn runtime_chat(
                 runtime.label
             ));
         }
-        let arguments =
-            runtime.chat_command_with_permissions(&model, &prompt, &permission_mode)?;
+        let arguments = runtime.chat_command_with_permissions(&model, &prompt, &permission_mode)?;
         let mut command = Command::new(runtime.executable);
         command.args(arguments).stdin(Stdio::null());
         if let Some(workspace) = read_settings(&app).workspace_path

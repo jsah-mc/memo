@@ -61,7 +61,7 @@ export function PermissionPrompt() {
             <p className="text-xs text-muted-foreground">
               {computerControl
                 ? "Memo wants to view and control your computer for this task."
-                : "Memo wants to run a command on your computer."}
+                : `Memo is trying to run "${request.command}".`}
             </p>
           </div>
         </div>
@@ -88,6 +88,8 @@ export function PermissionPrompt() {
               </pre>
             </div>
             <p className="text-muted-foreground text-xs">
+              Target: {request.target ?? (request.osIsolated ? "isolated computer" : "this PC")}
+              <br />
               Working directory:{" "}
               <code className="text-foreground">{request?.cwd}</code>
             </p>

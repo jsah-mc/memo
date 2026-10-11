@@ -7,7 +7,7 @@
     "dev": "pnpm --filter @memo/desktop tauri:dev",
     "dev:desktop": "pnpm --filter @memo/desktop tauri:dev",
     "dev:vite": "pnpm --filter @memo/desktop start:vite",
-    "dev:gateway": "uv run memo gateway",
+    "dev:gateway": "uv run memo-legacy gateway",
     "build": "pnpm --filter @memo/desktop tauri:build",
     "package": "pnpm --filter @memo/desktop tauri:build",
     "make": "pnpm --filter @memo/desktop tauri:build",

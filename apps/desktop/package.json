@@ -5,6 +5,7 @@
   "description": "A local-first desktop AI workbench with voice, tools, and configurable agents.",
   "private": true,
   "scripts": {
+    "build:sandbox": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/build_windows_sandbox.ps1",
     "start": "tauri dev",
     "start:vite": "vite",
     "tauri": "tauri",

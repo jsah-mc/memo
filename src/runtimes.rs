@@ -8,7 +8,7 @@ use std::{
 };
 
 const MEMO_MCP_URL: &str = "http://127.0.0.1:6734/mcp";
-const MEMO_ONLY_INSTRUCTIONS: &str = "You are running inside Memo. Use only tools exposed by the Memo MCP server. Do not use built-in shell, filesystem, browser, web, computer-control, delegation, plugin, skill, memory, or other external tools. If a required capability is not available through Memo, explain that it is unavailable instead of using another tool.";
+const MEMO_ONLY_INSTRUCTIONS: &str = "You are running inside Memo. Use only tools exposed by the required Memo MCP server. Memo exposes these tools: mcp__memo__list_models, mcp__memo__chat, mcp__memo__cua_list_tools, mcp__memo__cua_observe, mcp__memo__cua_call, and mcp__memo__run_command. When asked to list your tools, report this catalog. When a request needs one of them, call it instead of claiming the catalog is unavailable. Do not use built-in shell, filesystem, browser, web, computer-control, delegation, plugin, skill, memory, or other external tools. If a required capability is not available through Memo, explain that it is unavailable instead of using another tool.";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -152,6 +152,12 @@ impl Runtime {
         let prompt = format!("{MEMO_ONLY_INSTRUCTIONS}\n\nUSER REQUEST:\n{prompt}");
         let args = match self.id {
             "codex" => {
+                let mcp_approval_mode = match permission_mode {
+                    "auto" => "auto",
+                    "allow" | "approved" => "approve",
+                    "ask" | "allowlist" | "custom" => "prompt",
+                    _ => return Err(format!("Unknown permission mode: {permission_mode}")),
+                };
                 let mut args = vec![
                     "exec".into(),
                     "--model".into(),
@@ -161,7 +167,7 @@ impl Runtime {
                     "--ephemeral".into(),
                 ];
                 match permission_mode {
-                    "auto" => args.push("--approve-for-me".into()),
+                    "auto" | "approved" => args.push("--approve-for-me".into()),
                     "allow" => args.push("--dangerously-bypass-approvals-and-sandbox".into()),
                     "ask" | "allowlist" | "custom" => {
                         args.extend(["--sandbox".into(), "read-only".into()]);
@@ -171,6 +177,12 @@ impl Runtime {
                 args.extend([
                     "--config".into(),
                     format!("mcp_servers.memo.url=\"{MEMO_MCP_URL}\""),
+                    "--config".into(),
+                    "mcp_servers.memo.enabled=true".into(),
+                    "--config".into(),
+                    "mcp_servers.memo.required=true".into(),
+                    "--config".into(),
+                    format!("mcp_servers.memo.default_tools_approval_mode=\"{mcp_approval_mode}\""),
                     "--color".into(),
                     "never".into(),
                     "--skip-git-repo-check".into(),
@@ -486,6 +498,21 @@ mod tests {
         );
         assert!(codex.iter().any(|arg| arg == "--ignore-user-config"));
         assert!(codex.iter().any(|arg| arg.contains("mcp_servers.memo.url")));
+        assert!(
+            codex
+                .iter()
+                .any(|arg| arg == "mcp_servers.memo.enabled=true")
+        );
+        assert!(
+            codex
+                .iter()
+                .any(|arg| arg == "mcp_servers.memo.required=true")
+        );
+        assert!(
+            codex
+                .iter()
+                .any(|arg| { arg == "mcp_servers.memo.default_tools_approval_mode=\"prompt\"" })
+        );
         assert!(codex.last().unwrap().contains(MEMO_ONLY_INSTRUCTIONS));
 
         let hermes = runtime("hermes")
@@ -504,6 +531,11 @@ mod tests {
             .chat_command_with_permissions("gpt-6-sol", "hello", "auto")
             .unwrap();
         assert!(automatic.iter().any(|arg| arg == "--approve-for-me"));
+        assert!(
+            automatic
+                .iter()
+                .any(|arg| { arg == "mcp_servers.memo.default_tools_approval_mode=\"auto\"" })
+        );
 
         let full_access = codex
             .chat_command_with_permissions("gpt-6-sol", "hello", "allow")
@@ -514,6 +546,26 @@ mod tests {
                 .any(|arg| arg == "--dangerously-bypass-approvals-and-sandbox")
         );
         assert!(!full_access.iter().any(|arg| arg == "--sandbox"));
+        assert!(
+            full_access
+                .iter()
+                .any(|arg| { arg == "mcp_servers.memo.default_tools_approval_mode=\"approve\"" })
+        );
+
+        let approved_once = codex
+            .chat_command_with_permissions("gpt-6-sol", "hello", "approved")
+            .unwrap();
+        assert!(approved_once.iter().any(|arg| arg == "--approve-for-me"));
+        assert!(
+            !approved_once
+                .iter()
+                .any(|arg| arg == "--dangerously-bypass-approvals-and-sandbox")
+        );
+        assert!(
+            approved_once
+                .iter()
+                .any(|arg| { arg == "mcp_servers.memo.default_tools_approval_mode=\"approve\"" })
+        );
     }
 
     #[test]

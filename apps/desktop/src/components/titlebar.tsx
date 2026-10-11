@@ -23,6 +23,7 @@ import {
   rememberCustomModel,
 } from "@/agents/cli-options";
 import { ThreadListItems, ThreadListNew } from "@/components/thread-list";
+import { RuntimeIcon } from "@/agents/runtime-icon";
 
 export function LegacyModelPicker() {
   const { activeAgent, updateAgentModel } = useAgents();
@@ -199,6 +200,8 @@ function ModelSidebarButton({
   const key = threadModelKey(activeAgent.id, threadId);
   const saved = selections[key];
   const model = saved?.model ?? activeAgent.model;
+  const runtime = saved?.cli ?? activeAgent.cli;
+  const turnRunning = useAuiState((state) => state.thread.isRunning);
   useEffect(() => {
     setActiveThreadId(threadId);
     if (threadId && !saved) {
@@ -208,11 +211,15 @@ function ModelSidebarButton({
   return (
     <button
       type="button"
-      className={`flex h-9 w-44 items-center gap-2 rounded-full border px-3 text-xs shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 ${open ? "border-primary bg-primary/10" : "border-border/60 bg-card/65 hover:bg-card"}`}
-      aria-label={open ? "Close model sidebar" : "Open model sidebar"}
+      data-model-menu-trigger="true"
+      disabled={turnRunning}
+      title={turnRunning ? "Models cannot be changed while a turn is running" : undefined}
+      className={`flex h-9 w-44 items-center gap-2 rounded-full border px-3 text-xs shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-55 ${open ? "border-primary bg-primary/10" : "border-border/60 bg-card/65 hover:bg-card"}`}
+      aria-label={turnRunning ? "Model selection locked while turn is running" : open ? "Close model menu" : "Open model menu"}
       aria-pressed={open}
       onClick={onToggle}
     >
+      <RuntimeIcon runtime={runtime} className="size-6 rounded-md" />
       <span className="min-w-0 flex-1 truncate text-left">{model}</span>
       <ChevronDownIcon
         className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}

@@ -58,6 +58,14 @@ jobs:
         run: python scripts/build_gateway.py
       - name: Verify standalone gateway
         run: python scripts/smoke_gateway.py
+      - name: Build Windows sandbox
+        if: runner.os == 'Windows'
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_windows_sandbox.ps1
+      - name: Prepare sandbox helper for packaging
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p .sandbox-build
+          touch .sandbox-build/MemoSandbox.exe
       - name: Install locked dependencies
         run: npm exec --yes --package=pnpm@11.15.1 -- pnpm install --frozen-lockfile
       - name: Typecheck
@@ -68,6 +76,8 @@ jobs:
         run: npm run lint
       - name: Test desktop shell
         run: node --test scripts/tests/*.test.mjs
+      - name: Build native CLI
+        run: cargo build --release
       - name: Build installers
         run: pnpm build
       - name: Verify packaged gateway resources
@@ -76,6 +86,15 @@ jobs:
       - name: Build Arch Linux package
         if: runner.os == 'Linux'
         run: python scripts/build_arch.py
+      - name: Package native CLI
+        shell: bash
+        run: |
+          mkdir -p apps/desktop/src-tauri/target/release/bundle/cli
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp target/release/memo.exe apps/desktop/src-tauri/target/release/bundle/cli/memo-${{ matrix.platform }}-${{ matrix.arch }}.exe
+          else
+            cp target/release/memo apps/desktop/src-tauri/target/release/bundle/cli/memo-${{ matrix.platform }}-${{ matrix.arch }}
+          fi
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
@@ -129,10 +148,12 @@ jobs:
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           body: |
-            Prebuilt Memo desktop app for Windows x64, Linux x64, and macOS Apple Silicon.
+            Prebuilt Memo desktop app and native CLI for Windows x64, Linux x64, and macOS Apple Silicon.
 
-            Includes the Python gateway and runtime; no Python installation or source checkout is needed. The gateway starts automatically with the desktop app. AI sign-in and speech model downloads are still required when those features are used.
+            Includes the standalone Codex-style `memo` CLI with direct runtime streaming, the background gateway lifecycle, and the Tauri desktop app.
 
-            Linux assets include an Arch Linux .pkg.tar.zst package (install with sudo pacman -U). macOS includes a DMG (drag Memo to Applications).
+            Desktop installers include the bundled Python gateway and runtime; no Python installation or source checkout is needed. AI sign-in and speech model downloads are still required when those features are used.
+
+            Linux assets include an Arch Linux .pkg.tar.zst package (install with sudo pacman -U) and the standalone `memo` CLI. macOS includes a DMG (drag Memo to Applications) and CLI. Windows includes installer and CLI executable.
 
             Windows builds are unsigned. The macOS app is ad-hoc signed and verified, but is not Apple Developer signed or notarized. SHA256SUMS.txt contains checksums for the uploaded assets.

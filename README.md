@@ -88,19 +88,32 @@ files. No speech API key is required.
 
 ## Run
 
-Launch the terminal UI:
+Install the native Rust CLI once during development:
 
 ```powershell
-uv run memo
+cargo install --path . --force
 ```
 
-Start only the HTTP gateway:
+Launch the Codex-style terminal UI:
 
 ```powershell
-uv run memo gateway
+memo
 ```
 
-The default manually launched gateway is `http://127.0.0.1:4000`. The desktop
+Start and stop the native gateway as a background process:
+
+```powershell
+memo gateway up
+memo gateway down
+```
+
+The native TUI invokes its selected runtime directly and does not require a
+gateway. Set `MEMO_MODEL` to a `runtime:model` identifier to change its model.
+The legacy Python/Textual UI remains available temporarily as `uv run
+memo-legacy`.
+
+The legacy Python gateway defaults to `http://127.0.0.1:4000`. The native Rust
+gateway defaults to `http://127.0.0.1:6734`. The desktop
 uses its own managed gateway on `http://127.0.0.1:4010` so an older or manually
 configured process on port 4000 cannot silently disable desktop-only tools.
 Override the desktop port with `MEMO_DESKTOP_GATEWAY_PORT` if needed.
@@ -131,7 +144,7 @@ export MEMO_WHISPER_DEVICE=cpu
 export MEMO_POCKETTTS_DEVICE=cpu
 export MEMO_STT_PRELOAD=0
 export MEMO_BROWSER_HEADLESS=1
-uv run --no-sync memo gateway --host 127.0.0.1 --port 4000
+uv run --no-sync memo-legacy gateway --host 127.0.0.1 --port 4000
 ```
 
 In another terminal, check `/health/liveliness` for `"status":"ok"` and

@@ -38,7 +38,8 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../../../.gateway-build/gateway": "gateway"
+      "../../../.gateway-build/gateway": "gateway",
+      "../../../.sandbox-build/MemoSandbox.exe": "MemoSandbox.exe"
     }
   }
 }

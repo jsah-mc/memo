@@ -26,6 +26,42 @@ viewer is at `http://127.0.0.1:3212/vnc.html`. Authenticate with the token from
 Files under `/workspace` survive container replacement in a named Compose
 volume (ordinary container restarts preserve the full container filesystem).
 
+## Included desktop tools
+
+The Memo layer adds a practical application set for CUA Driver automation:
+
+- Chromium or Firefox (whichever the base distribution provides)
+- LibreOffice Writer, Calc, and Impress
+- Thunar, Mousepad, XFCE Terminal, and Galculator
+- Evince PDF viewer, Ristretto image viewer, and Xarchiver
+- Clipboard, accessibility, archive, Git, curl, jq, Python, and common fonts
+
+The underlying CUA image continues to provide the complete Linux driver tool
+registry. That includes app/window discovery and launch, accessibility trees,
+screenshots, browser inspection, clicks, pointer gestures, typing, shortcuts,
+clipboard access, batched steps, scripts, verification, sessions, cursor
+overlays, and trajectory recording. Memo exposes this evolving registry through
+`cua_list_tools`, `cua_observe`, and `cua_call` rather than duplicating a stale
+hard-coded subset.
+
+Memo's `run_command` MCP tool can execute on `host`, `local_vm`, or `cloud`
+(`vps` is also accepted). Cloud commands use the SSH connection in
+`~/.memo/config.toml`:
+
+```toml
+[vps]
+host = "vps.example.com"
+user = "ubuntu"
+port = 22
+identityFile = "C:\\Users\\you\\.ssh\\id_ed25519"
+```
+
+The equivalent environment variables are `MEMO_VPS_SSH_HOST`,
+`MEMO_VPS_SSH_USER`, `MEMO_VPS_SSH_PORT`, and
+`MEMO_VPS_SSH_IDENTITY_FILE`. Commands execute inside the
+`memo-cua-desktop` container on Local VM and VPS targets; Memo never falls
+back to this PC if the selected destination is unavailable.
+
 ## Run on a VPS
 
 Copy this directory to an x86_64 Linux VPS with Docker, create `.env`, and run:
@@ -78,6 +114,7 @@ python connect.py
 
 ```bash
 docker compose logs -f desktop
+docker compose ps # Wait for the service to report healthy
 docker compose restart desktop
 docker compose down
 ```
