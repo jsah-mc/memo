@@ -158,7 +158,7 @@ impl App {
                     .into_iter()
                     .map(|runtime| format!(
                         "{} — {}",
-                        runtime.label,
+                        runtime.runtime.label,
                         if runtime.installed { "installed" } else { "not installed" }
                     ))
                     .collect::<Vec<_>>()
