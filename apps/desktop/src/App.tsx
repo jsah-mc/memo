@@ -9,7 +9,7 @@ type UpdateStatus = {
   notes?: string;
 };
 
-function UpdateController() {
+function UpdateController(): null {
   const checked = useRef(false);
 
   useEffect(() => {
