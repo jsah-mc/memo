@@ -41,8 +41,17 @@
       "../../../.gateway-build/gateway": "gateway",
       "../../../.sandbox-build/MemoSandbox.exe": "MemoSandbox.exe"
     },
-    "externalBin": [
-      "binaries/memo"
-    ]
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "MEMO_UPDATER_PUBLIC_KEY",
+      "endpoints": [
+        "https://github.com/jsah-mc/memo/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }
