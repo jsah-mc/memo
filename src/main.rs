@@ -12,7 +12,10 @@ use std::{
 async fn main() -> ExitCode {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
     let result = match arguments.as_slice() {
-        [] => memo::tui::run().await.map(|_| None),
+        [] => match gateway_up().await {
+            Ok(_) => memo::tui::run().await.map(|_| None),
+            Err(error) => Err(format!("Could not start the Memo MCP gateway: {error}")),
+        },
         [gateway, action] if gateway == "gateway" && action == "up" => gateway_up()
             .await
             .map(|message| Some(json!({"status": message}))),
