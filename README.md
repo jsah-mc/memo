@@ -86,6 +86,25 @@ MEMO_BROWSER_HEADLESS=0
 The first local speech run downloads the selected Whisper and PocketTTS model
 files. No speech API key is required.
 
+## Installers and updates
+
+Each GitHub Release provides one ZIP for Windows x64, Linux x64, and macOS
+Apple Silicon. Inside each ZIP, `desktop/` contains the graphical app installer
+and `cli/` contains the independent terminal installer. Installing one does not
+install the other.
+
+Released desktop apps check `latest.json` on GitHub after launch and ask before
+downloading a cryptographically signed update. Windows release binaries are also
+Authenticode-signed and timestamped. Release maintainers must configure these
+GitHub Actions secrets: `WINDOWS_CERTIFICATE` (base64 PFX),
+`WINDOWS_CERTIFICATE_PASSWORD`, `TAURI_SIGNING_PRIVATE_KEY`,
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and `TAURI_UPDATER_PUBLIC_KEY`. Tagged
+releases fail when required signing material is missing rather than publishing
+unsigned packages.
+
+The CLI supports `/help`, `/new`, `/model`, `/runtimes`, `/status`, and
+`/quit`.
+
 ## Run
 
 Install the native Rust CLI once during development:
