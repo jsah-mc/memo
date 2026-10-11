@@ -4,6 +4,12 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to build
+        type: choice
+        options: [all, linux, win32, darwin]
+        default: all
 
 permissions:
   contents: read
@@ -15,6 +21,7 @@ concurrency:
 jobs:
   build:
     name: Build ${{ matrix.platform }}-${{ matrix.arch }}
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == matrix.platform
     strategy:
       fail-fast: false
       matrix:
@@ -22,12 +29,15 @@ jobs:
           - os: ubuntu-latest
             platform: linux
             arch: x64
+            bundles: deb,rpm
           - os: windows-latest
             platform: win32
             arch: x64
+            bundles: nsis,msi
           - os: macos-latest
             platform: darwin
             arch: arm64
+            bundles: app,dmg
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
@@ -81,7 +91,7 @@ jobs:
       - name: Prepare CLI for installers
         run: node scripts/prepare_cli_sidecar.mjs
       - name: Build installers
-        run: npm exec --yes --package=pnpm@11.15.1 -- pnpm build
+        run: npm exec --yes --package=pnpm@11.15.1 -- pnpm --filter @memo/desktop tauri build --bundles ${{ matrix.bundles }}
       - name: Verify packaged gateway resources
         if: runner.os == 'Linux'
         run: python scripts/smoke_gateway.py --bundle .gateway-build/gateway
@@ -144,6 +154,6 @@ jobs:
 
             Installers also include the bundled Python gateway and runtime; no Python installation or source checkout is needed. AI sign-in and speech model downloads are still required when those features are used.
 
-            Linux assets include DEB, RPM, and AppImage packages. macOS includes a DMG (drag Memo to Applications). Windows includes NSIS and MSI installers.
+            Linux assets include DEB and RPM packages. macOS includes a DMG (drag Memo to Applications). Windows includes NSIS and MSI installers.
 
             Windows builds are unsigned. The macOS app is ad-hoc signed and verified, but is not Apple Developer signed or notarized. SHA256SUMS.txt contains checksums for the uploaded assets.
