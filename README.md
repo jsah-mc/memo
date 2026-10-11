@@ -337,7 +337,6 @@ Available packages:
 - macOS Apple Silicon: DMG (drag Memo to Applications).
 - Debian/Ubuntu x64: DEB (`sudo apt install ./memo_*.deb`).
 - RPM distributions x64: RPM (install with your distribution's package manager).
-- Other Linux x64 systems: portable ZIP; system desktop/audio libraries are required.
 
 Chat history, agent profiles, and computer-tool workspace files live in Memo's
 user-data directory, outside the installed application. Reinstalling or
@@ -347,7 +346,8 @@ with `MEMO_GATEWAY_ROOT` and `MEMO_GATEWAY_PYTHON`.
 
 The **Release prebuilds** workflow builds and smoke-tests the standalone gateway
 on each platform before building installers. Run it manually from GitHub Actions
-to test packaging without publishing; artifacts remain available for 14 days.
+to test all platforms or select one platform; manual runs never publish a release,
+and their artifacts remain available for 14 days.
 To publish, commit the desktop package version and matching lockfile, then push
 a matching tag, for example:
 
