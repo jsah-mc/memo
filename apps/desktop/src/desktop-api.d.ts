@@ -20,6 +20,7 @@ declare global {
             composioToolkits: readonly string[];
             computerTarget: "host" | "local_vm" | "vps";
           };
+          permissionMode: "ask" | "auto" | "allow" | "allowlist" | "custom";
           messages: Array<{
             role: "system" | "user" | "assistant";
             content:
@@ -110,9 +111,7 @@ declare global {
       }>;
       openCodexHelp(): Promise<{ opened: true }>;
       getComposioStatus(): Promise<{ configured: boolean }>;
-      getComposioToolkits(
-        search?: string,
-      ): Promise<{
+      getComposioToolkits(search?: string): Promise<{
         data: Array<{ id: string; label: string; icon?: string }>;
       }>;
       getComposioConnections(): Promise<{ data: ComposioConnection[] }>;
@@ -134,6 +133,12 @@ declare global {
         getItem(key: string): Promise<string | null>;
         setItem(key: string, value: string): Promise<void>;
         removeItem(key: string): Promise<void>;
+      };
+      permissionMode: {
+        get(): Promise<"ask" | "auto" | "allow" | "allowlist" | "custom">;
+        set(
+          mode: "ask" | "auto" | "allow" | "allowlist" | "custom",
+        ): Promise<void>;
       };
     };
   }
@@ -211,8 +216,10 @@ declare global {
     id: string;
     label: string;
     executable: string;
-    model_flag: string | null;
-    native_tools_policy: string;
+    modelFlag: string | null;
+    nativeToolsPolicy: string;
+    defaultModel: string;
+    models: string[];
     installed: boolean;
   };
 

@@ -24,7 +24,14 @@ import {
 import { TooltipIconButton } from "@/components/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { ComposerVoiceButton } from "@/components/voice";
+import { Popover } from "@base-ui/react/popover";
 import { cn } from "@/lib/utils";
+import {
+  getPermissionMode,
+  loadPermissionMode,
+  setPermissionMode,
+  type PermissionMode,
+} from "@/lib/permission-mode";
 import {
   ActionBarMorePrimitive,
   ActionBarPrimitive,
@@ -49,15 +56,22 @@ import {
   ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
+  HandIcon,
+  ListChecksIcon,
   MoreHorizontalIcon,
   PencilIcon,
   RefreshCwIcon,
+  SettingsIcon,
+  ShieldAlertIcon,
+  ShieldCheckIcon,
   SquareIcon,
   StopCircleIcon,
 } from "lucide-react";
 import {
   createContext,
   useContext,
+  useEffect,
+  useState,
   type ComponentType,
   type FC,
   type PropsWithChildren,
@@ -290,6 +304,7 @@ const Composer: FC = () => {
         }
       >
         <ComposerAttachments />
+        <ComposerPermissionMode />
         <div className="flex items-end gap-1">
           <ComposerAddAttachment />
           <ComposerPrimitive.Input
@@ -304,6 +319,123 @@ const Composer: FC = () => {
         </div>
       </ComposerPrimitive.AttachmentDropzone>
     </ComposerPrimitive.Root>
+  );
+};
+
+const PERMISSION_OPTIONS: ReadonlyArray<{
+  value: PermissionMode;
+  label: string;
+  description: string;
+  icon: typeof ShieldCheckIcon;
+}> = [
+  {
+    value: "ask",
+    label: "Ask for approval",
+    description: "Requests approval for commands and file changes",
+    icon: HandIcon,
+  },
+  {
+    value: "auto",
+    label: "Approve for me",
+    description: "Automatically approves routine isolated and computer actions",
+    icon: ShieldCheckIcon,
+  },
+  {
+    value: "allow",
+    label: "Full access",
+    description: "Full computer access (elevated risk)",
+    icon: ShieldAlertIcon,
+  },
+  {
+    value: "allowlist",
+    label: "Command allowlist",
+    description: "Only commands on your configured allowlist",
+    icon: ListChecksIcon,
+  },
+  {
+    value: "custom",
+    label: "Custom (config.toml)",
+    description: "Uses permissions defined in config.toml",
+    icon: SettingsIcon,
+  },
+];
+
+const ComposerPermissionMode: FC = () => {
+  const [mode, setMode] = useState<PermissionMode>(getPermissionMode);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    void loadPermissionMode()
+      .then(setMode)
+      .catch((): undefined => undefined);
+  }, []);
+
+  const selected =
+    PERMISSION_OPTIONS.find((option) => option.value === mode) ??
+    PERMISSION_OPTIONS[0];
+  const SelectedIcon = selected.icon;
+
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger
+        render={
+          <button
+            type="button"
+            aria-label="Choose action approval mode"
+            className="mx-1 flex w-fit items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+          />
+        }
+      >
+        <SelectedIcon className="size-3.5" />
+        {selected.label}
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner side="top" align="start" sideOffset={8}>
+          <Popover.Popup className="z-50 w-85 overflow-hidden rounded-2xl border border-border/70 bg-popover text-popover-foreground shadow-2xl outline-none">
+            <div className="border-b border-border/60 px-4 py-3">
+              <Popover.Title className="text-sm font-semibold">
+                How should Memo actions be approved?
+              </Popover.Title>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Choose how tools can act for this and future chats.
+              </p>
+            </div>
+            <div className="p-1.5">
+              {PERMISSION_OPTIONS.map((option) => {
+                const Icon = option.icon;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                    onClick={() => {
+                      setMode(option.value);
+                      setOpen(false);
+                      void setPermissionMode(option.value).catch(
+                        (): undefined => undefined,
+                      );
+                    }}
+                  >
+                    <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium">
+                        {option.label}
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">
+                        {option.description}
+                      </span>
+                    </span>
+                    {mode === option.value && (
+                      <CheckIcon className="mt-0.5 size-4 shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
   );
 };
 

@@ -3,8 +3,31 @@ const chatControllers = new Map<string, AbortController>();
 const speechControllers = new Map<string, AbortController>();
 const permissionListeners = new Set<(request: PermissionRequest) => void>();
 const permissionResolvers = new Map<string, (allowed: boolean) => void>();
+const NATIVE_CHAT_RUNTIMES = new Set([
+  "codex",
+  "hermes",
+  "antigravity",
+  "ollama",
+]);
 
 const isTauri = () => "__TAURI_INTERNALS__" in window;
+
+function promptForPermission(request: PermissionRequest): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    permissionResolvers.set(request.id, resolve);
+    for (const listener of permissionListeners) listener(request);
+  });
+}
+
+function isApprovalRequiredError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("requires approval") ||
+    normalized.includes("approval policy is never") ||
+    normalized.includes("permission denied")
+  );
+}
 
 async function command<T>(name: string, args?: Record<string, unknown>) {
   const { invoke } = await import("@tauri-apps/api/core");
@@ -51,13 +74,16 @@ function sseData(block: string) {
   return value || null;
 }
 
-async function resolvePermission(permission: {
-  id?: unknown;
-  kind?: unknown;
-  command?: unknown;
-  cwd?: unknown;
-  os_isolated?: unknown;
-}) {
+async function resolvePermission(
+  permission: {
+    id?: unknown;
+    kind?: unknown;
+    command?: unknown;
+    cwd?: unknown;
+    os_isolated?: unknown;
+  },
+  mode: "ask" | "auto" | "allow" | "allowlist" | "custom",
+) {
   if (
     typeof permission.id !== "string" ||
     typeof permission.command !== "string" ||
@@ -75,10 +101,13 @@ async function resolvePermission(permission: {
     cwd: permission.cwd,
     osIsolated: permission.os_isolated === true,
   };
-  const allowed = await new Promise<boolean>((resolve) => {
-    permissionResolvers.set(request.id, resolve);
-    for (const listener of permissionListeners) listener(request);
-  });
+  const allowed =
+    mode === "allow"
+      ? true
+      : mode === "auto" &&
+          (request.kind === "computer_control" || request.osIsolated)
+        ? true
+        : await promptForPermission(request);
   await gateway(`/v1/permissions/${encodeURIComponent(request.id)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -90,6 +119,7 @@ async function emitChatData(
   requestId: string,
   data: string,
   onEvent: (event: ChatStreamEvent) => void,
+  permissionMode: "ask" | "auto" | "allow" | "allowlist" | "custom",
 ) {
   if (data === "[DONE]") {
     onEvent({ id: requestId, type: "done" });
@@ -116,7 +146,7 @@ async function emitChatData(
   };
   if (payload.error?.message) throw new Error(payload.error.message);
   if (payload.object === "memo.permission_request" && payload.permission) {
-    await resolvePermission(payload.permission);
+    await resolvePermission(payload.permission, permissionMode);
     return false;
   }
   const tool = payload.tool_call;
@@ -170,6 +200,7 @@ async function readChatStream(
   requestId: string,
   response: Response,
   onEvent: (event: ChatStreamEvent) => void,
+  permissionMode: "ask" | "auto" | "allow" | "allowlist" | "custom",
 ) {
   if (!response.body) throw new Error("Chat API returned no response stream.");
   const reader = response.body.getReader();
@@ -183,7 +214,9 @@ async function readChatStream(
     while (boundary !== -1) {
       const data = sseData(buffer.slice(0, boundary));
       buffer = buffer.slice(boundary + 2);
-      if (data) finished = await emitChatData(requestId, data, onEvent);
+      if (data) {
+        finished = await emitChatData(requestId, data, onEvent, permissionMode);
+      }
       if (finished) break;
       boundary = buffer.indexOf("\n\n");
     }
@@ -191,13 +224,42 @@ async function readChatStream(
   }
   if (!finished) {
     const trailing = sseData(buffer);
-    if (trailing) finished = await emitChatData(requestId, trailing, onEvent);
+    if (trailing) {
+      finished = await emitChatData(
+        requestId,
+        trailing,
+        onEvent,
+        permissionMode,
+      );
+    }
   }
   if (!finished) onEvent({ id: requestId, type: "done" });
 }
 
+function cliPrompt(
+  messages: Parameters<Window["desktopApi"]["streamChat"]>[0]["messages"],
+) {
+  return messages
+    .map((message) => {
+      const content =
+        typeof message.content === "string"
+          ? message.content
+          : message.content
+              .map((part) => {
+                if (part.type === "text") return part.text;
+                if (part.type === "image_url") return "[Image attachment]";
+                return `[File attachment: ${part.file.filename}]`;
+              })
+              .join("\n");
+      return `${message.role.toUpperCase()}:\n${content}`;
+    })
+    .join("\n\n");
+}
+
 const unsupportedVirtualDesktop = async (): Promise<never> => {
-  throw new Error("Virtual desktop setup is not available in this Tauri build yet.");
+  throw new Error(
+    "Virtual desktop setup is not available in this Tauri build yet.",
+  );
 };
 
 export function installTauriDesktopApi() {
@@ -220,6 +282,75 @@ export function installTauriDesktopApi() {
       const controller = new AbortController();
       chatControllers.get(request.id)?.abort();
       chatControllers.set(request.id, controller);
+      if (NATIVE_CHAT_RUNTIMES.has(request.agent.cli)) {
+        const runNativeChat = (permissionMode: typeof request.permissionMode) =>
+          command<string>("runtime_chat", {
+            runtime: request.agent.cli,
+            model: request.agent.model,
+            prompt: cliPrompt(request.messages),
+            permissionMode,
+          });
+        const requestApprovalAndRetry = async () => {
+          const permissionId = `native-${request.id}`;
+          const allowed = await promptForPermission({
+            id: permissionId,
+            kind: "computer_control",
+            command: "Allow Memo tools for this response",
+            cwd: ".",
+            osIsolated: true,
+          });
+          if (!allowed) {
+            throw new Error(
+              "Permission denied. No computer action was performed.",
+            );
+          }
+          if (controller.signal.aborted) {
+            throw new DOMException("Chat cancelled", "AbortError");
+          }
+          return runNativeChat("auto");
+        };
+        void (async () => {
+          try {
+            const content = await runNativeChat(request.permissionMode);
+            if (
+              request.permissionMode === "ask" &&
+              isApprovalRequiredError(content) &&
+              !controller.signal.aborted
+            ) {
+              return requestApprovalAndRetry();
+            }
+            return content;
+          } catch (error) {
+            if (
+              request.permissionMode === "ask" &&
+              isApprovalRequiredError(error) &&
+              !controller.signal.aborted
+            ) {
+              return requestApprovalAndRetry();
+            }
+            throw error;
+          }
+        })()
+          .then((content) => {
+            if (!controller.signal.aborted) {
+              onEvent({ id: request.id, type: "delta", content });
+              onEvent({ id: request.id, type: "done" });
+            }
+          })
+          .catch((error: unknown) => {
+            if (controller.signal.aborted) {
+              onEvent({ id: request.id, type: "done" });
+            } else {
+              onEvent({
+                id: request.id,
+                type: "error",
+                message: error instanceof Error ? error.message : String(error),
+              });
+            }
+          })
+          .finally(() => chatControllers.delete(request.id));
+        return () => controller.abort();
+      }
       void fetch(`${GATEWAY}/v1/chat/completions`, {
         method: "POST",
         headers: {
@@ -237,12 +368,24 @@ export function installTauriDesktopApi() {
         signal: controller.signal,
       })
         .then(async (response) => {
-          if (!response.ok) throw new Error(`Chat API request failed (${response.status}).`);
-          await readChatStream(request.id, response, onEvent);
+          if (!response.ok)
+            throw new Error(`Chat API request failed (${response.status}).`);
+          await readChatStream(
+            request.id,
+            response,
+            onEvent,
+            request.permissionMode,
+          );
         })
         .catch((error: unknown) => {
-          if (controller.signal.aborted) onEvent({ id: request.id, type: "done" });
-          else onEvent({ id: request.id, type: "error", message: error instanceof Error ? error.message : String(error) });
+          if (controller.signal.aborted)
+            onEvent({ id: request.id, type: "done" });
+          else
+            onEvent({
+              id: request.id,
+              type: "error",
+              message: error instanceof Error ? error.message : String(error),
+            });
         })
         .finally(() => chatControllers.delete(request.id));
       return () => controller.abort();
@@ -250,10 +393,23 @@ export function installTauriDesktopApi() {
     cancelChat: (requestId) => chatControllers.get(requestId)?.abort(),
     agents: {
       list: () => gatewayList<AgentProfileData>("/v1/agents"),
-      backends: () => gatewayList<AgentBackendData>("/v1/cli-backends"),
-      create: (agent) => gateway("/v1/agents", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(agent) }),
-      delete: (agentId) => gateway(`/v1/agents/${encodeURIComponent(agentId)}`, { method: "DELETE" }),
-      update: (agentId, changes) => gateway(`/v1/agents/${encodeURIComponent(agentId)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(changes) }),
+      backends: () => command<AgentBackendData[]>("runtime_list"),
+      create: (agent) =>
+        gateway("/v1/agents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(agent),
+        }),
+      delete: (agentId) =>
+        gateway(`/v1/agents/${encodeURIComponent(agentId)}`, {
+          method: "DELETE",
+        }),
+      update: (agentId, changes) =>
+        gateway(`/v1/agents/${encodeURIComponent(agentId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(changes),
+        }),
     },
     onPermissionRequest: (listener) => {
       permissionListeners.add(listener);
@@ -268,7 +424,14 @@ export function installTauriDesktopApi() {
     getSystemHealth: () => gateway("/health/readiness"),
     openCodexHelp: async () => ({ opened: true }),
     virtualDesktop: {
-      get: async () => ({ reachable: false, latencyMs: null, message: "Tauri virtual desktop bridge pending", endpoint: "", hasToken: false, containerEngine: null }),
+      get: async () => ({
+        reachable: false,
+        latencyMs: null,
+        message: "Tauri virtual desktop bridge pending",
+        endpoint: "",
+        hasToken: false,
+        containerEngine: null,
+      }),
       save: unsupportedVirtualDesktop,
       start: unsupportedVirtualDesktop,
       stop: unsupportedVirtualDesktop,
@@ -286,43 +449,80 @@ export function installTauriDesktopApi() {
       set: (mode) => command("resource_set", { mode }),
     },
     getComposioStatus: () => gateway("/v1/composio/status"),
-    getComposioToolkits: (search = "") => gateway(`/v1/composio/toolkits?search=${encodeURIComponent(search)}`),
+    getComposioToolkits: (search = "") =>
+      gateway(`/v1/composio/toolkits?search=${encodeURIComponent(search)}`),
     getComposioConnections: () => gateway("/v1/composio/connections"),
-    disconnectComposio: (connectionId) => gateway(`/v1/composio/connections/${encodeURIComponent(connectionId)}`, { method: "DELETE" }),
+    disconnectComposio: (connectionId) =>
+      gateway(`/v1/composio/connections/${encodeURIComponent(connectionId)}`, {
+        method: "DELETE",
+      }),
     authorizeComposio: async (toolkit) => {
-      const result = await gateway<{ redirect_url: string }>(`/v1/composio/authorize/${encodeURIComponent(toolkit)}`, { method: "POST" });
+      const result = await gateway<{ redirect_url: string }>(
+        `/v1/composio/authorize/${encodeURIComponent(toolkit)}`,
+        { method: "POST" },
+      );
       await command("open_external", { url: result.redirect_url });
       return { opened: true };
     },
     traceSpeech: () => undefined,
-    prepareSpeech: () => gateway("/v1/audio/transcriptions/prepare", { method: "POST" }),
+    prepareSpeech: () =>
+      gateway("/v1/audio/transcriptions/prepare", { method: "POST" }),
     transcribeSpeech: ({ audio, mimeType, filename }) => {
-      const bytes = Uint8Array.from(atob(audio.split(",").at(-1) ?? ""), (value) => value.charCodeAt(0));
+      const bytes = Uint8Array.from(
+        atob(audio.split(",").at(-1) ?? ""),
+        (value) => value.charCodeAt(0),
+      );
       const form = new FormData();
       form.append("file", new Blob([bytes], { type: mimeType }), filename);
-      return gateway("/v1/audio/transcriptions", { method: "POST", body: form });
+      return gateway("/v1/audio/transcriptions", {
+        method: "POST",
+        body: form,
+      });
     },
     streamSpeech: (request, onEvent) => {
       const controller = new AbortController();
       speechControllers.set(request.id, controller);
-      void fetch(`${GATEWAY}/v1/audio/speech`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ input: request.text }), signal: controller.signal })
+      void fetch(`${GATEWAY}/v1/audio/speech`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: request.text }),
+        signal: controller.signal,
+      })
         .then(async (response) => {
-          if (!response.ok) throw new Error(`Speech request failed (${response.status}).`);
-          const audio = btoa(String.fromCharCode(...new Uint8Array(await response.arrayBuffer())));
+          if (!response.ok)
+            throw new Error(`Speech request failed (${response.status}).`);
+          const audio = btoa(
+            String.fromCharCode(
+              ...new Uint8Array(await response.arrayBuffer()),
+            ),
+          );
           onEvent({ id: request.id, type: "chunk", audio });
           onEvent({ id: request.id, type: "done" });
         })
         .catch((error: unknown) => {
-          if (!controller.signal.aborted) onEvent({ id: request.id, type: "error", message: error instanceof Error ? error.message : String(error) });
+          if (!controller.signal.aborted)
+            onEvent({
+              id: request.id,
+              type: "error",
+              message: error instanceof Error ? error.message : String(error),
+            });
         })
         .finally(() => speechControllers.delete(request.id));
       return () => controller.abort();
     },
     cancelSpeech: (requestId) => speechControllers.get(requestId)?.abort(),
     chatHistory: {
-      getItem: async (key) => localStorage.getItem(`memo.chat.${key}`),
-      setItem: async (key, value) => localStorage.setItem(`memo.chat.${key}`, value),
-      removeItem: async (key) => localStorage.removeItem(`memo.chat.${key}`),
+      getItem: (key) => command<string | null>("chat_history_get", { key }),
+      setItem: (key, value) =>
+        command<void>("chat_history_set", { key, value }),
+      removeItem: (key) => command<void>("chat_history_remove", { key }),
+    },
+    permissionMode: {
+      get: () =>
+        command<"ask" | "auto" | "allow" | "allowlist" | "custom">(
+          "permission_mode_get",
+        ),
+      set: (mode) => command<void>("permission_mode_set", { mode }),
     },
   };
 }

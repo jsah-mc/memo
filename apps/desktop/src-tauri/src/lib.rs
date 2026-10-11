@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::{
+    collections::BTreeMap,
     fs,
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
@@ -11,7 +14,10 @@ use std::{
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 
 const GATEWAY_ADDRESS: &str = "127.0.0.1:4010";
+const RUST_API_ADDRESS: &str = "127.0.0.1:6734";
+const MEMO_MCP_URL: &str = "http://127.0.0.1:6734/mcp";
 const COMPOSIO_BROKER_URL: &str = "https://memo-composio-broker.vercel.app";
+static CHAT_HISTORY_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Default)]
 struct GatewayProcess(Mutex<Option<Child>>);
@@ -22,6 +28,7 @@ struct Settings {
     workspace_path: Option<String>,
     resource_mode: Option<String>,
     composio_user_id: Option<String>,
+    permission_mode: Option<String>,
 }
 
 fn memo_root() -> PathBuf {
@@ -54,29 +61,176 @@ fn gateway_online() -> bool {
         .is_ok_and(|size| response[..size].starts_with(b"HTTP/1.1 200"))
 }
 
-fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+fn rust_api_online() -> bool {
+    RUST_API_ADDRESS
+        .parse::<SocketAddr>()
+        .ok()
+        .is_some_and(|address| {
+            TcpStream::connect_timeout(&address, Duration::from_millis(350)).is_ok()
+        })
+}
+
+fn configure_mcp_clients() {
+    let registrations: &[(&str, &[&str])] = &[
+        ("codex", &["mcp", "add", "memo", "--url", MEMO_MCP_URL]),
+        ("hermes", &["mcp", "add", "memo", "--url", MEMO_MCP_URL]),
+        (
+            "agy",
+            &["mcp", "add", "--type", "http", "memo", MEMO_MCP_URL],
+        ),
+    ];
+    for (executable, arguments) in registrations {
+        if memo::runtimes::RUNTIMES
+            .iter()
+            .any(|runtime| runtime.executable == *executable && runtime.installed())
+        {
+            let mut command = Command::new(executable);
+            command
+                .args(*arguments)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+            #[cfg(windows)]
+            command.creation_flags(0x08000000);
+            if let Ok(mut child) = command.spawn() {
+                if let Some(mut stdin) = child.stdin.take() {
+                    let _ = stdin.write_all(b"n\ny\n");
+                }
+                let _ = child.wait();
+            }
+        }
+    }
+}
+
+fn memo_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let directory = app
         .path()
-        .app_data_dir()
-        .map_err(|error| error.to_string())?;
+        .home_dir()
+        .map_err(|error| error.to_string())?
+        .join(".memo");
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-    Ok(directory.join("settings.json"))
+    Ok(directory)
+}
+
+fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(memo_data_dir(app)?.join("config.toml"))
 }
 
 fn read_settings(app: &AppHandle) -> Settings {
-    settings_path(app)
+    if let Some(settings) = settings_path(app)
+        .ok()
+        .and_then(|path| fs::read_to_string(path).ok())
+        .and_then(|text| toml::from_str(&text).ok())
+    {
+        return settings;
+    }
+
+    let legacy = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|directory| directory.join("settings.json"))
+        .and_then(|path| fs::read_to_string(path).ok())
+        .and_then(|text| serde_json::from_str::<Settings>(&text).ok());
+    if let Some(settings) = legacy {
+        let _ = write_settings(app, &settings);
+        return settings;
+    }
+    Settings::default()
+}
+
+fn write_settings(app: &AppHandle, settings: &Settings) -> Result<(), String> {
+    fs::write(
+        settings_path(app)?,
+        toml::to_string_pretty(settings).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())
+}
+
+fn chat_history_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(memo_data_dir(app)?.join("chat-history.json"))
+}
+
+fn read_chat_history(app: &AppHandle) -> BTreeMap<String, String> {
+    chat_history_path(app)
         .ok()
         .and_then(|path| fs::read_to_string(path).ok())
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_default()
 }
 
-fn write_settings(app: &AppHandle, settings: &Settings) -> Result<(), String> {
+fn write_chat_history(app: &AppHandle, history: &BTreeMap<String, String>) -> Result<(), String> {
     fs::write(
-        settings_path(app)?,
-        serde_json::to_string_pretty(settings).map_err(|error| error.to_string())?,
+        chat_history_path(app)?,
+        serde_json::to_vec_pretty(history).map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn chat_history_get(app: AppHandle, key: String) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = CHAT_HISTORY_LOCK
+            .lock()
+            .map_err(|_| "Chat history lock poisoned")?;
+        Ok(read_chat_history(&app).remove(&key))
+    })
+    .await
+    .map_err(|error| format!("Chat history read task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn chat_history_set(app: AppHandle, key: String, value: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = CHAT_HISTORY_LOCK
+            .lock()
+            .map_err(|_| "Chat history lock poisoned")?;
+        let mut history = read_chat_history(&app);
+        history.insert(key, value);
+        write_chat_history(&app, &history)
+    })
+    .await
+    .map_err(|error| format!("Chat history write task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn chat_history_remove(app: AppHandle, key: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = CHAT_HISTORY_LOCK
+            .lock()
+            .map_err(|_| "Chat history lock poisoned")?;
+        let mut history = read_chat_history(&app);
+        history.remove(&key);
+        write_chat_history(&app, &history)
+    })
+    .await
+    .map_err(|error| format!("Chat history write task failed: {error}"))?
+}
+
+#[tauri::command]
+fn permission_mode_get(app: AppHandle) -> String {
+    read_settings(&app)
+        .permission_mode
+        .filter(|mode| {
+            matches!(
+                mode.as_str(),
+                "ask" | "auto" | "allow" | "allowlist" | "custom"
+            )
+        })
+        .unwrap_or_else(|| "ask".into())
+}
+
+#[tauri::command]
+fn permission_mode_set(app: AppHandle, mode: String) -> Result<(), String> {
+    if !matches!(
+        mode.as_str(),
+        "ask" | "auto" | "allow" | "allowlist" | "custom"
+    ) {
+        return Err("Invalid permission mode.".into());
+    }
+    let mut settings = read_settings(&app);
+    settings.permission_mode = Some(mode);
+    write_settings(&app, &settings)
 }
 
 fn composio_broker_token() -> String {
@@ -128,10 +282,10 @@ fn launch_gateway(state: &GatewayProcess, app: &AppHandle) -> Result<(), String>
         (command, root.clone())
     };
     let settings = read_settings(app);
+    let data_directory = memo_data_dir(app).unwrap_or_else(|_| root.join(".memo"));
     let workspace = settings.workspace_path.unwrap_or_else(|| {
-        app.path()
-            .app_data_dir()
-            .unwrap_or_else(|_| root.clone())
+        data_directory
+            .clone()
             .join("workspace")
             .to_string_lossy()
             .into_owned()
@@ -149,6 +303,7 @@ fn launch_gateway(state: &GatewayProcess, app: &AppHandle) -> Result<(), String>
             .env("GATEWAY_HOST", "127.0.0.1")
             .env("GATEWAY_PORT", "4010")
             .env("MEMO_COMPUTER_ENABLED", "1")
+            .env("MEMO_AGENT_STORE", data_directory.join("agents.json"))
             .env("MEMO_SANDBOX_ROOT", workspace)
             .env("MEMO_RESOURCE_MODE", mode)
             .env("MEMO_SPEECH_CPU_THREADS", threads)
@@ -178,6 +333,57 @@ fn platform() -> &'static str {
     } else {
         "linux"
     }
+}
+
+#[tauri::command]
+async fn runtime_list() -> Result<Vec<memo::runtimes::RuntimeStatus>, String> {
+    tauri::async_runtime::spawn_blocking(memo::runtimes::statuses)
+        .await
+        .map_err(|error| format!("Runtime discovery task failed: {error}"))
+}
+
+#[tauri::command]
+async fn runtime_chat(
+    app: AppHandle,
+    runtime: String,
+    model: String,
+    prompt: String,
+    permission_mode: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = memo::runtimes::runtime(&runtime)?;
+        if !runtime.installed() {
+            return Err(format!(
+                "{} is not installed or is not on PATH",
+                runtime.label
+            ));
+        }
+        let arguments =
+            runtime.chat_command_with_permissions(&model, &prompt, &permission_mode)?;
+        let mut command = Command::new(runtime.executable);
+        command.args(arguments).stdin(Stdio::null());
+        if let Some(workspace) = read_settings(&app).workspace_path
+            && Path::new(&workspace).is_dir()
+        {
+            command.current_dir(workspace);
+        }
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
+        let output = command
+            .output()
+            .map_err(|error| format!("Could not start {}: {error}", runtime.label))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        if !output.status.success() {
+            return Err(runtime.chat_failure_message(&stderr, Some(&output.status.to_string())));
+        }
+        if stdout.is_empty() {
+            return Err(runtime.chat_failure_message(&stderr, None));
+        }
+        Ok(stdout)
+    })
+    .await
+    .map_err(|error| format!("Runtime chat task failed: {error}"))?
 }
 
 #[tauri::command]
@@ -317,19 +523,14 @@ fn workspace_checkpoint(label: String, app: AppHandle) -> Result<serde_json::Val
         })
         .take(48)
         .collect();
-    let destination = app
-        .path()
-        .app_data_dir()
-        .map_err(|error| error.to_string())?
-        .join("checkpoints")
-        .join(format!(
-            "{id}-{}",
-            if safe_label.is_empty() {
-                "checkpoint"
-            } else {
-                &safe_label
-            }
-        ));
+    let destination = memo_data_dir(&app)?.join("checkpoints").join(format!(
+        "{id}-{}",
+        if safe_label.is_empty() {
+            "checkpoint"
+        } else {
+            &safe_label
+        }
+    ));
     fs::create_dir_all(&destination).map_err(|error| error.to_string())?;
     fs::write(destination.join("changes.patch"), diff.stdout).map_err(|error| error.to_string())?;
     let changes = String::from_utf8_lossy(&status.stdout).lines().count();
@@ -366,6 +567,25 @@ pub fn run() {
         .manage(GatewayProcess::default())
         .setup(|app| {
             launch_gateway(app.state::<GatewayProcess>().inner(), app.handle())?;
+            let rust_api_workspace = read_settings(app.handle())
+                .workspace_path
+                .map(PathBuf::from)
+                .filter(|path| path.is_dir())
+                .unwrap_or_else(memo_root);
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = memo::api::serve_in(rust_api_workspace).await {
+                    eprintln!("Memo Rust API stopped: {error}");
+                }
+            });
+            std::thread::spawn(|| {
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while Instant::now() < deadline && !rust_api_online() {
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                if rust_api_online() {
+                    configure_mcp_clients();
+                }
+            });
             let deadline = Instant::now() + Duration::from_secs(2);
             while Instant::now() < deadline && !gateway_online() {
                 std::thread::sleep(Duration::from_millis(50));
@@ -374,6 +594,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             platform,
+            runtime_list,
+            runtime_chat,
+            chat_history_get,
+            chat_history_set,
+            chat_history_remove,
+            permission_mode_get,
+            permission_mode_set,
             minimize,
             toggle_maximize,
             close,

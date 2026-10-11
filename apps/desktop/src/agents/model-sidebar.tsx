@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { CheckIcon, SearchIcon } from "lucide-react";
 import { useAgents } from "@/agents/agent-provider";
-import { CLI_OPTIONS, modelOptions } from "@/agents/cli-options";
+import {
+  CLI_OPTIONS,
+  customModels,
+  rememberCustomModel,
+} from "@/agents/cli-options";
 import {
   threadModelKey,
   useThreadModels,
@@ -16,7 +20,11 @@ export function ModelSidebar() {
   const [installedRuntimeIds, setInstalledRuntimeIds] = useState<Set<string>>(
     new Set(),
   );
+  const [runtimeBackends, setRuntimeBackends] = useState<AgentBackendData[]>([]);
   const [loadingRuntimes, setLoadingRuntimes] = useState(true);
+  const [rememberedModels, setRememberedModels] = useState<string[]>(() =>
+    customModels(activeAgent.cli),
+  );
   const key = threadModelKey(activeAgent.id, activeThreadId);
   const saved = selections[key];
   const selectedRuntime = saved?.cli ?? activeAgent.cli;
@@ -29,12 +37,25 @@ export function ModelSidebar() {
   const models = useMemo(
     () =>
       selectedRuntimeInstalled
-        ? modelOptions(selectedRuntime, selectedModel).filter((model) =>
+        ? Array.from(new Set([
+            selectedModel,
+            ...(runtimeBackends.find((backend) => backend.id === selectedRuntime)?.models ?? []),
+            ...rememberedModels,
+          ])).filter((model) =>
             model.toLowerCase().includes(search.trim().toLowerCase()),
           )
         : [],
-    [search, selectedModel, selectedRuntime, selectedRuntimeInstalled],
+    [rememberedModels, runtimeBackends, search, selectedModel, selectedRuntime, selectedRuntimeInstalled],
   );
+  const customModel = search.trim();
+  const canAddCustomModel =
+    selectedRuntimeInstalled &&
+    customModel.length > 0 &&
+    !models.some((model) => model.toLowerCase() === customModel.toLowerCase());
+
+  useEffect(() => {
+    setRememberedModels(customModels(selectedRuntime));
+  }, [selectedRuntime]);
 
   useEffect(() => {
     let current = true;
@@ -42,6 +63,7 @@ export function ModelSidebar() {
       .backends()
       .then((backends) => {
         if (current) {
+          setRuntimeBackends(backends);
           setInstalledRuntimeIds(
             new Set(
               backends
@@ -75,6 +97,7 @@ export function ModelSidebar() {
     try {
       await updateAgentModel(activeAgent.id, model);
       setSelection(key, { cli: selectedRuntime, model });
+      setRememberedModels(rememberCustomModel(selectedRuntime, model));
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : "Could not change model.",
@@ -87,11 +110,14 @@ export function ModelSidebar() {
   const selectRuntime = async (cli: typeof activeAgent.cli) => {
     const option = CLI_OPTIONS.find((item) => item.id === cli);
     if (!option) return;
+    const defaultModel =
+      runtimeBackends.find((backend) => backend.id === cli)?.defaultModel ??
+      option.defaultModel;
     setUpdating(true);
     setError("");
     try {
-      await updateAgentRuntime(activeAgent.id, cli, option.defaultModel);
-      setSelection(key, { cli, model: option.defaultModel });
+      await updateAgentRuntime(activeAgent.id, cli, defaultModel);
+      setSelection(key, { cli, model: defaultModel });
       setSearch("");
     } catch (reason) {
       setError(
@@ -151,6 +177,16 @@ export function ModelSidebar() {
           Available models
         </p>
         <div className="grid gap-1">
+          {canAddCustomModel && (
+            <button
+              type="button"
+              disabled={updating}
+              onClick={() => void selectModel(customModel)}
+              className="rounded-lg border border-dashed border-border px-3 py-2.5 text-left text-sm hover:bg-muted disabled:opacity-60"
+            >
+              Use custom model “{customModel}”
+            </button>
+          )}
           {models.map((model) => (
             <button
               key={model}

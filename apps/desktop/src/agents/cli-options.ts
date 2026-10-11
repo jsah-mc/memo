@@ -17,30 +17,26 @@ export const CLI_OPTIONS = [
 
 export type CLIBackendId = (typeof CLI_OPTIONS)[number]["id"];
 
-const MODEL_OPTIONS: Readonly<Record<CLIBackendId, readonly string[]>> = {
-  codex: [
-    "gpt-5.6-luna",
-    "gpt-5.6-sol",
-    "gpt-6-sol",
-    "gpt-6.1-sol",
-    "gpt-6-astra",
-  ],
-  claude: ["sonnet", "opus", "haiku"],
-  antigravity: ["gemini-2.5-pro", "gemini-2.5-flash"],
-  opencode: ["default"],
-  ollama: ["qwen3", "llama3.3", "deepseek-r1"],
-  lmstudio: ["local-model"],
-  "grok-build": ["grok-4.6"],
-  cursor: ["auto"],
-  hermes: [
-    "default",
-    "anthropic/claude-sonnet-4",
-    "openai/gpt-5.5",
-    "openrouter:anthropic/claude-sonnet-4",
-  ],
-  pi: ["default"],
-};
+const CUSTOM_MODELS_KEY = "memo.custom-models.v1";
 
-export function modelOptions(cli: CLIBackendId, current: string) {
-  return Array.from(new Set([current, ...MODEL_OPTIONS[cli]]));
+export function customModels(cli: CLIBackendId): string[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(CUSTOM_MODELS_KEY) ?? "{}");
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const models = (value as Record<string, unknown>)[cli];
+    return Array.isArray(models)
+      ? models.filter((model): model is string => typeof model === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function rememberCustomModel(cli: CLIBackendId, model: string): string[] {
+  const next = Array.from(new Set([model, ...customModels(cli)])).slice(0, 20);
+  const current = Object.fromEntries(
+    CLI_OPTIONS.map((option) => [option.id, customModels(option.id)]),
+  );
+  localStorage.setItem(CUSTOM_MODELS_KEY, JSON.stringify({ ...current, [cli]: next }));
+  return next;
 }

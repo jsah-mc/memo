@@ -17,7 +17,11 @@ import {
   threadModelKey,
   useThreadModels,
 } from "@/agents/thread-model-provider";
-import { CLI_OPTIONS, modelOptions } from "@/agents/cli-options";
+import {
+  CLI_OPTIONS,
+  customModels,
+  rememberCustomModel,
+} from "@/agents/cli-options";
 import { ThreadListItems, ThreadListNew } from "@/components/thread-list";
 
 export function LegacyModelPicker() {
@@ -26,6 +30,10 @@ export function LegacyModelPicker() {
   const [search, setSearch] = useState("");
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState("");
+  const [runtimeBackends, setRuntimeBackends] = useState<AgentBackendData[]>([]);
+  const [rememberedModels, setRememberedModels] = useState<string[]>(() =>
+    customModels(activeAgent.cli),
+  );
   const rootRef = useRef<HTMLDivElement>(null);
   const selectedModel = activeAgent.model;
   const provider =
@@ -33,11 +41,47 @@ export function LegacyModelPicker() {
     activeAgent.cli;
   const models = useMemo(
     () =>
-      modelOptions(activeAgent.cli, selectedModel).filter((model) =>
-        model.toLowerCase().includes(search.trim().toLowerCase()),
-      ),
-    [activeAgent.cli, search, selectedModel],
+      Array.from(
+        new Set([
+          selectedModel,
+          ...(runtimeBackends.find((backend) => backend.id === activeAgent.cli)
+            ?.models ?? []),
+          ...rememberedModels,
+        ]),
+      ).filter((model) =>
+          model.toLowerCase().includes(search.trim().toLowerCase()),
+        ),
+    [activeAgent.cli, rememberedModels, runtimeBackends, search, selectedModel],
   );
+  const customModel = search.trim();
+  const canAddCustomModel =
+    customModel.length > 0 &&
+    !models.some((model) => model.toLowerCase() === customModel.toLowerCase());
+
+  useEffect(() => {
+    setRememberedModels(customModels(activeAgent.cli));
+  }, [activeAgent.cli]);
+
+  useEffect(() => {
+    let current = true;
+    void window.desktopApi.agents
+      .backends()
+      .then((backends) => {
+        if (current) setRuntimeBackends(backends);
+      })
+      .catch((reason: unknown) => {
+        if (current) {
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : "Could not load models from the CLI.",
+          );
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -53,6 +97,7 @@ export function LegacyModelPicker() {
     setError("");
     try {
       await updateAgentModel(activeAgent.id, model);
+      setRememberedModels(rememberCustomModel(activeAgent.cli, model));
       setOpen(false);
       setSearch("");
     } catch (reason) {
@@ -107,6 +152,16 @@ export function LegacyModelPicker() {
             Available models
           </p>
           <div className="grid max-h-64 gap-1 overflow-y-auto">
+            {canAddCustomModel && (
+              <button
+                type="button"
+                disabled={updating}
+                onClick={() => void selectModel(customModel)}
+                className="rounded-lg border border-dashed border-border px-3 py-2.5 text-left text-sm hover:bg-muted disabled:opacity-60"
+              >
+                Use custom model “{customModel}”
+              </button>
+            )}
             {models.map((model) => (
               <button
                 key={model}

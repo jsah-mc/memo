@@ -5,6 +5,15 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  server: {
+    watch: {
+      ignored: [
+        "**/src-tauri/target/**",
+        "**/target/**",
+        "**/.gateway-build/**",
+      ],
+    },
+  },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
