@@ -167,8 +167,8 @@ pnpm lint
 pnpm --filter @memo/desktop exec vite build
 ```
 
-CI runs Python tests on Linux, Windows, and macOS, plus frontend typechecking,
-lint, and the renderer build on Linux and macOS. macOS runners install PortAudio
+CI runs frontend typechecking, lint, renderer builds, and Rust checks on Linux,
+Windows, and macOS. macOS runners install PortAudio
 with Homebrew and use standard PyTorch packages rather than CUDA builds. These tests do not validate a live ChatGPT account or
 physical devices. For manual integration testing, verify authenticated chat
 first, then speech (model downloads and audio devices), browser automation
@@ -321,8 +321,10 @@ The program and future messaging integrations can use `from utils.tools.ai impor
 
 ## Release prebuilds
 
-Installers include the Tauri desktop app, Python 3.13, and the gateway's
-runtime dependencies. Memo starts its gateway automatically and shows a loading
+Each installer includes the Tauri desktop app, the native `memo` CLI, Python
+3.13, and the gateway's runtime dependencies. The CLI is packaged as a Tauri
+sidecar, so one installation delivers both interfaces without a separate CLI
+download. Memo starts its gateway automatically and shows a loading
 screen until it is ready. Startup errors offer a retry button. No Python
 installation, uv, or source checkout is needed to run an installed release.
 The bundled speech runtime uses CPU packages; speech models download on first
@@ -334,7 +336,6 @@ Available packages:
 - macOS Apple Silicon: DMG (drag Memo to Applications).
 - Debian/Ubuntu x64: DEB (`sudo apt install ./memo_*.deb`).
 - RPM distributions x64: RPM (install with your distribution's package manager).
-- Arch Linux x64: `.pkg.tar.zst` (`sudo pacman -U ./memo-*.pkg.tar.zst`).
 - Other Linux x64 systems: portable ZIP; system desktop/audio libraries are required.
 
 Chat history, agent profiles, and computer-tool workspace files live in Memo's
@@ -367,9 +368,9 @@ root:
 ```bash
 python scripts/build_gateway.py
 python scripts/smoke_gateway.py
+cargo build --release
+node scripts/prepare_cli_sidecar.mjs
 pnpm make
-# Linux only, after packaging the app:
-python scripts/build_arch.py
 ```
 
 The builder uses a relocatable uv-managed Python on Linux/macOS and a complete
