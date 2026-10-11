@@ -77,6 +77,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxinerama-dev libxcursor-dev libxrandr-dev libxi-dev pkg-config
+      - name: Configure macOS Swift runtime path
+        if: runner.os == 'macOS'
+        run: |
+          SWIFT_LIB_DIR="$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx"
+          echo "RUSTFLAGS=-C link-args=-Wl,-rpath,/usr/lib/swift -C link-args=-Wl,-rpath,${SWIFT_LIB_DIR}" >> $GITHUB_ENV
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
