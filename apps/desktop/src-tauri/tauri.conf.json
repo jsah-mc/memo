@@ -40,6 +40,9 @@
     "resources": {
       "../../../.gateway-build/gateway": "gateway",
       "../../../.sandbox-build/MemoSandbox.exe": "MemoSandbox.exe"
-    }
+    },
+    "externalBin": [
+      "binaries/memo"
+    ]
   }
 }
