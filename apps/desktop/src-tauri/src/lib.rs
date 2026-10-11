@@ -11,6 +11,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Manager, State, WebviewWindow};
+use tauri_plugin_updater::UpdaterExt;
 
 const GATEWAY_ADDRESS: &str = "127.0.0.1:4010";
 const RUST_API_ADDRESS: &str = "127.0.0.1:6734";
@@ -541,6 +542,39 @@ fn workspace_checkpoint(label: String, app: AppHandle) -> Result<serde_json::Val
 }
 
 #[tauri::command]
+async fn update_check(app: AppHandle) -> Result<serde_json::Value, String> {
+    let update = app
+        .updater()
+        .map_err(|error| error.to_string())?
+        .check()
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(match update {
+        Some(update) => serde_json::json!({
+            "available": true,
+            "version": update.version,
+            "notes": update.body
+        }),
+        None => serde_json::json!({ "available": false }),
+    })
+}
+
+#[tauri::command]
+async fn update_install(app: AppHandle) -> Result<(), String> {
+    let update = app
+        .updater()
+        .map_err(|error| error.to_string())?
+        .check()
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or("The update is no longer available.")?;
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn resource_get(app: AppHandle) -> serde_json::Value {
     serde_json::json!({ "mode": read_settings(&app).resource_mode.unwrap_or_else(|| "balanced".into()) })
 }
@@ -563,6 +597,7 @@ fn resource_set(
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(GatewayProcess::default())
         .setup(|app| {
             launch_gateway(app.state::<GatewayProcess>().inner(), app.handle())?;
@@ -600,6 +635,8 @@ pub fn run() {
             chat_history_remove,
             permission_mode_get,
             permission_mode_set,
+            update_check,
+            update_install,
             minimize,
             toggle_maximize,
             close,
