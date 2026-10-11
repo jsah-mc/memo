@@ -59,7 +59,7 @@ impl App {
             messages: Vec::new(),
             composer: String::new(),
             cursor: 0,
-            status: "Ready · enter send · shift+enter newline · ctrl+c quit".into(),
+            status: "Ready · enter send · /help · ctrl+c quit".into(),
             streaming: false,
             scroll: 0,
             follow: true,
@@ -94,16 +94,11 @@ impl App {
         if prompt.is_empty() {
             return;
         }
-        match prompt.as_str() {
-            "/quit" | "/exit" => {
-                self.should_quit = true;
-                return;
-            }
-            "/new" | "/clear" => {
-                self.new_chat();
-                return;
-            }
-            _ => {}
+        if prompt.starts_with('/') {
+            self.composer.clear();
+            self.cursor = 0;
+            self.handle_slash_command(&prompt);
+            return;
         }
         self.composer.clear();
         self.cursor = 0;
@@ -124,6 +119,60 @@ impl App {
             .collect::<Vec<_>>();
         self.pending_messages = Some(messages);
         self.start_request(sender, "ask");
+    }
+
+    fn notice(&mut self, content: impl Into<String>) {
+        self.messages.push(ChatMessage {
+            role: "assistant",
+            content: content.into(),
+        });
+        self.follow = true;
+    }
+
+    fn handle_slash_command(&mut self, command: &str) {
+        let mut parts = command.split_whitespace();
+        match parts.next().unwrap_or_default() {
+            "/quit" | "/exit" => self.should_quit = true,
+            "/new" | "/clear" => self.new_chat(),
+            "/help" => self.notice(
+                "Commands:\n/help — show this list\n/new — start a fresh chat\n/model [runtime:model] — show or change the model\n/runtimes — list available runtimes\n/status — show the current model and gateway address\n/quit — exit Memo",
+            ),
+            "/model" => {
+                if let Some(model) = parts.next() {
+                    let valid = model
+                        .split_once(':')
+                        .is_some_and(|(runtime, model)| !model.is_empty() && crate::runtimes::runtime(runtime).is_ok());
+                    if !valid || parts.next().is_some() {
+                        self.notice("Usage: /model runtime:model");
+                    } else {
+                        self.model = model.to_owned();
+                        self.status = format!("Model changed to {}", self.model);
+                        self.notice(format!("Using {} for new messages.", self.model));
+                    }
+                } else {
+                    self.notice(format!("Current model: {}", self.model));
+                }
+            }
+            "/runtimes" => {
+                let runtimes = crate::runtimes::statuses()
+                    .into_iter()
+                    .map(|runtime| format!(
+                        "{} — {}",
+                        runtime.label,
+                        if runtime.installed { "installed" } else { "not installed" }
+                    ))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                self.notice(format!("Runtimes:\n{runtimes}"));
+            }
+            "/status" => self.notice(format!(
+                "Model: {}\nMCP gateway: http://127.0.0.1:6734/mcp",
+                self.model
+            )),
+            unknown => self.notice(format!(
+                "Unknown command: {unknown}\nType /help for available commands."
+            )),
+        }
     }
 
     fn start_request(
@@ -280,7 +329,7 @@ async fn run_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Resu
                 UiEvent::Done => {
                     app.streaming = false;
                     app.request_task = None;
-                    app.status = "Ready · enter send · /new · /quit".into();
+                    app.status = "Ready · enter send · /help · ctrl+c quit".into();
                 }
                 UiEvent::Approval(command) => {
                     app.request_task = None;
@@ -396,7 +445,7 @@ fn transcript_text(app: &App) -> Text<'static> {
             ),
             Line::from(""),
             Line::styled(
-                "  Type a prompt below. Use /new for a fresh chat.",
+                "  Type a prompt below. Use /help for commands.",
                 Style::default().fg(Color::DarkGray),
             ),
         ]);
@@ -699,6 +748,21 @@ mod tests {
         assert!(app.messages.is_empty());
         assert!(app.pending_messages.is_none());
         assert!(!app.streaming);
+    }
+
+    #[test]
+    fn slash_help_lists_commands_without_starting_a_request() {
+        let mut app = App::new();
+        app.handle_slash_command("/help");
+        assert!(app.messages.last().unwrap().content.contains("/model"));
+        assert!(!app.streaming);
+    }
+
+    #[test]
+    fn slash_model_changes_the_active_model() {
+        let mut app = App::new();
+        app.handle_slash_command("/model codex:gpt-5");
+        assert_eq!(app.model, "codex:gpt-5");
     }
 
     #[test]
