@@ -94,13 +94,14 @@ Install the native Rust CLI once during development:
 cargo install --path . --force
 ```
 
-Launch the Codex-style terminal UI:
+Launch the Codex-style terminal UI. Memo starts its native MCP gateway
+automatically if it is not already running:
 
 ```powershell
 memo
 ```
 
-Start and stop the native gateway as a background process:
+Start and stop the native gateway explicitly when needed:
 
 ```powershell
 memo gateway up
