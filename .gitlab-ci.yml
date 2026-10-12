@@ -30,7 +30,8 @@ frontend:
   tags:
     - saas-linux-small-amd64
   script:
-    - npm exec --yes --package=pnpm@$PNPM_VERSION -- pnpm install --frozen-lockfile
+    - npm install --global pnpm@$PNPM_VERSION
+    - pnpm install --frozen-lockfile
     - npm run typecheck
     - npm run lint
     - node --test scripts/tests/*.test.mjs
@@ -73,7 +74,8 @@ package_linux:
     - export PATH="$CARGO_HOME/bin:$PATH"
     - rustup default stable
     - pip install uv
-    - npm exec --yes --package=pnpm@$PNPM_VERSION -- pnpm install --frozen-lockfile
+    - npm install --global pnpm@$PNPM_VERSION
+    - pnpm install --frozen-lockfile
   script:
     - export PATH="$CARGO_HOME/bin:$PATH"
     - python scripts/build_gateway.py
@@ -102,7 +104,8 @@ package_windows:
     - saas-windows-medium-amd64
   before_script:
     - rustup default stable
-    - npm exec --yes --package=pnpm@$env:PNPM_VERSION -- pnpm install --frozen-lockfile
+    - npm install --global pnpm@$env:PNPM_VERSION
+    - pnpm install --frozen-lockfile
   script:
     - python scripts/build_gateway.py
     - python scripts/smoke_gateway.py
@@ -132,7 +135,8 @@ package_macos:
     - curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
     - rustup default stable
     - python3.13 -m pip install uv
-    - npm exec --yes --package=pnpm@$PNPM_VERSION -- pnpm install --frozen-lockfile
+    - npm install --global pnpm@$PNPM_VERSION
+    - pnpm install --frozen-lockfile
   script:
     - export PATH="/opt/homebrew/opt/node@24/bin:/opt/homebrew/opt/python@3.13/bin:$HOME/.cargo/bin:$PATH"
     - export SWIFT_LIB_DIR="$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx"
