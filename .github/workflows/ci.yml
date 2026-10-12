@@ -62,6 +62,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+      - name: Check all Rust targets
+        run: cargo check --all-targets
       - name: Run Rust tests
         run: cargo test
       - name: Run Clippy
