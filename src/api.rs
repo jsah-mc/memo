@@ -1,3 +1,4 @@
+use crate::voice::SpeechRequest;
 use axum::{
     Json, Router,
     extract::State,
@@ -140,6 +141,7 @@ pub async fn serve_in(working_directory: PathBuf) -> Result<(), String> {
     let app = Router::new()
         .route("/health", get(health))
         .route("/v1/models", get(list_models))
+        .route("/v1/audio/speech", post(speech))
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/responses", post(responses))
         .route("/v1/requests/{request_id}/cancel", post(cancel_request))
@@ -824,4 +826,22 @@ mod tests {
             "USER:\nHi"
         );
     }
+}
+
+async fn speech(
+    Json(request): Json<SpeechRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let audio = crate::voice::synthesize(&request)
+        .await
+        .map_err(|message| {
+            let status = if message.contains("not configured") {
+                StatusCode::SERVICE_UNAVAILABLE
+            } else if message.contains("cannot be empty") {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::BAD_GATEWAY
+            };
+            (status, message)
+        })?;
+    Ok(([(axum::http::header::CONTENT_TYPE, "audio/mpeg")], audio))
 }

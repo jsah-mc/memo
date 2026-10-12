@@ -1,6 +1,6 @@
 import type { SpeechSynthesisAdapter } from "@assistant-ui/react";
 
-const MIME_TYPE = "audio/wav";
+const MIME_TYPE = "audio/mpeg";
 const MAX_SEGMENT_CHARACTERS = 220;
 
 const decodeBase64 = (value: string) => {

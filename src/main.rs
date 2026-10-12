@@ -13,6 +13,9 @@ async fn main() -> ExitCode {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
     let result = match arguments.as_slice() {
         [] => memo::tui::run().await.map(|_| None),
+        [command] if command == "desktop" => {
+            launch_desktop().map(|message| Some(json!({"status": message})))
+        }
         [gateway, action] if gateway == "gateway" && action == "up" => gateway_up()
             .await
             .map(|message| Some(json!({"status": message}))),
@@ -31,7 +34,10 @@ async fn main() -> ExitCode {
                 .map(Some)
                 .map_err(|error| error.to_string())
         }
-        _ => Err("usage: memo | memo gateway <up|down> | memo runtimes | memo route TEXT".into()),
+        _ => Err(
+            "usage: memo | memo desktop | memo gateway <up|down> | memo runtimes | memo route TEXT"
+                .into(),
+        ),
     };
     match result {
         Ok(Some(value)) => {
@@ -175,4 +181,55 @@ async fn gateway_down() -> Result<String, String> {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     Err(format!("Gateway process {pid} did not stop"))
+}
+
+fn launch_desktop() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut candidates = Vec::new();
+        if let Ok(executable) = env::current_exe() {
+            if let Some(directory) = executable.parent() {
+                candidates.push(directory.join("Memo.exe"));
+            }
+        }
+        if let Some(local_app_data) = env::var_os("LOCALAPPDATA") {
+            candidates.push(PathBuf::from(local_app_data).join("Memo").join("Memo.exe"));
+        }
+        for candidate in candidates {
+            if candidate.is_file() {
+                Command::new(&candidate)
+                    .spawn()
+                    .map_err(|error| format!("Could not open {}: {error}", candidate.display()))?;
+                return Ok(format!("Memo desktop opened from {}", candidate.display()));
+            }
+        }
+        return Err(
+            "Memo desktop is not installed. Install the Memo desktop package first.".into(),
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .args(["-a", "Memo"])
+            .spawn()
+            .map_err(|error| format!("Could not open Memo desktop: {error}"))?;
+        return Ok("Memo desktop opened".into());
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        if Command::new("memo-desktop").spawn().is_ok() {
+            return Ok("Memo desktop opened".into());
+        }
+        Command::new("gtk-launch")
+            .arg("dev.memo.desktop")
+            .spawn()
+            .map_err(|error| {
+                format!(
+                    "Could not open Memo desktop; install the desktop package or add memo-desktop to PATH: {error}"
+                )
+            })?;
+        Ok("Memo desktop opened".into())
+    }
 }

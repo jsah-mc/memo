@@ -94,6 +94,30 @@ impl App {
         if prompt.is_empty() {
             return;
         }
+        if prompt == "/model" {
+            self.composer.clear();
+            self.cursor = 0;
+            self.status = format!("Current model: {}", self.model);
+            return;
+        }
+        if let Some(model) = prompt.strip_prefix("/model ") {
+            let model = model.trim();
+            if model.split_once(':').is_none() {
+                self.status = "Usage: /model runtime:model".into();
+            } else {
+                self.model = model.to_owned();
+                self.status = format!("Model switched to {}", self.model);
+            }
+            self.composer.clear();
+            self.cursor = 0;
+            return;
+        }
+        if prompt == "/help" {
+            self.composer.clear();
+            self.cursor = 0;
+            self.status = "/model runtime:model · /new · /clear · /quit".into();
+            return;
+        }
         match prompt.as_str() {
             "/quit" | "/exit" => {
                 self.should_quit = true;
