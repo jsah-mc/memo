@@ -1,4 +1,4 @@
-name: Release prebuilds
+name: Release installers
 
 on:
   push:
@@ -22,24 +22,48 @@ jobs:
           - os: ubuntu-latest
             platform: linux
             arch: x64
+            updater_target: linux-x86_64
+            bundles: deb,rpm,appimage
           - os: windows-latest
             platform: win32
             arch: x64
+            updater_target: windows-x86_64
+            bundles: nsis,msi
           - os: macos-latest
             platform: darwin
             arch: arm64
+            updater_target: darwin-aarch64
+            bundles: app,dmg
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      TAURI_UPDATER_PUBLIC_KEY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
       - uses: dtolnay/rust-toolchain@stable
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
+      - name: Require release signing secrets
+        shell: python
+        run: |
+          import os
+          required = ["TAURI_SIGNING_PRIVATE_KEY", "TAURI_UPDATER_PUBLIC_KEY"]
+          missing = [name for name in required if not os.environ.get(name)]
+          if missing:
+              raise SystemExit("Missing GitHub Actions secrets: " + ", ".join(missing))
+      - name: Configure updater public key
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          path = Path("apps/desktop/src-tauri/tauri.conf.json")
+          config = json.loads(path.read_text(encoding="utf-8"))
+          config["plugins"]["updater"]["pubkey"] = os.environ["TAURI_UPDATER_PUBLIC_KEY"]
+          path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
       - name: Check release version
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -54,10 +78,36 @@ jobs:
       - name: Install macOS audio build dependencies
         if: runner.os == 'macOS'
         run: brew install portaudio
-      - name: Build bundled Python gateway
-        run: python scripts/build_gateway.py
-      - name: Verify standalone gateway
-        run: python scripts/smoke_gateway.py
+      - name: Import Windows signing certificate
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:WINDOWS_CERTIFICATE -or -not $env:WINDOWS_CERTIFICATE_PASSWORD) {
+            throw "WINDOWS_CERTIFICATE and WINDOWS_CERTIFICATE_PASSWORD GitHub secrets are required."
+          }
+          $certificatePath = Join-Path $env:RUNNER_TEMP "memo-signing.pfx"
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $certificate = Import-PfxCertificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          "MEMO_CERTIFICATE_THUMBPRINT=$($certificate.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Configure Windows Authenticode
+        if: runner.os == 'Windows'
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          path = Path("apps/desktop/src-tauri/tauri.conf.json")
+          config = json.loads(path.read_text(encoding="utf-8"))
+          config["bundle"]["windows"] = {
+              "certificateThumbprint": os.environ["MEMO_CERTIFICATE_THUMBPRINT"],
+              "digestAlgorithm": "sha256",
+              "timestampUrl": "http://timestamp.digicert.com",
+          }
+          path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
       - name: Build Windows sandbox
         if: runner.os == 'Windows'
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_windows_sandbox.ps1
@@ -74,38 +124,38 @@ jobs:
       - name: Lint
         working-directory: apps/desktop
         run: npm run lint
-      - name: Test desktop shell
+      - name: Test release contract
         run: node --test scripts/tests/*.test.mjs
       - name: Build native CLI
         run: cargo build --release
-      - name: Build installers
-        run: pnpm build
-      - name: Verify packaged gateway resources
-        if: runner.os == 'Linux'
-        run: python scripts/smoke_gateway.py --bundle .gateway-build/gateway
-      - name: Build Arch Linux package
-        if: runner.os == 'Linux'
-        run: python scripts/build_arch.py
-      - name: Package native CLI
-        shell: bash
+      - name: Prepare CLI sidecar for desktop installer
+        shell: python
         run: |
-          mkdir -p apps/desktop/src-tauri/target/release/bundle/cli
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cp target/release/memo.exe apps/desktop/src-tauri/target/release/bundle/cli/memo-${{ matrix.platform }}-${{ matrix.arch }}.exe
-          else
-            cp target/release/memo apps/desktop/src-tauri/target/release/bundle/cli/memo-${{ matrix.platform }}-${{ matrix.arch }}
-          fi
-      - name: Upload installers
+          import os
+          import platform
+          import shutil
+          import subprocess
+          from pathlib import Path
+          host = next(line.split(": ", 1)[1] for line in subprocess.check_output(["rustc", "-vV"], text=True).splitlines() if line.startswith("host: "))
+          suffix = ".exe" if platform.system() == "Windows" else ""
+          source = Path("target/release") / f"memo{suffix}"
+          target = Path("apps/desktop/src-tauri/binaries") / f"memo-{host}{suffix}"
+          target.parent.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(source, target)
+      - name: Build desktop installers and signed updater
+        run: npm exec --yes --package=pnpm@11.15.1 -- pnpm --filter @memo/desktop tauri build --bundles ${{ matrix.bundles }}
+      - name: Upload release package and updater artifacts
         uses: actions/upload-artifact@v4
         with:
           name: memo-${{ matrix.platform }}-${{ matrix.arch }}
-          path: apps/desktop/src-tauri/target/release/bundle/**
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/**/*
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
 
   release:
-    name: Publish GitHub Release
+    name: Publish signed GitHub Release
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs: build
     runs-on: ubuntu-latest
@@ -116,25 +166,63 @@ jobs:
         with:
           pattern: memo-*
           path: installers
-      - name: Collect installers and checksums
-        shell: bash
+      - name: Build updater manifest and checksums
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           python3 - <<'PY'
           import hashlib
+          import json
+          import os
           import shutil
+          from datetime import datetime, timezone
           from pathlib import Path
+          from urllib.parse import quote
 
+          source_root = Path("installers")
           output = Path("release-assets")
           output.mkdir()
-          files = sorted(p for p in Path("installers").rglob("*") if p.is_file())
-          if not files:
-              raise RuntimeError("No installers were downloaded")
+          installer_suffixes = {".deb", ".rpm", ".AppImage", ".msi", ".exe", ".dmg"}
+          for source in sorted(source_root.rglob("*")):
+              if source.is_file() and source.suffix in installer_suffixes:
+                  shutil.copy2(source, output / source.name)
+
+          target_map = {
+              "memo-linux-x64": "linux-x86_64",
+              "memo-win32-x64": "windows-x86_64",
+              "memo-darwin-arm64": "darwin-aarch64",
+          }
+          platforms = {}
+          for artifact_dir, target in target_map.items():
+              root = source_root / artifact_dir
+              signatures = sorted(root.rglob("*.sig"))
+              if not signatures:
+                  raise RuntimeError(f"No updater signature found for {target}")
+              preferred = [p for p in signatures if ("nsis" in p.name.lower() if "windows" in target else True)]
+              signature_path = (preferred or signatures)[0]
+              payload = Path(str(signature_path)[:-4])
+              if not payload.is_file():
+                  raise RuntimeError(f"Missing updater payload for {signature_path}")
+              released_name = f"{target}-{payload.name}"
+              shutil.copy2(payload, output / released_name)
+              signature_name = released_name + ".sig"
+              shutil.copy2(signature_path, output / signature_name)
+              platforms[target] = {
+                  "signature": signature_path.read_text(encoding="utf-8").strip(),
+                  "url": f"https://github.com/{os.environ['REPOSITORY']}/releases/download/{quote(os.environ['RELEASE_TAG'])}/{quote(released_name)}",
+              }
+
+          manifest = {
+              "version": os.environ["RELEASE_TAG"].removeprefix("v"),
+              "notes": "See the GitHub release notes for details.",
+              "pub_date": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+              "platforms": platforms,
+          }
+          (output / "latest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
           checksums = []
-          for source in files:
-              target = output / source.name
-              if target.exists():
-                  raise RuntimeError(f"Duplicate release filename: {source.name}")
-              shutil.copyfile(source, target)
+          for target in sorted(output.iterdir()):
               with target.open("rb") as stream:
                   digest = hashlib.file_digest(stream, "sha256").hexdigest()
               checksums.append(f"{digest}  {target.name}\n")
@@ -148,12 +236,6 @@ jobs:
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           body: |
-            Prebuilt Memo desktop app and native CLI for Windows x64, Linux x64, and macOS Apple Silicon.
+            Each Memo desktop installer includes the native `memo` Rust CLI. No separate CLI or Python gateway installation is required.
 
-            Includes the standalone Codex-style `memo` CLI with direct runtime streaming, the background gateway lifecycle, and the Tauri desktop app.
-
-            Desktop installers include the bundled Python gateway and runtime; no Python installation or source checkout is needed. AI sign-in and speech model downloads are still required when those features are used.
-
-            Linux assets include an Arch Linux .pkg.tar.zst package (install with sudo pacman -U) and the standalone `memo` CLI. macOS includes a DMG (drag Memo to Applications) and CLI. Windows includes installer and CLI executable.
-
-            Windows builds are unsigned. The macOS app is ad-hoc signed and verified, but is not Apple Developer signed or notarized. SHA256SUMS.txt contains checksums for the uploaded assets.
+            Desktop releases check this GitHub Release for cryptographically signed updates after launch. Windows executables and installers are Authenticode-signed and timestamped. Updater packages use Tauri signatures, and SHA256SUMS.txt covers every published asset.

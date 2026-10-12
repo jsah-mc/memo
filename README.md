@@ -86,6 +86,25 @@ MEMO_BROWSER_HEADLESS=0
 The first local speech run downloads the selected Whisper and PocketTTS model
 files. No speech API key is required.
 
+## Installers and updates
+
+Each GitHub Release provides one ZIP for Windows x64, Linux x64, and macOS
+Apple Silicon. Inside each ZIP, `desktop/` contains the graphical app installer
+and `cli/` contains the independent terminal installer. Installing one does not
+install the other.
+
+Released desktop apps check `latest.json` on GitHub after launch and ask before
+downloading a cryptographically signed update. Windows release binaries are also
+Authenticode-signed and timestamped. Release maintainers must configure these
+GitHub Actions secrets: `WINDOWS_CERTIFICATE` (base64 PFX),
+`WINDOWS_CERTIFICATE_PASSWORD`, `TAURI_SIGNING_PRIVATE_KEY`,
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and `TAURI_UPDATER_PUBLIC_KEY`. Tagged
+releases fail when required signing material is missing rather than publishing
+unsigned packages.
+
+The CLI supports `/help`, `/new`, `/model`, `/runtimes`, `/status`, and
+`/quit`.
+
 ## Run
 
 Install the native Rust CLI once during development:
@@ -94,13 +113,14 @@ Install the native Rust CLI once during development:
 cargo install --path . --force
 ```
 
-Launch the Codex-style terminal UI:
+Launch the Codex-style terminal UI. Memo starts its native MCP gateway
+automatically if it is not already running:
 
 ```powershell
 memo
 ```
 
-Start and stop the native gateway as a background process:
+Start and stop the native gateway explicitly when needed:
 
 ```powershell
 memo gateway up
@@ -167,8 +187,8 @@ pnpm lint
 pnpm --filter @memo/desktop exec vite build
 ```
 
-CI runs Python tests on Linux, Windows, and macOS, plus frontend typechecking,
-lint, and the renderer build on Linux and macOS. macOS runners install PortAudio
+CI runs frontend typechecking, lint, renderer builds, and Rust checks on Linux,
+Windows, and macOS. macOS runners install PortAudio
 with Homebrew and use standard PyTorch packages rather than CUDA builds. These tests do not validate a live ChatGPT account or
 physical devices. For manual integration testing, verify authenticated chat
 first, then speech (model downloads and audio devices), browser automation
@@ -321,8 +341,10 @@ The program and future messaging integrations can use `from utils.tools.ai impor
 
 ## Release prebuilds
 
-Installers include the Tauri desktop app, Python 3.13, and the gateway's
-runtime dependencies. Memo starts its gateway automatically and shows a loading
+Each installer includes the Tauri desktop app, the native `memo` CLI, Python
+3.13, and the gateway's runtime dependencies. The CLI is packaged as a Tauri
+sidecar, so one installation delivers both interfaces without a separate CLI
+download. Memo starts its gateway automatically and shows a loading
 screen until it is ready. Startup errors offer a retry button. No Python
 installation, uv, or source checkout is needed to run an installed release.
 The bundled speech runtime uses CPU packages; speech models download on first
@@ -334,8 +356,6 @@ Available packages:
 - macOS Apple Silicon: DMG (drag Memo to Applications).
 - Debian/Ubuntu x64: DEB (`sudo apt install ./memo_*.deb`).
 - RPM distributions x64: RPM (install with your distribution's package manager).
-- Arch Linux x64: `.pkg.tar.zst` (`sudo pacman -U ./memo-*.pkg.tar.zst`).
-- Other Linux x64 systems: portable ZIP; system desktop/audio libraries are required.
 
 Chat history, agent profiles, and computer-tool workspace files live in Memo's
 user-data directory, outside the installed application. Reinstalling or
@@ -345,7 +365,8 @@ with `MEMO_GATEWAY_ROOT` and `MEMO_GATEWAY_PYTHON`.
 
 The **Release prebuilds** workflow builds and smoke-tests the standalone gateway
 on each platform before building installers. Run it manually from GitHub Actions
-to test packaging without publishing; artifacts remain available for 14 days.
+to test packaging without publishing; manual runs never publish a release, and
+their artifacts remain available for 14 days.
 To publish, commit the desktop package version and matching lockfile, then push
 a matching tag, for example:
 
@@ -367,9 +388,9 @@ root:
 ```bash
 python scripts/build_gateway.py
 python scripts/smoke_gateway.py
+cargo build --release
+node scripts/prepare_cli_sidecar.mjs
 pnpm make
-# Linux only, after packaging the app:
-python scripts/build_arch.py
 ```
 
 The builder uses a relocatable uv-managed Python on Linux/macOS and a complete

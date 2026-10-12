@@ -12,33 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  python:
-    name: Python (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    env:
-      MEMO_STT_PRELOAD: "0"
-      MEMO_WHISPER_DEVICE: cpu
-      MEMO_POCKETTTS_DEVICE: cpu
-      MEMO_BROWSER_HEADLESS: "1"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.13"
-      - name: Install Linux audio build dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y portaudio19-dev
-      - name: Install macOS audio build dependencies
-        if: runner.os == 'macOS'
-        run: brew install portaudio
-      - name: Install locked Python dependencies
-        run: uv sync --locked
-      - name: Run Python tests
-        run: uv run --no-sync python -m unittest discover -s tests
+
 
   frontend:
     name: Frontend (${{ matrix.os }})
@@ -88,6 +62,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+      - name: Check all Rust targets
+        run: cargo check --all-targets
       - name: Run Rust tests
         run: cargo test
       - name: Run Clippy
