@@ -62,7 +62,8 @@ package_linux:
     - npm run lint
     - node --test scripts/tests/*.test.mjs
     - cargo build --release
-    - python3 -c "import pathlib,shutil,subprocess; host=next(x.split(': ',1)[1] for x in subprocess.check_output(['rustc','-vV'],text=True).splitlines() if x.startswith('host: ')); d=pathlib.Path('apps/desktop/src-tauri/binaries'); d.mkdir(parents=True,exist_ok=True); shutil.copy2('target/release/memo',d/f'memo-{host}')"
+    - |-
+      python3 -c "import pathlib,shutil,subprocess; host=next(x.split(': ',1)[1] for x in subprocess.check_output(['rustc','-vV'],text=True).splitlines() if x.startswith('host: ')); d=pathlib.Path('apps/desktop/src-tauri/binaries'); d.mkdir(parents=True,exist_ok=True); shutil.copy2('target/release/memo',d/f'memo-{host}')"
     - pnpm --filter @memo/desktop tauri build --bundles deb,rpm,appimage
   artifacts:
     name: "memo-linux-x64-$CI_COMMIT_REF_SLUG"
