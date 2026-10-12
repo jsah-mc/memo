@@ -46,10 +46,6 @@ jobs:
         with:
           node-version: "24"
       - uses: dtolnay/rust-toolchain@stable
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
       - name: Require release signing secrets
         shell: python
         run: |
@@ -112,10 +108,6 @@ jobs:
               "timestampUrl": "http://timestamp.digicert.com",
           }
           path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-      - name: Build bundled Python gateway
-        run: python scripts/build_gateway.py
-      - name: Verify standalone gateway
-        run: python scripts/smoke_gateway.py
       - name: Build Windows sandbox
         if: runner.os == 'Windows'
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_windows_sandbox.ps1
@@ -136,23 +128,28 @@ jobs:
         run: node --test scripts/tests/*.test.mjs
       - name: Build native CLI
         run: cargo build --release
+      - name: Prepare CLI sidecar for desktop installer
+        shell: python
+        run: |
+          import os
+          import platform
+          import shutil
+          import subprocess
+          from pathlib import Path
+          host = next(line.split(": ", 1)[1] for line in subprocess.check_output(["rustc", "-vV"], text=True).splitlines() if line.startswith("host: "))
+          suffix = ".exe" if platform.system() == "Windows" else ""
+          source = Path("target/release") / f"memo{suffix}"
+          target = Path("apps/desktop/src-tauri/binaries") / f"memo-{host}{suffix}"
+          target.parent.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(source, target)
       - name: Build desktop installers and signed updater
         run: npm exec --yes --package=pnpm@11.15.1 -- pnpm --filter @memo/desktop tauri build --bundles ${{ matrix.bundles }}
-      - name: Package separate Desktop and CLI installers
-        run: python scripts/package_release.py --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
-      - name: Verify packaged gateway resources
-        if: runner.os == 'Linux'
-        run: python scripts/smoke_gateway.py --bundle .gateway-build/gateway
       - name: Upload release package and updater artifacts
         uses: actions/upload-artifact@v4
         with:
           name: memo-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
-            release-package/*.zip
-            apps/desktop/src-tauri/target/release/bundle/**/*.sig
-            apps/desktop/src-tauri/target/release/bundle/**/*.tar.gz
-            apps/desktop/src-tauri/target/release/bundle/**/*.AppImage
-            apps/desktop/src-tauri/target/release/bundle/**/*.zip
+            apps/desktop/src-tauri/target/release/bundle/**/*
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
@@ -186,11 +183,10 @@ jobs:
           source_root = Path("installers")
           output = Path("release-assets")
           output.mkdir()
-          package_zips = sorted(source_root.glob("memo-*/*/memo-*.zip"))
-          if not package_zips:
-              package_zips = sorted(source_root.rglob("memo-*.zip"))
-          for source in package_zips:
-              shutil.copy2(source, output / source.name)
+          installer_suffixes = {".deb", ".rpm", ".AppImage", ".msi", ".exe", ".dmg"}
+          for source in sorted(source_root.rglob("*")):
+              if source.is_file() and source.suffix in installer_suffixes:
+                  shutil.copy2(source, output / source.name)
 
           target_map = {
               "memo-linux-x64": "linux-x86_64",
@@ -240,10 +236,6 @@ jobs:
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           body: |
-            Memo ships one ZIP per platform. Each ZIP contains two independent installers:
-            - `desktop/` — the native graphical application installer
-            - `cli/` — the `memo` terminal app and its install script
+            Each Memo desktop installer includes the native `memo` Rust CLI. No separate CLI or Python gateway installation is required.
 
             Desktop releases check this GitHub Release for cryptographically signed updates after launch. Windows executables and installers are Authenticode-signed and timestamped. Updater packages use Tauri signatures, and SHA256SUMS.txt covers every published asset.
-
-            The bundled desktop gateway does not require a separate Python installation. AI sign-in and speech model downloads are still required when those features are first used.
