@@ -38,10 +38,12 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../../../.gateway-build/gateway": "gateway",
       "../../../.sandbox-build/MemoSandbox.exe": "MemoSandbox.exe"
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "externalBin": [
+      "binaries/memo"
+    ]
   },
   "plugins": {
     "updater": {
