@@ -176,7 +176,7 @@ async fn gateway_down() -> Result<String, String> {
     let _ = fs::remove_file(pid_path);
     for _ in 0..20 {
         if !gateway_is_ready().await {
-            return Ok(format!("gateway stopped (pid {pid})"));
+            Ok(format!("gateway stopped (pid {pid})"));
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
@@ -214,13 +214,13 @@ fn launch_desktop() -> Result<String, String> {
             .args(["-a", "Memo"])
             .spawn()
             .map_err(|error| format!("Could not open Memo desktop: {error}"))?;
-        return Ok("Memo desktop opened".into());
+        Ok("Memo desktop opened".into());
     }
 
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         if Command::new("memo-desktop").spawn().is_ok() {
-            return Ok("Memo desktop opened".into());
+            Ok("Memo desktop opened".into());
         }
         Command::new("gtk-launch")
             .arg("dev.memo.desktop")
