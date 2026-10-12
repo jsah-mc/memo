@@ -1,0 +1,175 @@
+stages:
+  - validate
+  - package
+  - release
+
+workflow:
+  rules:
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+
+variables:
+  PNPM_VERSION: "11.15.1"
+  CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
+  UV_CACHE_DIR: "$CI_PROJECT_DIR/.uv-cache"
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+
+cache:
+  key: "$CI_JOB_NAME-$CI_COMMIT_REF_SLUG"
+  paths:
+    - .cargo/
+    - .uv-cache/
+    - node_modules/
+    - apps/desktop/node_modules/
+
+frontend:
+  stage: validate
+  image: node:24-bookworm
+  tags:
+    - saas-linux-small-amd64
+  script:
+    - npm exec --yes --package=pnpm@$PNPM_VERSION -- pnpm install --frozen-lockfile
+    - npm run typecheck
+    - npm run lint
+    - node --test scripts/tests/*.test.mjs
+
+rust:
+  stage: validate
+  image: rust:latest
+  tags:
+    - saas-linux-small-amd64
+  before_script:
+    - rustup component add clippy rustfmt
+    - apt-get update
+    - apt-get install -y libx11-dev libxtst-dev libxinerama-dev libxcursor-dev libxrandr-dev libxi-dev pkg-config
+  script:
+    - cargo test
+    - cargo clippy -- -D warnings
+    - cargo fmt --check
+
+.package_rules:
+  rules:
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+  artifacts:
+    name: "$CI_JOB_NAME-$CI_COMMIT_REF_SLUG"
+    expire_in: 14 days
+    when: always
+
+package_linux:
+  extends: .package_rules
+  stage: package
+  image: python:3.13-bookworm
+  tags:
+    - saas-linux-medium-amd64
+  before_script:
+    - apt-get update
+    - apt-get install -y curl build-essential libx11-dev libxtst-dev libxinerama-dev libxcursor-dev libxrandr-dev libxi-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf rpm zstd portaudio19-dev pkg-config
+    - curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+    - apt-get install -y nodejs
+    - curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+    - export PATH="$CARGO_HOME/bin:$PATH"
+    - rustup default stable
+    - pip install uv
+    - npm exec --yes --package=pnpm@$PNPM_VERSION -- pnpm install --frozen-lockfile
+  script:
+    - export PATH="$CARGO_HOME/bin:$PATH"
+    - python scripts/build_gateway.py
+    - python scripts/smoke_gateway.py
+    - mkdir -p .sandbox-build
+    - touch .sandbox-build/MemoSandbox.exe
+    - npm run typecheck
+    - npm run lint
+    - node --test scripts/tests/*.test.mjs
+    - cargo build --release
+    - pnpm build
+    - python scripts/smoke_gateway.py --bundle .gateway-build/gateway
+    - python scripts/build_arch.py
+    - mkdir -p apps/desktop/src-tauri/target/release/bundle/cli dist
+    - cp target/release/memo apps/desktop/src-tauri/target/release/bundle/cli/memo-linux-x64
+    - python -c "import shutil; shutil.make_archive('dist/memo-linux-x64','zip','apps/desktop/src-tauri/target/release/bundle')"
+  artifacts:
+    paths:
+      - dist/memo-linux-x64.zip
+      - apps/desktop/src-tauri/target/release/bundle/
+
+package_windows:
+  extends: .package_rules
+  stage: package
+  tags:
+    - saas-windows-medium-amd64
+  before_script:
+    - rustup default stable
+    - npm exec --yes --package=pnpm@$env:PNPM_VERSION -- pnpm install --frozen-lockfile
+  script:
+    - python scripts/build_gateway.py
+    - python scripts/smoke_gateway.py
+    - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_windows_sandbox.ps1
+    - npm run typecheck
+    - npm run lint
+    - node --test scripts/tests/*.test.mjs
+    - cargo build --release
+    - pnpm build
+    - New-Item -ItemType Directory -Force apps/desktop/src-tauri/target/release/bundle/cli, dist | Out-Null
+    - Copy-Item target/release/memo.exe apps/desktop/src-tauri/target/release/bundle/cli/memo-windows-x64.exe
+    - Compress-Archive -Path apps/desktop/src-tauri/target/release/bundle/* -DestinationPath dist/memo-windows-x64.zip -Force
+  artifacts:
+    paths:
+      - dist/memo-windows-x64.zip
+      - apps/desktop/src-tauri/target/release/bundle/
+
+package_macos:
+  extends: .package_rules
+  stage: package
+  tags:
+    - saas-macos-medium-m1
+  image: macos-26-xcode-26
+  before_script:
+    - brew install node@24 python@3.13 portaudio
+    - export PATH="/opt/homebrew/opt/node@24/bin:/opt/homebrew/opt/python@3.13/bin:$HOME/.cargo/bin:$PATH"
+    - curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+    - rustup default stable
+    - python3.13 -m pip install uv
+    - npm exec --yes --package=pnpm@$PNPM_VERSION -- pnpm install --frozen-lockfile
+  script:
+    - export PATH="/opt/homebrew/opt/node@24/bin:/opt/homebrew/opt/python@3.13/bin:$HOME/.cargo/bin:$PATH"
+    - export SWIFT_LIB_DIR="$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx"
+    - export RUSTFLAGS="-C link-args=-Wl,-rpath,$SWIFT_LIB_DIR -C link-args=-Wl,-rpath,$SWIFT_LIB_DIR/../../../../lib/swift"
+    - python3.13 scripts/build_gateway.py
+    - python3.13 scripts/smoke_gateway.py
+    - mkdir -p .sandbox-build
+    - touch .sandbox-build/MemoSandbox.exe
+    - npm run typecheck
+    - npm run lint
+    - node --test scripts/tests/*.test.mjs
+    - cargo build --release
+    - pnpm build
+    - mkdir -p apps/desktop/src-tauri/target/release/bundle/cli dist
+    - cp target/release/memo apps/desktop/src-tauri/target/release/bundle/cli/memo-macos-arm64
+    - ditto -c -k --keepParent apps/desktop/src-tauri/target/release/bundle dist/memo-macos-arm64.zip
+  artifacts:
+    paths:
+      - dist/memo-macos-arm64.zip
+      - apps/desktop/src-tauri/target/release/bundle/
+
+publish_release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/cli:latest
+  tags:
+    - saas-linux-small-amd64
+  needs:
+    - job: package_linux
+      artifacts: true
+    - job: package_windows
+      artifacts: true
+    - job: package_macos
+      artifacts: true
+  rules:
+    - if: '$CI_COMMIT_TAG'
+  variables:
+    GITLAB_TOKEN: "$CI_JOB_TOKEN"
+  script:
+    - sha256sum dist/*.zip > dist/SHA256SUMS.txt
+    - glab release create "$CI_COMMIT_TAG" dist/*.zip dist/SHA256SUMS.txt --name "Memo $CI_COMMIT_TAG" --notes "Memo desktop installers and native CLI bundles for Linux x64, Windows x64, and macOS Apple Silicon."
