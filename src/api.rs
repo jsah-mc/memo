@@ -794,6 +794,26 @@ fn unix_nanos() -> u128 {
         .as_nanos()
 }
 
+
+
+async fn speech(
+    Json(request): Json<SpeechRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let audio = crate::voice::synthesize(&request)
+        .await
+        .map_err(|message| {
+            let status = if message.contains("not configured") {
+                StatusCode::SERVICE_UNAVAILABLE
+            } else if message.contains("cannot be empty") {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::BAD_GATEWAY
+            };
+            (status, message)
+        })?;
+    Ok(([(axum::http::header::CONTENT_TYPE, "audio/mpeg")], audio))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -826,22 +846,4 @@ mod tests {
             "USER:\nHi"
         );
     }
-}
-
-async fn speech(
-    Json(request): Json<SpeechRequest>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let audio = crate::voice::synthesize(&request)
-        .await
-        .map_err(|message| {
-            let status = if message.contains("not configured") {
-                StatusCode::SERVICE_UNAVAILABLE
-            } else if message.contains("cannot be empty") {
-                StatusCode::BAD_REQUEST
-            } else {
-                StatusCode::BAD_GATEWAY
-            };
-            (status, message)
-        })?;
-    Ok(([(axum::http::header::CONTENT_TYPE, "audio/mpeg")], audio))
 }
