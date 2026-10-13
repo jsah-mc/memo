@@ -176,7 +176,7 @@ async fn gateway_down() -> Result<String, String> {
     let _ = fs::remove_file(pid_path);
     for _ in 0..20 {
         if !gateway_is_ready().await {
-            Ok(format!("gateway stopped (pid {pid})"));
+            Ok::<std::string::String, std::string::String>(format!("gateway stopped (pid {pid})"));
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
