@@ -483,9 +483,15 @@ fn render_transcript(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App) {
 
 fn render_composer(frame: &mut ratatui::Frame<'_>, area: Rect, app: &App) {
     let title = if app.streaming {
-        format!(" Working {0} Ctrl+C to interrupt ", env::var("MEMO_MODEL").unwrap_or_else(|_| "codex:gpt-6-sol".into()))
+        format!(
+            " Working {0} Ctrl+C to interrupt ",
+            env::var("MEMO_MODEL").unwrap_or_else(|_| "codex:gpt-6-sol".into())
+        )
     } else {
-        format!(" {0} ", env::var("MEMO_MODEL").unwrap_or_else(|_| "codex:gpt-6-sol".into()))
+        format!(
+            " {0} ",
+            env::var("MEMO_MODEL").unwrap_or_else(|_| "codex:gpt-6-sol".into())
+        )
     };
     let block = Block::default()
         .title(title)

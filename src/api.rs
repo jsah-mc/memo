@@ -794,8 +794,6 @@ fn unix_nanos() -> u128 {
         .as_nanos()
 }
 
-
-
 async fn speech(
     Json(request): Json<SpeechRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
