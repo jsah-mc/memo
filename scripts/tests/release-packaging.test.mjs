@@ -6,13 +6,22 @@ const config = JSON.parse(
   readFileSync("apps/desktop/src-tauri/tauri.conf.json", "utf8"),
 );
 const workflow = readFileSync(".github/workflows/release.yml", "utf8");
-const packager = readFileSync("scripts/package_release.py", "utf8");
 
-test("desktop and CLI are independent installs", () => {
-  assert.equal(config.bundle.externalBin, undefined);
-  assert.match(workflow, /Package separate Desktop and CLI installers/);
-  assert.match(packager, /desktop_dir = root \/ "desktop"/);
-  assert.match(packager, /cli_dir = root \/ "cli"/);
+test("desktop installers bundle the native CLI", () => {
+  assert.deepEqual(config.bundle.externalBin, ["binaries/memo"]);
+
+  const buildCli = workflow.indexOf("- name: Build native CLI");
+  const prepareSidecar = workflow.indexOf(
+    "- name: Prepare CLI sidecar for desktop installer",
+  );
+  const buildDesktop = workflow.indexOf(
+    "- name: Build desktop installers and signed updater",
+  );
+
+  assert.ok(buildCli >= 0);
+  assert.ok(prepareSidecar > buildCli);
+  assert.ok(buildDesktop > prepareSidecar);
+  assert.match(workflow, /"memo-\{host\}\{suffix\}"/);
 });
 
 test("release requires Windows and updater signatures", () => {
@@ -23,8 +32,12 @@ test("release requires Windows and updater signatures", () => {
   assert.match(config.plugins.updater.endpoints[0], /latest\.json$/);
 });
 
-test("release publishes one platform zip plus an update manifest", () => {
-  assert.match(workflow, /release-package\/\*\.zip/);
+test("release publishes platform installers plus an update manifest", () => {
+  assert.match(
+    workflow,
+    /apps\/desktop\/src-tauri\/target\/release\/bundle\/\*\*\/\*/,
+  );
+  assert.match(workflow, /files: release-assets\/\*/);
   assert.match(workflow, /latest\.json/);
   assert.match(workflow, /SHA256SUMS\.txt/);
 });
