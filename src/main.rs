@@ -176,7 +176,7 @@ async fn gateway_down() -> Result<String, String> {
     let _ = fs::remove_file(pid_path);
     for _ in 0..20 {
         if !gateway_is_ready().await {
-            Ok::<std::string::String, std::string::String>(format!("gateway stopped (pid {pid})"));
+            return Ok(format!("gateway stopped (pid {pid})"));
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
@@ -187,10 +187,10 @@ fn launch_desktop() -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
         let mut candidates = Vec::new();
-        if let Ok(executable) = env::current_exe() {
-            if let Some(directory) = executable.parent() {
-                candidates.push(directory.join("Memo.exe"));
-            }
+        if let Ok(executable) = env::current_exe()
+            && let Some(directory) = executable.parent()
+        {
+            candidates.push(directory.join("Memo.exe"));
         }
         if let Some(local_app_data) = env::var_os("LOCALAPPDATA") {
             candidates.push(PathBuf::from(local_app_data).join("Memo").join("Memo.exe"));
@@ -203,9 +203,7 @@ fn launch_desktop() -> Result<String, String> {
                 return Ok(format!("Memo desktop opened from {}", candidate.display()));
             }
         }
-        return Err(
-            "Memo desktop is not installed. Install the Memo desktop package first.".into(),
-        );
+        Err("Memo desktop is not installed. Install the Memo desktop package first.".into())
     }
 
     #[cfg(target_os = "macos")]
@@ -214,13 +212,13 @@ fn launch_desktop() -> Result<String, String> {
             .args(["-a", "Memo"])
             .spawn()
             .map_err(|error| format!("Could not open Memo desktop: {error}"))?;
-        Ok("Memo desktop opened".into());
+        Ok("Memo desktop opened".into())
     }
 
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         if Command::new("memo-desktop").spawn().is_ok() {
-            Ok("Memo desktop opened".into());
+            return Ok("Memo desktop opened".into());
         }
         Command::new("gtk-launch")
             .arg("dev.memo.desktop")
