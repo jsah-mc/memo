@@ -1,7 +1,7 @@
 {
   "name": "@memo/desktop",
   "productName": "Memo",
-  "version": "1.1.2",
+  "version": "2.0.0",
   "description": "A local-first desktop AI workbench with voice, tools, and configurable agents.",
   "private": true,
   "scripts": {

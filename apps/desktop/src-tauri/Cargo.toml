@@ -1,6 +1,6 @@
 [package]
 name = "memo-desktop"
-version = "1.1.2"
+version = "2.0.0"
 description = "Memo local-first AI desktop workbench"
 authors = ["jsah-mc"]
 edition = "2024"
