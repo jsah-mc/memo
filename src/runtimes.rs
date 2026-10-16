@@ -376,7 +376,13 @@ fn discover_models(
     arguments: &[&str],
     format: ModelOutput,
 ) -> Option<Vec<String>> {
-    let mut child = Command::new(executable)
+    let mut command = Command::new(executable);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+    let mut child = command
         .args(arguments)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

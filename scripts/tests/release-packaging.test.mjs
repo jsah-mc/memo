@@ -24,6 +24,13 @@ test("desktop installers bundle the native CLI", () => {
   assert.match(workflow, /"memo-\{host\}\{suffix\}"/);
 });
 
+test("desktop installers include the gateway required by startup", () => {
+  const gatewayBuild = workflow.indexOf("run: python scripts/build_gateway.py");
+  const installerBuild = workflow.indexOf("- name: Build desktop installers and signed updater");
+  assert.ok(gatewayBuild >= 0 && gatewayBuild < installerBuild);
+  assert.match(workflow, /\.gateway-build\/gateway\//);
+});
+
 test("release requires updater signatures with opt-in Windows signing", () => {
   for (const step of ["Import Windows signing certificate", "Configure Windows Authenticode"]) {
     const block = workflow.split(`- name: ${step}`)[1]?.split("- name:")[0];

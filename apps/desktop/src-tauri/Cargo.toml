@@ -1,6 +1,6 @@
 [package]
 name = "memo-desktop"
-version = "2.0.0"
+version = "2.1.0"
 description = "Memo local-first AI desktop workbench"
 authors = ["jsah-mc"]
 edition = "2024"
@@ -18,7 +18,7 @@ memo = { path = "../../.." }
 rfd = "0.15"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri = { version = "2.12.2", features = [] }
+tauri = { version = "2.12.2", features = ["tray-icon"] }
 tauri-plugin-updater = "2.13.3"
 toml = "0.8"
 uuid = { version = "1", features = ["v4"] }

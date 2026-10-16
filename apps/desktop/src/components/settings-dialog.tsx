@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AppUpdates } from "@/components/app-updates";
 import {
   AppWindowIcon,
   BotIcon,
@@ -26,12 +27,22 @@ import {
 
 export function SettingsDialog() {
   const [section, setSection] = useState<
-    "general" | "resources" | "workspace" | "computer" | "vps" | "agents" | "apps"
+    | "general"
+    | "resources"
+    | "workspace"
+    | "computer"
+    | "vps"
+    | "agents"
+    | "apps"
   >("general");
   const sections = [
     { id: "general" as const, label: "General", icon: SettingsIcon },
     { id: "resources" as const, label: "Resources", icon: GaugeIcon },
-    { id: "workspace" as const, label: "Project workspace", icon: FolderKanbanIcon },
+    {
+      id: "workspace" as const,
+      label: "Project workspace",
+      icon: FolderKanbanIcon,
+    },
     { id: "computer" as const, label: "Local VM", icon: PackageIcon },
     { id: "vps" as const, label: "VPS", icon: CloudIcon },
     { id: "agents" as const, label: "AI agents", icon: BotIcon },
@@ -81,14 +92,25 @@ export function SettingsDialog() {
                   "Configure the shared Local VM used by agents."}
                 {section === "vps" &&
                   "Configure a separate remote VPS desktop connection."}
-                {section === "resources" && "Control CPU use and idle model retention."}
-                {section === "workspace" && "Choose a project and create safe checkpoints."}
+                {section === "resources" &&
+                  "Control CPU use and idle model retention."}
+                {section === "workspace" &&
+                  "Choose a project and create safe checkpoints."}
                 {section === "agents" &&
                   "Connect and inspect AI agent runtimes."}
                 {section === "apps" && "Connect external apps and services."}
               </DialogDescription>
             </DialogHeader>
-            {section === "general" && <SystemHealthPanel />}
+            {section === "general" && (
+              <div className="grid gap-6">
+                <AppUpdates />
+                <p className="text-sm text-muted-foreground">
+                  Closing the window keeps Memo running in the tray. Use the
+                  tray menu to reopen or quit Memo.
+                </p>
+                <SystemHealthPanel />
+              </div>
+            )}
             {section === "resources" && <ResourceSettingsPanel />}
             {section === "workspace" && <WorkspaceSettingsPanel />}
             {section === "computer" && <VirtualDesktopPanel />}

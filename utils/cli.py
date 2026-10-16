@@ -14,7 +14,6 @@ from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-from utils.program.main import MemoApp
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,6 +51,8 @@ def main() -> None:
             app=create_app(GatewaySettings.from_environment()),
         )
     elif args.command in {"", None}:
+        from utils.program.main import MemoApp
+
         app = MemoApp()
         app.run()
     else:

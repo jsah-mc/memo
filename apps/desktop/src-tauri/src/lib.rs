@@ -10,7 +10,9 @@ use std::{
     sync::Mutex,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-use tauri::{AppHandle, Manager, State, WebviewWindow};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_updater::UpdaterExt;
 
 const GATEWAY_ADDRESS: &str = "127.0.0.1:4010";
@@ -20,6 +22,25 @@ const COMPOSIO_BROKER_URL: &str = "https://memo-composio-broker.vercel.app";
 
 #[derive(Default)]
 struct GatewayProcess(Mutex<Option<Child>>);
+
+#[derive(Default)]
+struct StartupError(Mutex<Option<String>>);
+
+fn background_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    #[allow(unused_mut)]
+    let mut command = Command::new(program);
+    #[cfg(windows)]
+    command.creation_flags(0x08000000);
+    command
+}
+
+fn show_main(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
 
 #[derive(Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,9 +63,9 @@ struct VpsSettings {
 
 fn memo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("../../..")
         .canonicalize()
-        .unwrap_or_else(|_| PathBuf::from("../.."))
+        .unwrap_or_else(|_| PathBuf::from("../../.."))
 }
 
 fn gateway_online() -> bool {
@@ -256,6 +277,9 @@ fn launch_gateway(state: &GatewayProcess, app: &AppHandle) -> Result<(), String>
     } else {
         "runtime/bin/python3"
     });
+    if !cfg!(debug_assertions) && !bundled_python.exists() {
+        return Err("Memo's bundled background runtime is missing. Reinstall Memo using the complete installer.".into());
+    }
     let development_python = if cfg!(windows) {
         root.join(".venv/Scripts/python.exe")
     } else {
@@ -271,7 +295,7 @@ fn launch_gateway(state: &GatewayProcess, app: &AppHandle) -> Result<(), String>
         (command, root.clone())
     } else {
         let mut command = Command::new(if cfg!(windows) { "uv.exe" } else { "uv" });
-        command.args(["run", "memo", "gateway"]);
+        command.args(["run", "memo-legacy", "gateway"]);
         (command, root.clone())
     };
     let settings = read_settings(app);
@@ -315,6 +339,8 @@ fn launch_gateway(state: &GatewayProcess, app: &AppHandle) -> Result<(), String>
             .env("MEMO_STT_PRELOAD", "0");
         command
     };
+    #[cfg(windows)]
+    command.creation_flags(0x08000000);
     let child = command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -412,7 +438,7 @@ fn open_external(url: String) -> Result<(), String> {
         return Err("Only secure web links can be opened.".into());
     }
     let status = if cfg!(target_os = "windows") {
-        Command::new("rundll32")
+        background_command("rundll32")
             .args(["url.dll,FileProtocolHandler", &url])
             .status()
     } else if cfg!(target_os = "macos") {
@@ -429,27 +455,42 @@ fn open_external(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn gateway_status() -> serde_json::Value {
-    let online = gateway_online();
-    serde_json::json!({
-        "state": if online { "online" } else { "connecting" },
-        "running": online,
-        "latencyMs": null
-    })
+async fn gateway_status(app: AppHandle) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let online = gateway_online();
+        let mut error = app.state::<StartupError>().0.lock().ok().and_then(|value| value.clone());
+        if !online
+            && let Ok(mut managed) = app.state::<GatewayProcess>().0.lock()
+            && let Some(child) = managed.as_mut()
+            && let Ok(Some(status)) = child.try_wait()
+        {
+            error = Some(format!("Memo's background service exited ({status}). Try restarting it."));
+        }
+        serde_json::json!({
+            "state": if online { "online" } else if error.is_some() { "error" } else { "connecting" },
+            "message": error,
+            "running": online,
+            "latencyMs": null
+        })
+    }).await.map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn restart_gateway(state: State<'_, GatewayProcess>, app: AppHandle) -> Result<(), String> {
+    if let Ok(mut error) = app.state::<StartupError>().0.lock() {
+        *error = None;
+    }
     if let Ok(mut managed) = state.0.lock()
         && let Some(mut child) = managed.take()
     {
         let _ = child.kill();
+        let _ = child.wait();
     }
     launch_gateway(&state, &app)
 }
 
 fn run_git(workspace: &str, args: &[&str]) -> Result<Output, String> {
-    Command::new("git")
+    background_command("git")
         .args(args)
         .current_dir(workspace)
         .output()
@@ -569,9 +610,24 @@ async fn update_install(app: AppHandle) -> Result<(), String> {
         .map_err(|error| error.to_string())?
         .ok_or("The update is no longer available.")?;
     update
-        .download_and_install(|_, _| {}, || {})
+        .download_and_install(
+            |chunk, total| {
+                let _ = app.emit(
+                    "update-progress",
+                    serde_json::json!({ "chunk": chunk, "total": total }),
+                );
+            },
+            || {
+                let _ = app.emit("update-installing", ());
+            },
+        )
         .await
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn update_restart(app: AppHandle) {
+    app.restart();
 }
 
 #[tauri::command]
@@ -599,8 +655,45 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(GatewayProcess::default())
+        .manage(StartupError::default())
         .setup(|app| {
-            launch_gateway(app.state::<GatewayProcess>().inner(), app.handle())?;
+            let open = MenuItem::with_id(app, "open", "Open Memo", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "Quit Memo", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&open, &quit])?;
+            let mut tray = TrayIconBuilder::new()
+                .tooltip("Memo — running in the background")
+                .menu(&menu)
+                .show_menu_on_left_click(false);
+            if let Some(icon) = app.default_window_icon() {
+                tray = tray.icon(icon.clone());
+            }
+            tray.on_menu_event(|app, event| match event.id.as_ref() {
+                "open" => show_main(app),
+                "quit" => app.exit(0),
+                _ => {}
+            })
+            .on_tray_icon_event(|tray, event| {
+                if matches!(
+                    event,
+                    TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    }
+                ) {
+                    show_main(tray.app_handle());
+                }
+            })
+            .build(app)?;
+            let gateway_app = app.handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                if let Err(error) =
+                    launch_gateway(gateway_app.state::<GatewayProcess>().inner(), &gateway_app)
+                    && let Ok(mut startup_error) = gateway_app.state::<StartupError>().0.lock()
+                {
+                    *startup_error = Some(error);
+                }
+            });
             let rust_api_workspace = read_settings(app.handle())
                 .workspace_path
                 .map(PathBuf::from)
@@ -620,11 +713,14 @@ pub fn run() {
                     configure_mcp_clients();
                 }
             });
-            let deadline = Instant::now() + Duration::from_secs(2);
-            while Instant::now() < deadline && !gateway_online() {
-                std::thread::sleep(Duration::from_millis(50));
-            }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event
+                && window.hide().is_ok()
+            {
+                api.prevent_close();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             platform,
@@ -637,6 +733,7 @@ pub fn run() {
             permission_mode_set,
             update_check,
             update_install,
+            update_restart,
             minimize,
             toggle_maximize,
             close,
@@ -649,6 +746,15 @@ pub fn run() {
             resource_get,
             resource_set
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Memo");
+        .build(tauri::generate_context!())
+        .expect("error while building Memo")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit)
+                && let Ok(mut managed) = app.state::<GatewayProcess>().0.lock()
+                && let Some(mut child) = managed.take()
+            {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        });
 }

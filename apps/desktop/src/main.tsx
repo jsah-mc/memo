@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { UpdateController } from "@/components/app-updates";
 import { AgentDesktopPanel } from "@/agents/agent-desktop-panel";
 import Titlebar from "@/components/titlebar";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -58,6 +59,7 @@ document.documentElement.classList.add("dark");
 
 createRoot(rootElement).render(
   <React.StrictMode>
+    <UpdateController />
     <GatewayStartup>
       <AgentProvider>
         <ThreadModelProvider>

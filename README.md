@@ -113,6 +113,16 @@ The CLI supports `/help`, `/new`, `/model`, `/runtimes`, `/status`, and
 
 ## Run
 
+The desktop starts its background gateway without blocking the window. Closing
+the window hides Memo to the system tray; use **Open Memo** to return or **Quit
+Memo** to stop it. On Windows, the desktop and its background service do not
+open console windows. The standalone CLI remains a terminal application.
+
+Use **Settings → General → Check for updates** to check manually. Memo also
+checks shortly after launch. Available updates show release notes and a
+**Download and install** button, download progress, and a restart action when
+needed. Update signatures are verified before installation.
+
 Install the native Rust CLI once during development:
 
 ```powershell

@@ -142,6 +142,21 @@ jobs:
           target = Path("apps/desktop/src-tauri/binaries") / f"memo-{host}{suffix}"
           target.parent.mkdir(parents=True, exist_ok=True)
           shutil.copy2(source, target)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v6
+      - name: Bundle background gateway runtime
+        run: python scripts/build_gateway.py
+      - name: Include gateway in installer
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          path = Path("apps/desktop/src-tauri/tauri.conf.json")
+          config = json.loads(path.read_text(encoding="utf-8"))
+          config["bundle"]["resources"]["../../../.gateway-build/gateway/"] = "gateway/"
+          path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
       - name: Build desktop installers and signed updater
         run: npm exec --yes --package=pnpm@11.15.1 -- pnpm --filter @memo/desktop tauri build --bundles ${{ matrix.bundles }}
       - name: Upload release package and updater artifacts

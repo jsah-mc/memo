@@ -392,7 +392,7 @@ export default function Titlebar({
           </button>
           <button
             className="flex w-12 items-center justify-center hover:bg-red-600"
-            aria-label="Close"
+            aria-label="Hide Memo to tray"
             onClick={() => window.desktopApi.windowControls.close()}
           >
             <XIcon className="size-4" />
