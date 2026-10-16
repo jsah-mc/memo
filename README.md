@@ -94,13 +94,19 @@ and `cli/` contains the independent terminal installer. Installing one does not
 install the other.
 
 Released desktop apps check `latest.json` on GitHub after launch and ask before
-downloading a cryptographically signed update. Windows release binaries are also
-Authenticode-signed and timestamped. Release maintainers must configure these
-GitHub Actions secrets: `WINDOWS_CERTIFICATE` (base64 PFX),
-`WINDOWS_CERTIFICATE_PASSWORD`, `TAURI_SIGNING_PRIVATE_KEY`,
-`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and `TAURI_UPDATER_PUBLIC_KEY`. Tagged
-releases fail when required signing material is missing rather than publishing
-unsigned packages.
+downloading a cryptographically signed update. Release maintainers must configure
+`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_UPDATER_PUBLIC_KEY` GitHub Actions secrets,
+plus `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the key is password-protected.
+Releases fail when required updater signing material is missing.
+
+Windows Authenticode signing is disabled by default. Installers may show an
+unknown-publisher or SmartScreen warning; verify downloads come from the official
+Memo release repository. To enable Authenticode signing and timestamping, set the
+repository Actions variable `WINDOWS_AUTHENTICODE_ENABLED` to `true` and configure
+`WINDOWS_CERTIFICATE` (base64 PFX) and `WINDOWS_CERTIFICATE_PASSWORD` secrets.
+When enabled, missing or invalid certificate credentials fail the build.
+Existing certificate secrets alone do not enable signing. A self-signed
+certificate does not establish public publisher trust.
 
 The CLI supports `/help`, `/new`, `/model`, `/runtimes`, `/status`, and
 `/quit`.

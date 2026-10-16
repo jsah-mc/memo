@@ -79,7 +79,7 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install portaudio
       - name: Import Windows signing certificate
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && vars.WINDOWS_AUTHENTICODE_ENABLED == 'true'
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
@@ -94,7 +94,7 @@ jobs:
           $certificate = Import-PfxCertificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\My -Password $password
           "MEMO_CERTIFICATE_THUMBPRINT=$($certificate.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Configure Windows Authenticode
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && vars.WINDOWS_AUTHENTICODE_ENABLED == 'true'
         shell: python
         run: |
           import json
@@ -238,4 +238,4 @@ jobs:
           body: |
             Each Memo desktop installer includes the native `memo` Rust CLI. No separate CLI or Python gateway installation is required.
 
-            Desktop releases check this GitHub Release for cryptographically signed updates after launch. Windows executables and installers are Authenticode-signed and timestamped. Updater packages use Tauri signatures, and SHA256SUMS.txt covers every published asset.
+            Desktop releases check this GitHub Release for cryptographically signed updates after launch. Windows Authenticode signing is optional; installers may show an unknown-publisher or SmartScreen warning. Verify that downloads come from this official repository. Updater packages require Tauri signatures, and SHA256SUMS.txt covers every published asset.

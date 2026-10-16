@@ -24,7 +24,13 @@ test("desktop installers bundle the native CLI", () => {
   assert.match(workflow, /"memo-\{host\}\{suffix\}"/);
 });
 
-test("release requires Windows and updater signatures", () => {
+test("release requires updater signatures with opt-in Windows signing", () => {
+  for (const step of ["Import Windows signing certificate", "Configure Windows Authenticode"]) {
+    const block = workflow.split(`- name: ${step}`)[1]?.split("- name:")[0];
+    assert.ok(block, step);
+    assert.match(block, /if: runner\.os == 'Windows' && vars\.WINDOWS_AUTHENTICODE_ENABLED == 'true'/);
+  }
+  assert.match(workflow, /required = \["TAURI_SIGNING_PRIVATE_KEY", "TAURI_UPDATER_PUBLIC_KEY"\]/);
   assert.match(workflow, /WINDOWS_CERTIFICATE/);
   assert.match(workflow, /Import-PfxCertificate/);
   assert.match(workflow, /TAURI_SIGNING_PRIVATE_KEY/);
