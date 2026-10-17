@@ -22,6 +22,24 @@ const executable = process.platform === "win32"
     ? path.join(bundleRoot, "Memo.app", "Contents", "MacOS", "Memo")
     : path.join(bundleRoot, "Memo");
 const marker = path.join(outRoot, ".memo-source-revision");
+const buildOnly = process.argv.includes("--build-only");
+const ifInstalled = process.argv.includes("--if-installed");
+const waitArgument = process.argv.indexOf("--wait-for-pid");
+const waitForPid = waitArgument >= 0 ? Number(process.argv[waitArgument + 1]) : 0;
+
+const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+async function waitForProcessExit(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  for (;;) {
+    try {
+      process.kill(pid, 0);
+      await delay(250);
+    } catch {
+      return;
+    }
+  }
+}
 
 function run(command, args, options = {}) {
   execFileSync(command, args, { cwd: root, stdio: "inherit", ...options });
@@ -100,10 +118,21 @@ function installApplicationLauncher() {
   }
 }
 
+await waitForProcessExit(waitForPid);
+if (ifInstalled && !existsSync(executable) && !existsSync(marker)) {
+  console.log("Memo desktop is not installed; skipping its rebuild.");
+  process.exit(0);
+}
+
 const revision = currentRevision();
 const builtRevision = existsSync(marker) ? readFileSync(marker, "utf8").trim() : "";
 if (!existsSync(executable) || builtRevision !== revision) packageDesktop();
 installApplicationLauncher();
+
+if (buildOnly) {
+  console.log("Memo desktop is updated.");
+  process.exit(0);
+}
 
 const child = spawn(executable, [], {
   cwd: root,

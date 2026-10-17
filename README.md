@@ -14,7 +14,7 @@ The desktop application is not built during installation.
 
 ### Windows
 
-Download `install.ps1` from the latest GitHub release, then run:
+Download `scripts/install.ps1` from the GitHub repository's `main` branch, then run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -27,7 +27,7 @@ system tray; use the tray menu to reopen or quit it.
 
 ### Linux and macOS
 
-Download `install.sh` from the latest GitHub release, then run:
+Download `scripts/install.sh` from the GitHub repository's `main` branch, then run:
 
 ```sh
 sh install.sh
@@ -43,8 +43,8 @@ source revision changes.
 ## Updates
 
 Memo desktop checks the official `main` branch after launch and every four hours. When
-an update is available, it can fast-forward `~/.memo/app`, run `uv sync
---locked` and `pnpm install --frozen-lockfile`, and restart. Updates stop when
+an update is available, it fast-forwards `~/.memo/app`, refreshes dependencies,
+rebuilds the installed desktop application and launcher, and restarts. Updates stop when
 the managed checkout has local modifications so user work is never overwritten.
 
 Use **Settings → Updates** to check manually and install an update from the

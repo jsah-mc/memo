@@ -58,4 +58,11 @@ def install_update(root: Path) -> UpdateStatus:
     _run(root, _program("uv"), "sync", "--locked")
     pnpm = "pnpm.cmd" if sys.platform == "win32" else "pnpm"
     _run(root, _program(pnpm), "install", "--frozen-lockfile")
+    _run(
+        root,
+        _program("node.exe" if sys.platform == "win32" else "node"),
+        "scripts/launch-desktop.mjs",
+        "--build-only",
+        "--if-installed",
+    )
     return UpdateStatus(available=False, commits_behind=0, updated=True)

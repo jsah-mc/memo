@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -46,6 +46,21 @@ async function installPnpmDependencies(root: string) {
   );
 }
 
+function rebuildAndRelaunchDesktop(root: string) {
+  const helper = spawn(
+    process.platform === "win32" ? "node.exe" : "node",
+    [path.join(root, "scripts", "launch-desktop.mjs"), "--wait-for-pid", String(process.pid)],
+    {
+      cwd: root,
+      detached: true,
+      env: { ...process.env, CI: "true" },
+      windowsHide: true,
+      stdio: "ignore",
+    },
+  );
+  helper.unref();
+}
+
 export async function checkForSourceUpdate() {
   const root = sourceRoot();
   await run("git", ["fetch", "--quiet", "origin", "main"], root);
@@ -74,7 +89,7 @@ export async function installSourceUpdate() {
     await run("git", ["pull", "--ff-only", "origin", "main"], root);
     await run(process.platform === "win32" ? "uv.exe" : "uv", ["sync", "--locked"], root);
     await installPnpmDependencies(root);
-    app.relaunch();
+    rebuildAndRelaunchDesktop(root);
     app.exit(0);
   } finally {
     updateRunning = false;
@@ -93,7 +108,7 @@ export function registerSourceUpdater() {
         type: "info",
         title: "Memo update available",
         message: "A new Memo update is available.",
-        detail: "Memo will update its managed source checkout and dependencies, then restart.",
+        detail: "Memo will update its GitHub source checkout, dependencies, and desktop build, then restart.",
         buttons: ["Update and restart", "Later"],
         defaultId: 0,
         cancelId: 1,

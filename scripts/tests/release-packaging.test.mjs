@@ -7,9 +7,10 @@ const windows = readFileSync("scripts/install.ps1", "utf8");
 const posix = readFileSync("scripts/install.sh", "utf8");
 const desktop = readFileSync("scripts/launch-desktop.mjs", "utf8");
 
-test("release publishes source bootstrap installers", () => {
+test("repository keeps source bootstrap installers without release publishing", () => {
   assert.match(workflow, /scripts\/install\.ps1/);
   assert.match(workflow, /scripts\/install\.sh/);
+  assert.doesNotMatch(workflow, /action-gh-release|upload-artifact|download-artifact/);
   assert.doesNotMatch(workflow, /cargo|tauri/i);
 });
 
@@ -38,4 +39,6 @@ test("memo desktop builds on demand and installs an application launcher", () =>
   assert.match(desktop, /install-start-menu\.ps1/);
   assert.match(desktop, /memo\.desktop/);
   assert.match(desktop, /Memo\.app/);
+  assert.match(desktop, /--build-only/);
+  assert.match(desktop, /--wait-for-pid/);
 });

@@ -48,3 +48,6 @@ class UpdaterTests(TestCase):
         self.assertTrue(any("pull" in command for command in commands))
         self.assertTrue(any("sync" in command for command in commands))
         self.assertTrue(any("install" in command for command in commands))
+        self.assertTrue(
+            any("scripts/launch-desktop.mjs" in command for command in commands)
+        )
