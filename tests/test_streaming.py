@@ -258,7 +258,7 @@ class GatewayStreamingTests(TestCase):
         second_input = upstream.await_args_list[1].args[-1]["input"]
         self.assertEqual(second_input[-1]["type"], "function_call_output")
 
-    def test_screen_request_is_forced_to_desktop_tool_at_gateway_boundary(
+    def test_screen_tool_is_available_without_forcing_model_choice(
         self,
     ) -> None:
         settings = GatewaySettings(computer_enabled=True)
@@ -309,9 +309,11 @@ class GatewayStreamingTests(TestCase):
                 )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            upstream.await_args_list[0].args[-1]["tool_choice"],
-            {"type": "function", "name": "inspect_computer_screen"},
+        first_payload = upstream.await_args_list[0].args[-1]
+        self.assertNotIn("tool_choice", first_payload)
+        self.assertIn(
+            "inspect_computer_screen",
+            {tool["name"] for tool in first_payload["tools"]},
         )
 
     def test_gateway_computer_tool_is_not_exposed_without_header(self) -> None:
@@ -339,9 +341,10 @@ class GatewayStreamingTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(upstream.await_count, 1)
-        self.assertNotIn("tools", upstream.await_args.args[-1])
+        tool_names = {tool["name"] for tool in upstream.await_args.args[-1]["tools"]}
+        self.assertEqual(tool_names, {"browse_web"})
 
-    def test_gateway_opens_explicit_app_without_model_decision(self) -> None:
+    def test_gateway_opens_app_after_model_selects_tool(self) -> None:
         settings = GatewaySettings(computer_enabled=True)
         with tempfile.TemporaryDirectory() as root:
             computer = ComputerSandboxTool(root)
@@ -349,7 +352,12 @@ class GatewayStreamingTests(TestCase):
             with (
                 patch(
                     "utils.gateway.sdk.ModelSDK.responses",
-                    new=AsyncMock(side_effect=AssertionError("model was called")),
+                    new=AsyncMock(
+                        side_effect=[
+                            completed_stream({"output": [{"type": "function_call", "call_id": "call_app", "name": "open_allowed_app", "arguments": '{"app":"notepad"}'}]}),
+                            completed_stream({"output": [], "usage": {}}, "Opened Notepad."),
+                        ]
+                    ),
                 ),
                 patch(
                     "utils.tools.computer.subprocess.Popen",
@@ -372,7 +380,7 @@ class GatewayStreamingTests(TestCase):
             "Opened Notepad.",
         )
 
-    def test_yes_launches_named_app_without_another_model_promise(self) -> None:
+    def test_yes_allows_model_selected_named_app_launch(self) -> None:
         settings = GatewaySettings(computer_enabled=True)
         with tempfile.TemporaryDirectory() as root:
             computer = ComputerSandboxTool(root)
@@ -388,7 +396,10 @@ class GatewayStreamingTests(TestCase):
                 patch(
                     "utils.gateway.sdk.ModelSDK.responses",
                     new=AsyncMock(
-                        side_effect=AssertionError("model must not promise a launch")
+                        side_effect=[
+                            completed_stream({"output": [{"type": "function_call", "call_id": "call_zed", "name": "run_shell_command", "arguments": '{"command":"start \\\"\\\" \\\"Zed\\\""}'}]}),
+                            completed_stream({"output": [], "usage": {}}, "Opened Zed."),
+                        ]
                     ),
                 ),
                 patch.object(
@@ -424,7 +435,7 @@ class GatewayStreamingTests(TestCase):
         )
         launch.assert_called_once_with("Zed")
 
-    def test_yes_opens_downloads_without_model_claiming_success(self) -> None:
+    def test_yes_allows_model_selected_downloads_launch(self) -> None:
         settings = GatewaySettings(computer_enabled=True)
         downloads = str((Path.home() / "Downloads").resolve())
         with tempfile.TemporaryDirectory() as root:
@@ -433,7 +444,10 @@ class GatewayStreamingTests(TestCase):
                 patch(
                     "utils.gateway.sdk.ModelSDK.responses",
                     new=AsyncMock(
-                        side_effect=AssertionError("model must not claim it opened a folder")
+                        side_effect=[
+                            completed_stream({"output": [{"type": "function_call", "call_id": "call_downloads", "name": "run_shell_command", "arguments": '{"command":"open downloads"}'}]}),
+                            completed_stream({"output": [], "usage": {}}, "Opened Downloads."),
+                        ]
                     ),
                 ),
                 patch.object(

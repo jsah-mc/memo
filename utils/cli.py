@@ -42,17 +42,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Check for an update without installing it.",
     )
-    mcp = subparsers.add_parser("mcp", help="Expose Memo to MCP-compatible AI agents")
-    mcp_subparsers = mcp.add_subparsers(dest="mcp_command", required=True)
-    mcp_subparsers.add_parser("serve", help="Run Memo's stdio MCP server")
-    install = mcp_subparsers.add_parser("install", help="Register Memo with local AI agents")
-    install.add_argument(
-        "--agent",
-        choices=("all", "codex", "claude", "cursor", "vscode"),
-        default="all",
-        help="Agent to configure (default: every detected agent)",
-    )
-    mcp_subparsers.add_parser("status", help="Show Memo MCP registration status")
     return parser
 
 
@@ -85,20 +74,6 @@ def main() -> None:
             print(f"Memo update available ({status.commits_behind} commit(s)).")
         else:
             print("Memo is already up to date.")
-    elif args.command == "mcp":
-        if args.mcp_command == "serve":
-            from utils.mcp_server import main as run_mcp
-
-            run_mcp()
-        else:
-            from utils.mcp_setup import install_mcp, registration_status
-
-            if args.mcp_command == "install":
-                results = install_mcp(PROJECT_ROOT, agent=args.agent)
-            else:
-                results = registration_status(PROJECT_ROOT)
-            for name, message in results.items():
-                print(f"{name}: {message}")
     elif args.command in {"", None}:
         from utils.program.main import MemoApp
 

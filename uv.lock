@@ -1302,7 +1302,7 @@ wheels = [
 
 [[package]]
 name = "memo"
-version = "3.1.7"
+version = "3.1.8"
 source = { editable = "." }
 dependencies = [
     { name = "audioop-lts" },
@@ -1312,7 +1312,6 @@ dependencies = [
     { name = "cua-driver" },
     { name = "fastapi" },
     { name = "httpx" },
-    { name = "mcp" },
     { name = "numpy" },
     { name = "nvidia-cublas-cu12", marker = "sys_platform == 'win32'" },
     { name = "nvidia-cudnn-cu12", marker = "sys_platform == 'win32'" },
@@ -1347,7 +1346,6 @@ requires-dist = [
     { name = "cua-driver", specifier = "==0.23.2" },
     { name = "fastapi", specifier = ">=0.139.0" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "mcp", specifier = ">=1.28,<2" },
     { name = "numpy", specifier = ">=2.3.0" },
     { name = "nvidia-cublas-cu12", marker = "sys_platform == 'win32'", specifier = "==12.8.4.1" },
     { name = "nvidia-cudnn-cu12", marker = "sys_platform == 'win32'", specifier = "==9.19.0.56" },

@@ -445,10 +445,7 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
             {"command": "npm --version"},
             permission_granted=True,
         )
-        self.assertEqual(
-            sdk.payloads[0]["tool_choice"],
-            {"type": "function", "name": "run_shell_command"},
-        )
+        self.assertNotIn("tool_choice", sdk.payloads[0])
         shell_definition = next(
             definition
             for definition in sdk.payloads[0]["tools"]
@@ -511,10 +508,7 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
             {"command": 'start "" "chrome"'},
             permission_granted=True,
         )
-        self.assertEqual(
-            sdk.payloads[0]["tool_choice"],
-            {"type": "function", "name": "run_shell_command"},
-        )
+        self.assertNotIn("tool_choice", sdk.payloads[0])
         self.assertEqual(events[-2]["delta"], "Opened Chrome.")
 
     async def test_yes_grants_exactly_one_computer_action(self) -> None:
@@ -721,10 +715,7 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
             if event.get("type") == "memo.permission.requested"
         ]
         self.assertEqual(len(permission_events), 1)
-        self.assertEqual(
-            sdk.payloads[0]["tool_choice"],
-            {"type": "function", "name": "inspect_computer_screen"},
-        )
+        self.assertNotIn("tool_choice", sdk.payloads[0])
         second_input = sdk.payloads[1]["input"]
         screenshot_message = second_input[-1]
         self.assertEqual(

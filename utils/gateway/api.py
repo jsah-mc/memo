@@ -22,28 +22,14 @@ from starlette.concurrency import iterate_in_threadpool
 
 from utils.codex_auth import CodexAuth
 from utils.tools.browser import BrowserUseTool
-from utils.tools.computer import (
-    ComputerSandboxTool,
-    detect_app_request,
-    detect_computer_task,
-    generic_app_request_name,
-    known_folder_request,
-)
-from utils.tools.computer_turn import (
-    computer_request_text,
-    computer_tool_events,
-    direct_app_events,
-    direct_named_app_events,
-    has_one_time_computer_approval,
-)
-from utils.tools.desktop import detect_desktop_control_request
+from utils.tools.computer import ComputerSandboxTool
+from utils.tools.computer_turn import agent_tool_events
 from utils.tools.permissions import PermissionBroker
 from utils.tools.stt import STT
 from utils.tools.tts import TTS
 
 from .access_log import QuietPathAccessLogFilter
 from .agents import AgentStore
-from .browser import detect_browser_task, run_browser_tool_turn
 from .chat import (
     chat_chunk,
     chat_to_responses,
@@ -168,84 +154,6 @@ def create_app(
         allow_computer: bool,
         interactive_permissions: bool,
     ):
-        browser_task = (
-            detect_browser_task(payload.get("input")) if allow_browser else None
-        )
-        if browser_task is not None:
-            return await run_browser_tool_turn(sdk, payload, browser_task, web_tool)
-        computer_text = computer_request_text(payload.get("input"))
-        folder = known_folder_request(computer_text)
-        if (
-            allow_computer
-            and settings.computer_enabled
-            and folder is not None
-            and not detect_desktop_control_request(computer_text)
-        ):
-            from .sdk import SDKResponseStream
-
-            request_computer_tool = computer_for(payload)
-
-            return SDKResponseStream(
-                direct_named_app_events(
-                    request_computer_tool,
-                    user_text=computer_text,
-                    permission_broker=approvals if interactive_permissions else None,
-                    approved=has_one_time_computer_approval(payload.get("input")),
-                )
-            )
-        app = detect_app_request(computer_text)
-        if (
-            allow_computer
-            and settings.computer_enabled
-            and app is not None
-            and not detect_desktop_control_request(computer_text)
-        ):
-            from .sdk import SDKResponseStream
-
-            request_computer_tool = computer_for(payload)
-
-            return SDKResponseStream(
-                direct_app_events(
-                    request_computer_tool,
-                    app=app,
-                    user_text=computer_text,
-                )
-            )
-        if (
-            allow_computer
-            and settings.computer_enabled
-            and generic_app_request_name(computer_text) is not None
-            and not detect_desktop_control_request(computer_text)
-        ):
-            from .sdk import SDKResponseStream
-
-            request_computer_tool = computer_for(payload)
-
-            return SDKResponseStream(
-                direct_named_app_events(
-                    request_computer_tool,
-                    user_text=computer_text,
-                    permission_broker=approvals if interactive_permissions else None,
-                    approved=has_one_time_computer_approval(payload.get("input")),
-                )
-            )
-        if (
-            allow_computer
-            and settings.computer_enabled
-            and detect_computer_task(computer_text)
-        ):
-            from .sdk import SDKResponseStream
-
-            request_computer_tool = computer_for(payload)
-
-            return SDKResponseStream(
-                computer_tool_events(
-                    sdk,
-                    payload,
-                    request_computer_tool,
-                    approvals if interactive_permissions else None,
-                )
-            )
         agent = payload.get("memo_agent", {})
         if agent.get("composioEnabled"):
             user_id, toolkits = _composio_scope(
@@ -255,6 +163,21 @@ def create_app(
                 }
             )
             return await composio_tool_turn(sdk, payload, composio, user_id, toolkits)
+        computer_enabled = allow_computer and settings.computer_enabled
+        if allow_browser or computer_enabled:
+            from .sdk import SDKResponseStream
+
+            return SDKResponseStream(
+                agent_tool_events(
+                    sdk,
+                    payload,
+                    browser_tool=web_tool if allow_browser else None,
+                    computer_tool=computer_for(payload) if computer_enabled else None,
+                    permission_broker=(
+                        approvals if interactive_permissions else None
+                    ),
+                )
+            )
         return await sdk.responses(payload)
 
     async def start_response(

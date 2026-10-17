@@ -75,20 +75,6 @@ Run the Python gateway separately with:
 uv run memo-legacy gateway --host 127.0.0.1 --port 4010
 ```
 
-### MCP server
-
-Memo can act as a local stdio MCP server for AI agents. Register it with every
-detected supported client (Codex, Claude Code, Cursor, and VS Code) with:
-
-```console
-memo mcp install
-memo mcp status
-```
-
-Use `memo mcp install --agent cursor` to configure one client, or
-`memo mcp serve` to start the server directly. The server exposes Memo's agent,
-enabled named bots, and runtime status.
-
 ## Validation
 
 ```powershell

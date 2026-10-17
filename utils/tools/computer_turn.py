@@ -8,14 +8,13 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
+from .browser import BrowserUseTool
 from .computer import (
     ComputerSandboxTool,
     detect_computer_task,
-    detect_shell_request,
     generic_app_request_name,
     known_folder_request,
 )
-from .desktop import detect_desktop_control_request
 from .permissions import PermissionBroker
 
 APP_LABELS = {
@@ -100,7 +99,8 @@ def has_one_time_computer_approval(input_value: Any) -> bool:
 def _matches_approved_app_launch(command: str, user_text: str) -> bool:
     """Bind conversational approval to one plain Windows app launch."""
 
-    requested_app = generic_app_request_name(user_text)
+    folder = known_folder_request(user_text)
+    requested_app = folder[0] if folder is not None else generic_app_request_name(user_text)
     if requested_app is None:
         return False
     launch = re.fullmatch(
@@ -173,16 +173,6 @@ def _function_calls(response: dict[str, Any], names: set[str]) -> list[dict[str,
         and item.get("type") == "function_call"
         and item.get("name") in names
     ]
-
-
-def _response_events(response: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
-    async def events():
-        text = response.get("output_text")
-        if isinstance(text, str) and text:
-            yield {"type": "response.output_text.delta", "delta": text}
-        yield {"type": "response.completed", "response": response}
-
-    return events()
 
 
 async def direct_app_events(
@@ -313,41 +303,42 @@ async def direct_named_app_events(
     }
 
 
-async def computer_tool_events(
+async def agent_tool_events(
     sdk: Any,
     payload: dict[str, Any],
-    tool: ComputerSandboxTool,
+    *,
+    browser_tool: BrowserUseTool | None = None,
+    computer_tool: ComputerSandboxTool | None = None,
     permission_broker: PermissionBroker | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Let the model choose an allowed tool, execute it, and return its answer."""
+    """Expose enabled tools and let the model decide whether to use them."""
 
     user_text = computer_request_text(payload.get("input"))
     one_time_approval = has_one_time_computer_approval(payload.get("input"))
-    shell_name = getattr(tool, "shell_name", "run_shell_command")
-    desktop_names = getattr(tool, "desktop_names", set())
-    screen_name = getattr(
-        getattr(tool, "desktop", None),
-        "screen_name",
-        "inspect_computer_screen",
-    )
+    shell_name = getattr(computer_tool, "shell_name", "run_shell_command")
+    desktop_names = getattr(computer_tool, "desktop_names", set())
+    computer_names = getattr(computer_tool, "names", set())
+    browser_name = getattr(browser_tool, "name", "browse_web")
+    names = {*computer_names, *({browser_name} if browser_tool is not None else set())}
+    definitions: list[dict[str, Any]] = []
+    if browser_tool is not None:
+        definition = browser_tool.function_definition
+        function = definition.get("function")
+        definitions.append(
+            {"type": "function", **function}
+            if isinstance(function, dict)
+            else definition
+        )
+    if computer_tool is not None:
+        definitions.extend(computer_tool.responses_definitions)
     desktop_session_granted = False
     next_payload = {
         **payload,
         "tools": [
             *(payload["tools"] if isinstance(payload.get("tools"), list) else []),
-            *tool.responses_definitions,
+            *definitions,
         ],
     }
-    if detect_desktop_control_request(user_text):
-        next_payload["tool_choice"] = {
-            "type": "function",
-            "name": screen_name,
-        }
-    elif detect_shell_request(user_text):
-        next_payload["tool_choice"] = {
-            "type": "function",
-            "name": shell_name,
-        }
     input_value = payload.get("input", [])
     if isinstance(input_value, list):
         conversation = list(input_value)
@@ -362,11 +353,31 @@ async def computer_tool_events(
         conversation = []
 
     while True:
-        response = await (await sdk.responses(next_payload)).completed_response()
-        calls = _function_calls(response, tool.names)
-        if not calls:
-            async for event in _response_events(response):
+        response: dict[str, Any] | None = None
+        output_items: dict[int, dict[str, Any]] = {}
+        stream = await sdk.responses(next_payload)
+        async for event in stream.events():
+            event_type = event.get("type")
+            if event_type == "response.output_text.delta" or (
+                isinstance(event_type, str) and event_type.startswith("memo.")
+            ):
                 yield event
+            elif event_type == "response.output_item.done":
+                output_index = event.get("output_index")
+                item = event.get("item")
+                if isinstance(output_index, int) and isinstance(item, dict):
+                    output_items[output_index] = item
+            elif event_type == "response.completed":
+                completed = event.get("response")
+                if isinstance(completed, dict):
+                    response = completed
+        if response is None:
+            raise RuntimeError("The model stream ended before completing.")
+        if output_items and not response.get("output"):
+            response["output"] = [item for _, item in sorted(output_items.items())]
+        calls = _function_calls(response, names)
+        if not calls:
+            yield {"type": "response.completed", "response": response}
             return
 
         outputs: list[dict[str, Any]] = []
@@ -410,7 +421,7 @@ async def computer_tool_events(
                             "command": (
                                 "View and control the Windows desktop for this task"
                             ),
-                            "cwd": str(tool.root),
+                            "cwd": str(computer_tool.root),
                             "os_isolated": False,
                         }
                     )
@@ -441,7 +452,7 @@ async def computer_tool_events(
                             "kind": "shell_command",
                             "tool_call_id": call_id,
                             "command": command,
-                            "cwd": str(tool.root),
+                            "cwd": str(computer_tool.root),
                             "os_isolated": False,
                         }
                     )
@@ -464,15 +475,19 @@ async def computer_tool_events(
                 }
             else:
                 try:
-                    if name == shell_name or name in desktop_names:
-                        result = await tool.execute(
+                    if name == browser_name and browser_tool is not None:
+                        result = await browser_tool.execute(arguments)
+                    elif computer_tool is None:
+                        result = {"ok": False, "error": "Computer tools are disabled."}
+                    elif name == shell_name or name in desktop_names:
+                        result = await computer_tool.execute(
                             name,
                             arguments,
                             user_text=user_text,
                             permission_granted=True,
                         )
                     else:
-                        result = await tool.execute(
+                        result = await computer_tool.execute(
                             name,
                             arguments,
                             user_text=user_text,
@@ -539,3 +554,20 @@ async def computer_tool_events(
             if key not in {"input", "previous_response_id", "tool_choice"}
         }
         next_payload["input"] = conversation
+
+
+async def computer_tool_events(
+    sdk: Any,
+    payload: dict[str, Any],
+    tool: ComputerSandboxTool,
+    permission_broker: PermissionBroker | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """Backward-compatible computer-only entry point for gateway clients."""
+
+    async for event in agent_tool_events(
+        sdk,
+        payload,
+        computer_tool=tool,
+        permission_broker=permission_broker,
+    ):
+        yield event

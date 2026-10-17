@@ -31,6 +31,14 @@ class FakeSDK:
 
 class FakeBrowser:
     name = "browse_web"
+    function_definition: ClassVar[dict[str, Any]] = {
+        "type": "function",
+        "function": {
+            "name": "browse_web",
+            "description": "Browse the web.",
+            "parameters": {"type": "object"},
+        },
+    }
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         return {"ok": True, "result": f"Browsed: {arguments['task']}"}
@@ -100,6 +108,37 @@ class FakeComputerSDK:
         return SDKResponseStream(events())
 
 
+class FakeBrowserSDK:
+    call_count = 0
+
+    def __init__(self, model: str, *, api_base: str | None = None) -> None:
+        self.model = model
+
+    async def responses(self, payload: dict[str, Any]) -> SDKResponseStream:
+        self.__class__.call_count += 1
+
+        async def events():
+            if self.call_count == 1:
+                yield {
+                    "type": "response.completed",
+                    "response": {
+                        "output": [
+                            {
+                                "type": "function_call",
+                                "call_id": "call_web",
+                                "name": "browse_web",
+                                "arguments": '{"task":"find turtles"}',
+                            }
+                        ]
+                    },
+                }
+            else:
+                yield {"type": "response.output_text.delta", "delta": "Turtles found."}
+                yield {"type": "response.completed", "response": {"output": []}}
+
+        return SDKResponseStream(events())
+
+
 class ProgramAITests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         FakeSDK.calls.clear()
@@ -130,7 +169,7 @@ class ProgramAITests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(FakeSDK.calls[0][0], "chatgpt/heavy")
 
-    async def test_browser_request_executes_local_tool_without_sdk(self) -> None:
+    async def test_browser_request_is_offered_to_the_model(self) -> None:
         events = [
             event
             async for event in self.ai.events(
@@ -138,10 +177,11 @@ class ProgramAITests(unittest.IsolatedAsyncioTestCase):
             )
         ]
 
-        self.assertFalse(FakeSDK.calls)
-        self.assertEqual(events[0]["type"], "memo.tool_call.started")
-        self.assertEqual(events[1]["type"], "memo.tool_call.completed")
-        self.assertIn("Browsed:", events[2]["delta"])
+        self.assertEqual(len(FakeSDK.calls), 1)
+        self.assertEqual(events[0]["delta"], "Direct reply")
+        tools = FakeSDK.calls[0][1]["tools"]
+        self.assertEqual(tools[0]["name"], "browse_web")
+        self.assertNotIn("tool_choice", FakeSDK.calls[0][1])
 
     async def test_computer_request_runs_responses_tool_loop(self) -> None:
         FakeComputerSDK.call_count = 0
@@ -167,7 +207,7 @@ class ProgramAITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events[1]["tool_call"]["result"]["stdout"], "hello\n")
         self.assertEqual(events[2]["delta"], "The command printed hello.")
 
-    async def test_open_notepad_bypasses_model_discretion(self) -> None:
+    async def test_open_notepad_uses_model_discretion(self) -> None:
         FakeComputerSDK.call_count = 0
         computer = FakeComputer()
         ai = ProgramAI(
@@ -185,10 +225,31 @@ class ProgramAITests(unittest.IsolatedAsyncioTestCase):
 
         events = [event async for event in ai.events("open notepad")]
 
-        self.assertEqual(FakeComputerSDK.call_count, 0)
-        self.assertEqual(computer.calls[0][0], "open_allowed_app")
+        self.assertEqual(FakeComputerSDK.call_count, 2)
+        self.assertEqual(computer.calls[0][0], "run_sandboxed_command")
         self.assertEqual(events[0]["type"], "memo.tool_call.started")
-        self.assertEqual(events[2]["delta"], "Opened Notepad.")
+        self.assertEqual(events[2]["delta"], "The command printed hello.")
+
+    async def test_model_can_choose_browser_tool(self) -> None:
+        FakeBrowserSDK.call_count = 0
+        browser = FakeBrowser()
+        ai = ProgramAI(
+            ProgramSettings(
+                light_model="chatgpt/light",
+                heavy_model="chatgpt/heavy",
+                vision_model="chatgpt/vision",
+                computer_enabled=False,
+            ),
+            browser_tool=browser,  # type: ignore[arg-type]
+            sdk_factory=FakeBrowserSDK,  # type: ignore[arg-type]
+        )
+
+        events = [event async for event in ai.events("find turtles if needed")]
+
+        self.assertEqual(FakeBrowserSDK.call_count, 2)
+        self.assertEqual(events[0]["tool_call"]["name"], "browse_web")
+        self.assertIn("Browsed: find turtles", events[1]["tool_call"]["result"]["result"])
+        self.assertEqual(events[2]["delta"], "Turtles found.")
 
 if __name__ == "__main__":
     unittest.main()

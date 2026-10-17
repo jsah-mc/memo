@@ -7,24 +7,10 @@ from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from utils.tools.browser import BrowserUseTool
-from utils.tools.computer import (
-    ComputerSandboxTool,
-    detect_app_request,
-    detect_computer_task,
-    generic_app_request_name,
-    known_folder_request,
-)
-from utils.tools.computer_turn import (
-    computer_request_text,
-    computer_tool_events,
-    direct_app_events,
-    direct_named_app_events,
-    has_one_time_computer_approval,
-)
-from utils.tools.desktop import detect_desktop_control_request
+from utils.tools.computer import ComputerSandboxTool
+from utils.tools.computer_turn import agent_tool_events
 from utils.tools.permissions import PermissionBroker
 
-from .browser import detect_browser_task, run_browser_tool_turn
 from .prompt import load_system_prompt
 from .router import ModelRouter
 from .sdk import ModelSDK, SDKResponseStream
@@ -74,61 +60,18 @@ class ProgramAI:
         sdk: ModelSDK,
         payload: dict[str, Any],
     ) -> SDKResponseStream:
-        browser_task = (
-            detect_browser_task(payload.get("input"))
-            if self.settings.browser_enabled
-            else None
-        )
-        if browser_task is not None:
-            return run_browser_tool_turn(browser_task, self.browser_tool)
-        computer_text = computer_request_text(payload.get("input"))
-        folder = known_folder_request(computer_text)
-        if (
-            self.settings.computer_enabled
-            and folder is not None
-            and not detect_desktop_control_request(computer_text)
-        ):
+        if self.settings.browser_enabled or self.settings.computer_enabled:
             return SDKResponseStream(
-                direct_named_app_events(
-                    self.computer_tool or ComputerSandboxTool(),
-                    user_text=computer_text,
-                    permission_broker=self.permission_broker,
-                    approved=has_one_time_computer_approval(payload.get("input")),
-                )
-            )
-        app = detect_app_request(computer_text)
-        if (
-            self.settings.computer_enabled
-            and app is not None
-            and not detect_desktop_control_request(computer_text)
-        ):
-            return SDKResponseStream(
-                direct_app_events(
-                    self.computer_tool or ComputerSandboxTool(),
-                    app=app,
-                    user_text=computer_text,
-                )
-            )
-        if (
-            self.settings.computer_enabled
-            and generic_app_request_name(computer_text) is not None
-            and not detect_desktop_control_request(computer_text)
-        ):
-            return SDKResponseStream(
-                direct_named_app_events(
-                    self.computer_tool or ComputerSandboxTool(),
-                    user_text=computer_text,
-                    permission_broker=self.permission_broker,
-                    approved=has_one_time_computer_approval(payload.get("input")),
-                )
-            )
-        if self.settings.computer_enabled and detect_computer_task(computer_text):
-            return SDKResponseStream(
-                computer_tool_events(
+                agent_tool_events(
                     sdk,
                     payload,
-                    self.computer_tool or ComputerSandboxTool(),
-                    self.permission_broker,
+                    browser_tool=(self.browser_tool if self.settings.browser_enabled else None),
+                    computer_tool=(
+                        self.computer_tool or ComputerSandboxTool()
+                        if self.settings.computer_enabled
+                        else None
+                    ),
+                    permission_broker=self.permission_broker,
                 )
             )
         return await sdk.responses(payload)
