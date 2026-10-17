@@ -14,6 +14,7 @@ import { GatewayStartup } from "@/components/gateway-startup";
 import { WorkspaceShortcuts } from "@/components/workspace-shortcuts";
 import { TaskActivitySidebar } from "@/agents/task-activity-sidebar";
 import "./index.css";
+import { initializeTheme } from "./theme";
 
 function WorkspaceShell() {
   const { activeAgent } = useAgents();
@@ -51,7 +52,7 @@ if (!rootElement) {
   throw new Error('Missing renderer mount element: expected <div id="root">.');
 }
 
-document.documentElement.classList.add("dark");
+initializeTheme();
 
 createRoot(rootElement).render(
   <React.StrictMode>

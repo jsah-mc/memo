@@ -9,7 +9,9 @@ import {
   KeyRoundIcon,
   RefreshCwIcon,
   SettingsIcon,
+  SunMoonIcon,
 } from "lucide-react";
+import { AppearancePanel } from "@/components/appearance-panel";
 import { AiAgentsPanel } from "@/components/ai-agents-panel";
 import { BotSettingsPanel } from "@/components/bot-settings-panel";
 import { ApiKeysPanel } from "@/components/api-keys-panel";
@@ -31,10 +33,11 @@ import {
 
 export function SettingsDialog() {
   const [section, setSection] = useState<
-    "general" | "updates" | "resources" | "workspace" | "computer" | "vps" | "agents" | "bots" | "keys" | "apps"
+    "general" | "appearance" | "updates" | "resources" | "workspace" | "computer" | "vps" | "agents" | "bots" | "keys" | "apps"
   >("general");
   const sections = [
     { id: "general" as const, label: "General", icon: SettingsIcon },
+    { id: "appearance" as const, label: "Appearance", icon: SunMoonIcon },
     { id: "updates" as const, label: "Updates", icon: RefreshCwIcon },
     { id: "resources" as const, label: "Resources", icon: GaugeIcon },
     { id: "workspace" as const, label: "Project workspace", icon: FolderKanbanIcon },
@@ -85,6 +88,7 @@ export function SettingsDialog() {
               </DialogTitle>
               <DialogDescription>
                 {section === "general" && "Gateway and provider readiness."}
+                {section === "appearance" && "Choose Memo's color theme."}
                 {section === "updates" && "Check for and install Memo updates."}
                 {section === "computer" &&
                   "Configure the shared Local VM used by agents."}
@@ -101,6 +105,7 @@ export function SettingsDialog() {
               </DialogDescription>
             </DialogHeader>
             {section === "general" && <SystemHealthPanel />}
+            {section === "appearance" && <AppearancePanel />}
             {section === "updates" && <UpdatePanel />}
             {section === "resources" && <ResourceSettingsPanel />}
             {section === "workspace" && <WorkspaceSettingsPanel />}

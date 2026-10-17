@@ -83,7 +83,7 @@ function installApplicationLauncher() {
     mkdirSync(applications, { recursive: true });
     writeFileSync(
       path.join(applications, "memo.desktop"),
-      `[Desktop Entry]\nName=Memo\nComment=Local AI assistant\nExec="${executable}"\nIcon=${path.join(desktopRoot, "assets", "memo-icon.svg")}\nTerminal=false\nType=Application\nCategories=Utility;\n`,
+      `[Desktop Entry]\nName=Memo\nComment=Local AI assistant\nExec="${executable}"\nIcon=${path.join(desktopRoot, "assets", "memo-icon.png")}\nTerminal=false\nType=Application\nCategories=Utility;\n`,
     );
     return;
   }

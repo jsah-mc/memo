@@ -33,6 +33,11 @@ registerSourceUpdater();
 let tray: Tray | null = null;
 let quitting = false;
 
+const getAppIconPath = () =>
+  app.isPackaged
+    ? path.join(process.resourcesPath, "assets", "memo-icon.png")
+    : path.join(app.getAppPath(), "assets", "memo-icon.png");
+
 ipcMain.on("window:minimize", (event) =>
   BrowserWindow.fromWebContents(event.sender)?.minimize(),
 );
@@ -55,6 +60,7 @@ const createWindow = () => {
     height: 800,
     frame: process.platform === "darwin",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
+    icon: getAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -136,9 +142,7 @@ app.on("ready", () => {
     console.error("Memo gateway startup failed:", error);
   });
   createWindow();
-  const trayIcon = nativeImage.createFromDataURL(
-    "data:image/svg+xml;base64," + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="2" y="2" width="60" height="60" rx="18" fill="#17130f"/><path d="M14 47V17h9l9 12 9-12h9v30H40V32l-8 10-8-10v15z" fill="#d48a2c"/></svg>').toString("base64"),
-  );
+  const trayIcon = nativeImage.createFromPath(getAppIconPath());
   tray = new Tray(trayIcon.resize({ width: 20, height: 20 }));
   tray.setToolTip("Memo — running in the background");
   tray.setContextMenu(Menu.buildFromTemplate([
