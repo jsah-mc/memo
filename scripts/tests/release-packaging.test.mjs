@@ -5,6 +5,7 @@ import test from "node:test";
 const workflow = readFileSync(".github/workflows/release.yml", "utf8");
 const windows = readFileSync("scripts/install.ps1", "utf8");
 const posix = readFileSync("scripts/install.sh", "utf8");
+const desktop = readFileSync("scripts/launch-desktop.mjs", "utf8");
 
 test("release publishes source bootstrap installers", () => {
   assert.match(workflow, /scripts\/install\.ps1/);
@@ -17,9 +18,24 @@ test("installers clone Memo into the managed app directory", () => {
   assert.match(windows, /git clone/);
   assert.match(windows, /uv sync --locked/);
   assert.match(windows, /pnpm install --frozen-lockfile/);
+  assert.match(windows, /memo\.cmd/);
+  assert.match(windows, /SetEnvironmentVariable\("Path"/);
+  assert.doesNotMatch(windows, /build_windows_sandbox/);
+  assert.doesNotMatch(windows, /CreateShortcut/);
   assert.match(posix, /\.memo/);
   assert.match(posix, /git clone/);
   assert.match(posix, /uv sync --locked/);
   assert.match(posix, /pnpm install --frozen-lockfile/);
   assert.match(posix, /portaudio/);
+  assert.match(posix, /MEMO_BIN}\/memo/);
+  assert.match(posix, /\.memo\/bin/);
+  assert.doesNotMatch(posix, /memo-desktop/);
+});
+
+test("memo desktop builds on demand and installs an application launcher", () => {
+  assert.match(desktop, /@memo\/desktop.*package/s);
+  assert.match(desktop, /\.memo-source-revision/);
+  assert.match(desktop, /install-start-menu\.ps1/);
+  assert.match(desktop, /memo\.desktop/);
+  assert.match(desktop, /Memo\.app/);
 });

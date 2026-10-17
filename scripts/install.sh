@@ -9,38 +9,27 @@ REPOSITORY="https://github.com/jsah-mc/memo.git"
 command -v git >/dev/null 2>&1 || { echo "Git is required. Install Git and retry." >&2; exit 1; }
 
 run_privileged() {
-  if [ "$(id -u)" -eq 0 ]; then
-    "$@"
-  elif command -v sudo >/dev/null 2>&1; then
-    sudo "$@"
-  else
-    echo "Administrator access is required to install PortAudio." >&2
-    exit 1
+  if [ "$(id -u)" -eq 0 ]; then "$@"
+  elif command -v sudo >/dev/null 2>&1; then sudo "$@"
+  else echo "Administrator access is required to install PortAudio." >&2; exit 1
   fi
 }
 
 install_audio_dependencies() {
   case "$(uname -s)" in
     Linux)
-      if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists portaudio-2.0; then
-        return
-      fi
+      if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists portaudio-2.0; then return; fi
       if command -v apt-get >/dev/null 2>&1; then
         run_privileged apt-get update
         run_privileged apt-get install -y portaudio19-dev
-      elif command -v dnf >/dev/null 2>&1; then
-        run_privileged dnf install -y portaudio-devel
-      elif command -v pacman >/dev/null 2>&1; then
-        run_privileged pacman -S --needed --noconfirm portaudio
-      else
-        echo "Install the PortAudio development package for your distribution, then retry." >&2
-        exit 1
+      elif command -v dnf >/dev/null 2>&1; then run_privileged dnf install -y portaudio-devel
+      elif command -v pacman >/dev/null 2>&1; then run_privileged pacman -S --needed --noconfirm portaudio
+      else echo "Install the PortAudio development package for your distribution, then retry." >&2; exit 1
       fi
       ;;
     Darwin)
       command -v brew >/dev/null 2>&1 || {
-        echo "Homebrew is required to install PortAudio. Install it from https://brew.sh and retry." >&2
-        exit 1
+        echo "Homebrew is required to install PortAudio. Install it from https://brew.sh and retry." >&2; exit 1
       }
       brew list portaudio >/dev/null 2>&1 || brew install portaudio
       ;;
@@ -61,7 +50,6 @@ if ! command -v pnpm >/dev/null 2>&1; then
 fi
 
 install_audio_dependencies
-
 mkdir -p "${MEMO_ROOT}" "${MEMO_BIN}"
 if [ -d "${MEMO_APP}/.git" ]; then
   git -C "${MEMO_APP}" fetch --tags origin
@@ -77,28 +65,26 @@ cd "${MEMO_APP}"
 uv sync --locked
 pnpm install --frozen-lockfile
 
-cat > "${MEMO_BIN}/memo-desktop" <<EOF
+cat > "${MEMO_BIN}/memo" <<EOF
 #!/bin/sh
-cd "${MEMO_APP}"
-export MEMO_GATEWAY_ROOT="${MEMO_APP}"
-nohup pnpm --filter @memo/desktop start >>"${MEMO_ROOT}/desktop.log" 2>&1 &
+MEMO_APP="${MEMO_APP}"
+if [ "\${1:-}" = "desktop" ]; then
+  shift
+  exec node "\${MEMO_APP}/scripts/launch-desktop.mjs" "\$@"
+fi
+cd "\${MEMO_APP}"
+exec uv run memo-legacy "\$@"
 EOF
-chmod +x "${MEMO_BIN}/memo-desktop"
+chmod +x "${MEMO_BIN}/memo"
 
-case "$(uname -s)" in
-  Linux)
-    mkdir -p "${HOME}/.local/share/applications"
-    cat > "${HOME}/.local/share/applications/memo.desktop" <<EOF
-[Desktop Entry]
-Name=Memo
-Comment=Local AI assistant
-Exec=${MEMO_BIN}/memo-desktop
-Icon=${MEMO_APP}/apps/desktop/assets/memo-icon.svg
-Terminal=false
-Type=Application
-Categories=Utility;
-EOF
-    ;;
-esac
+PATH_LINE='export PATH="$HOME/.memo/bin:$PATH"'
+add_path_to_profile() {
+  profile="$1"
+  touch "${profile}"
+  grep -Fqx "${PATH_LINE}" "${profile}" || printf '\n%s\n' "${PATH_LINE}" >> "${profile}"
+}
+add_path_to_profile "${HOME}/.profile"
+if [ "$(uname -s)" = "Darwin" ]; then add_path_to_profile "${HOME}/.zprofile"; fi
 
-echo "Memo installed in ${MEMO_APP}. Run ${MEMO_BIN}/memo-desktop."
+echo "Memo CLI installed in ${MEMO_APP} and added to PATH."
+echo "Open a new terminal and run 'memo'. Run 'memo desktop' to build and launch the desktop app."

@@ -9,7 +9,8 @@ local speech run through the Python gateway.
 
 Memo installs into `~/.memo/app` as a managed clone of this repository. Git must
 already be installed. The installers add `uv` and `pnpm` when they are missing,
-then install the locked Python and JavaScript dependencies.
+install the locked dependencies, and add the `memo` command to your user PATH.
+The desktop application is not built during installation.
 
 ### Windows
 
@@ -19,9 +20,10 @@ Download `install.ps1` from the latest GitHub release, then run:
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-The installer creates a Memo desktop shortcut. It launches Electron with its
-terminal hidden. Closing the window keeps Memo running in the system tray; use
-the tray menu to reopen or quit it.
+Open a new terminal after installation and run `memo`. To install and launch the
+desktop application, run `memo desktop`. Its first run builds Electron and adds
+Memo to the Windows Start menu. Closing its window keeps Memo running in the
+system tray; use the tray menu to reopen or quit it.
 
 ### Linux and macOS
 
@@ -31,12 +33,16 @@ Download `install.sh` from the latest GitHub release, then run:
 sh install.sh
 ```
 
-The launcher is written to `~/.memo/bin/memo-desktop`. Linux also receives a
-desktop-menu entry.
+The launcher is written to `~/.memo/bin/memo` and added to the shell PATH. Run
+`memo desktop` to build and launch Electron. That command adds Memo to the Linux
+application menu or `~/Applications` on macOS after a successful build.
+
+The desktop build is cached. `memo desktop` rebuilds it only when the managed
+source revision changes.
 
 ## Updates
 
-Memo checks the official `main` branch after launch and every four hours. When
+Memo desktop checks the official `main` branch after launch and every four hours. When
 an update is available, it can fast-forward `~/.memo/app`, run `uv sync
 --locked` and `pnpm install --frozen-lockfile`, and restart. Updates stop when
 the managed checkout has local modifications so user work is never overwritten.
