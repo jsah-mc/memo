@@ -1,6 +1,6 @@
 [project]
 name = "memo"
-version = "3.2.0"
+version = "3.1.2"
 description = "An OpenAI-compatible agent gateway"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
