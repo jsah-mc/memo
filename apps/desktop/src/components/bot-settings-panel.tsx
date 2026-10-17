@@ -1,16 +1,43 @@
 import { BotIcon, TerminalSquareIcon } from "lucide-react";
 import { useAgents } from "@/agents/agent-provider";
-import { saveBotSettings, useBotSettings } from "@/agents/bot-settings";
+import { getBotSettings, saveBotSettings, useBotSettings } from "@/agents/bot-settings";
 import { Input } from "@/components/ui/input";
 
 export function BotSettingsPanel() {
-  const { activeAgent } = useAgents();
+  const { agents, activeAgent, selectAgent } = useAgents();
   const settings = useBotSettings(activeAgent.id, activeAgent.name);
+  const profiles = [activeAgent, ...agents].filter(
+    (agent, index, values) => values.findIndex((item) => item.id === agent.id) === index,
+  );
   const update = (changes: Partial<typeof settings>) =>
     saveBotSettings(activeAgent.id, { ...settings, ...changes });
 
   return (
     <section className="grid gap-4">
+      <div className="grid gap-2">
+        <span className="font-mono text-[10px] tracking-wider text-muted-foreground">
+          // BOTS
+        </span>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {profiles.map((agent) => {
+            const bot = getBotSettings(agent.id, agent.name);
+            return (
+              <button
+                key={agent.id}
+                type="button"
+                onClick={() => selectAgent(agent.id)}
+                className={`border p-2 text-left font-mono text-xs ${agent.id === activeAgent.id ? "border-primary bg-primary/10" : "border-border hover:bg-muted"}`}
+              >
+                <span className="block truncate text-foreground">{bot.name}</span>
+                <span className={bot.enabled ? "text-primary" : "text-muted-foreground"}>
+                  {bot.enabled ? "[enabled]" : "[disabled]"} /{bot.command}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="terminal-card flex items-start gap-3 border border-border p-4">
         <BotIcon className="mt-0.5 size-5 text-primary" />
         <div className="min-w-0 flex-1">
@@ -33,6 +60,20 @@ export function BotSettingsPanel() {
           </div>
         </div>
       </div>
+
+      <label className="grid gap-1.5 text-xs font-medium">
+        <span className="text-muted-foreground">Bot name</span>
+        <Input
+          aria-label="Bot name"
+          value={settings.name}
+          onChange={(event) => update({ name: event.target.value })}
+          placeholder="Builder"
+          className="font-mono"
+        />
+        <span className="font-mono text-[10px] text-muted-foreground">
+          CLI: /bot &quot;{settings.name || "name"}&quot;
+        </span>
+      </label>
 
       <label className="grid gap-1.5 text-xs font-medium">
         <span className="flex items-center gap-2 text-muted-foreground">
@@ -68,7 +109,7 @@ export function BotSettingsPanel() {
 
       <p className="border-l-2 border-primary pl-3 font-mono text-xs text-muted-foreground">
         {settings.enabled
-          ? `ACTIVE /${settings.command || "bot"} · runs with ${activeAgent.cli} · ${activeAgent.model}`
+          ? `ACTIVE ${settings.name || "bot"} /${settings.command || "bot"} · runs with ${activeAgent.cli} · ${activeAgent.model}`
           : "INACTIVE · enable bot mode to add these instructions to each run"}
       </p>
     </section>

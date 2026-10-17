@@ -59,6 +59,9 @@ declare global {
           },
         ): Promise<AgentProfileData>;
       };
+      bots: {
+        save: (bot: { agentId: string; name: string; command: string; instructions: string; enabled: boolean }) => Promise<{ saved: true }>;
+      };
       onPermissionRequest(
         onRequest: (request: PermissionRequest) => void,
       ): () => void;

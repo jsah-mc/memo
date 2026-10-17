@@ -1,7 +1,7 @@
 {
   "name": "@memo/desktop",
   "productName": "Memo",
-  "version": "3.1.5",
+  "version": "3.1.6",
   "description": "A local-first desktop AI workbench with voice, tools, and configurable agents.",
   "main": ".vite/build/main.js",
   "private": true,

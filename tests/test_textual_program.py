@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 from typing import Any, cast
+from unittest.mock import patch
 
 from textual.widgets import Button, Input, Static
 
@@ -12,6 +13,7 @@ from utils.program.main import MemoApp, ShellPermissionScreen
 class FakeTextualSDK:
     def __init__(self) -> None:
         self.prompts: list[str] = []
+        self.system_prompt = "Default prompt"
 
     async def events(self, prompt: str):
         self.prompts.append(prompt)
@@ -99,6 +101,23 @@ class FakePermissionSDK(FakeTextualSDK):
 
 
 class TextualProgramTests(unittest.IsolatedAsyncioTestCase):
+    async def test_bot_command_switches_to_named_desktop_bot(self) -> None:
+        sdk = FakeTextualSDK()
+        app = MemoApp(cast(Any, sdk))
+        bots = [{"name": "Build Bot", "enabled": True, "instructions": "Ship carefully.", "command": "build"}]
+
+        with patch("utils.program.main.load_bots", return_value=bots):
+            async with app.run_test(size=(80, 24)) as pilot:
+                input_widget = app.query_one("#messageinput", Input)
+                input_widget.value = '/bot "Build Bot"'
+                await pilot.press("enter")
+                await pilot.pause()
+
+                self.assertEqual(app._active_bot_name, "Build Bot")
+                self.assertIn("Ship carefully.", sdk.system_prompt)
+                self.assertIn("Build Bot", str(app.query_one("#status", Static).content))
+                self.assertEqual(sdk.prompts, [])
+
     async def test_submit_streams_response_and_keeps_input_at_bottom(self) -> None:
         sdk = FakeTextualSDK()
         app = MemoApp(cast(Any, sdk))

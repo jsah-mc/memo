@@ -66,6 +66,10 @@ contextBridge.exposeInMainWorld("desktopApi", {
       },
     ) => ipcRenderer.invoke("agents:update", agentId, changes),
   },
+  bots: {
+    save: (bot: { agentId: string; name: string; command: string; instructions: string; enabled: boolean }) =>
+      ipcRenderer.invoke("bots:save", bot),
+  },
   onPermissionRequest: (onRequest: (request: unknown) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, request: unknown) =>
       onRequest(request);

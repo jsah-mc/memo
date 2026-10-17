@@ -13,6 +13,7 @@ from textual.widgets import Button, Input, Static
 from utils.tools.ai import ProgramAI
 
 from .permission_screen import ShellPermissionScreen
+from .bots import bot_prompt, find_bot, load_bots, parse_bot_command
 from .voice import VoiceModeIO
 from .voice_mode import VoiceModeMixin
 
@@ -39,6 +40,7 @@ class MemoApp(VoiceModeMixin, App):
         super().__init__()
         self._preload_voice = ai is None and voice is None
         self.ai = ai or ProgramAI()
+        self._active_bot_name: str | None = None
         self.voice = voice or VoiceModeIO()
         self._voice_mode_active = False
         self._voice_worker = None
@@ -106,11 +108,33 @@ class MemoApp(VoiceModeMixin, App):
         if prompt == "/quit":
             self.exit()
             return
+        if prompt.casefold() == "/bot" or prompt.casefold().startswith("/bot "):
+            input_widget.value = ""
+            self._switch_bot(prompt)
+            return
 
         input_widget.value = ""
         self._set_composer_busy(True, "Thinking…")
         response = await self._mount_turn(prompt)
         self.send_message(prompt, response)
+
+    def _switch_bot(self, command: str) -> None:
+        name = parse_bot_command(command)
+        bots = load_bots()
+        if name is None:
+            available = ", ".join(
+                f'"{bot["name"]}"' for bot in bots if bot.get("enabled") is True
+            ) or "none"
+            self._set_activity("error", f'Use /bot "name" · available: {available}')
+            return
+        bot = find_bot(name, bots)
+        if bot is None:
+            self._set_activity("error", f'Bot "{name}" was not found or is disabled')
+            return
+        self.ai.system_prompt = bot_prompt(bot)
+        self.ai.clear_history()
+        self._active_bot_name = str(bot["name"]).strip()
+        self._set_activity("done", f'Bot switched to "{self._active_bot_name}"')
 
     async def _mount_turn(self, prompt: str) -> Static:
         messages = self.query_one("#messages", VerticalScroll)

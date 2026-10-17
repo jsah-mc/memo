@@ -12,6 +12,7 @@ import { registerVirtualDesktop } from "./virtual-desktop";
 import { stopAllDesktopControlIndicators } from "./desktop-control-indicator";
 import { registerWorkspace } from "./workspace";
 import { registerSourceUpdater } from "./source-updater";
+import { registerBotStore } from "./bot-store";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -29,6 +30,7 @@ registerGatewayLifecycle();
 registerVirtualDesktop();
 registerWorkspace();
 registerSourceUpdater();
+registerBotStore();
 
 let tray: Tray | null = null;
 let quitting = false;
