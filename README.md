@@ -47,6 +47,10 @@ an update is available, it can fast-forward `~/.memo/app`, run `uv sync
 --locked` and `pnpm install --frozen-lockfile`, and restart. Updates stop when
 the managed checkout has local modifications so user work is never overwritten.
 
+Use **Settings → Updates** to check manually and install an update from the
+desktop app. From a terminal, use `memo update --check` to check without making
+changes or `memo update` to install the latest source and locked dependencies.
+
 Running either installer again performs the same safe update and dependency
 sync.
 

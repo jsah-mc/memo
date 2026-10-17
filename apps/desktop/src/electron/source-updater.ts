@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -50,7 +50,16 @@ export async function checkForSourceUpdate() {
   const root = sourceRoot();
   await run("git", ["fetch", "--quiet", "origin", "main"], root);
   const { stdout } = await run("git", ["rev-list", "--count", "HEAD..origin/main"], root);
-  return { available: Number.parseInt(stdout.trim(), 10) > 0 };
+  const currentVersion = JSON.parse(
+    readFileSync(path.join(root, "package.json"), "utf8"),
+  ).version as string;
+  const remote = await run("git", ["show", "origin/main:package.json"], root);
+  const latestVersion = (JSON.parse(remote.stdout) as { version: string }).version;
+  return {
+    available: Number.parseInt(stdout.trim(), 10) > 0,
+    currentVersion,
+    latestVersion,
+  };
 }
 
 export async function installSourceUpdate() {

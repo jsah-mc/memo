@@ -5,7 +5,11 @@ declare global {
     desktopApi: {
       platform: NodeJS.Platform;
       updates: {
-        check(): Promise<{ available: boolean }>;
+        check(): Promise<{
+          available: boolean;
+          currentVersion: string;
+          latestVersion: string;
+        }>;
         install(): Promise<void>;
       };
       windowControls: {

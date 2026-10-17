@@ -7,6 +7,7 @@ import {
   FolderKanbanIcon,
   GaugeIcon,
   KeyRoundIcon,
+  RefreshCwIcon,
   SettingsIcon,
 } from "lucide-react";
 import { AiAgentsPanel } from "@/components/ai-agents-panel";
@@ -17,6 +18,7 @@ import { SystemHealthPanel } from "@/components/system-health-panel";
 import { VirtualDesktopPanel } from "@/components/virtual-desktop-panel";
 import { ResourceSettingsPanel } from "@/components/resource-settings-panel";
 import { WorkspaceSettingsPanel } from "@/components/workspace-settings-panel";
+import { UpdatePanel } from "@/components/update-panel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -29,10 +31,11 @@ import {
 
 export function SettingsDialog() {
   const [section, setSection] = useState<
-    "general" | "resources" | "workspace" | "computer" | "vps" | "agents" | "bots" | "keys" | "apps"
+    "general" | "updates" | "resources" | "workspace" | "computer" | "vps" | "agents" | "bots" | "keys" | "apps"
   >("general");
   const sections = [
     { id: "general" as const, label: "General", icon: SettingsIcon },
+    { id: "updates" as const, label: "Updates", icon: RefreshCwIcon },
     { id: "resources" as const, label: "Resources", icon: GaugeIcon },
     { id: "workspace" as const, label: "Project workspace", icon: FolderKanbanIcon },
     { id: "computer" as const, label: "Local VM", icon: PackageIcon },
@@ -82,6 +85,7 @@ export function SettingsDialog() {
               </DialogTitle>
               <DialogDescription>
                 {section === "general" && "Gateway and provider readiness."}
+                {section === "updates" && "Check for and install Memo updates."}
                 {section === "computer" &&
                   "Configure the shared Local VM used by agents."}
                 {section === "vps" &&
@@ -97,6 +101,7 @@ export function SettingsDialog() {
               </DialogDescription>
             </DialogHeader>
             {section === "general" && <SystemHealthPanel />}
+            {section === "updates" && <UpdatePanel />}
             {section === "resources" && <ResourceSettingsPanel />}
             {section === "workspace" && <WorkspaceSettingsPanel />}
             {section === "computer" && <VirtualDesktopPanel />}
