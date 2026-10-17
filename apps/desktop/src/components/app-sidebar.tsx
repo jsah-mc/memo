@@ -11,13 +11,16 @@ import { SettingsDialog } from "@/components/settings-dialog";
 
 export function AppSidebar() {
   const [search, setSearch] = useState("");
+  const isMac = window.desktopApi.platform === "darwin";
 
   return (
     <Sidebar
       collapsible="none"
       className="liquid-panel drag fixed inset-y-0 left-0 z-[60] [&_a]:no-drag [&_button]:no-drag [&_input]:no-drag [&_textarea]:no-drag"
     >
-      <SidebarHeader className="gap-3 px-3 pt-4 pb-2">
+      <SidebarHeader
+        className={`gap-3 px-3 pb-2 ${isMac ? "pt-12" : "pt-4"}`}
+      >
         <div className="flex items-center gap-2 px-1 text-sm font-semibold tracking-tight">
           <MonitorIcon className="size-3.5 text-muted-foreground" />
           This computer
