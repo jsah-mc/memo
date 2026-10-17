@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
-import { UpdateController } from "@/components/app-updates";
 import { AgentDesktopPanel } from "@/agents/agent-desktop-panel";
 import Titlebar from "@/components/titlebar";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -15,9 +14,6 @@ import { GatewayStartup } from "@/components/gateway-startup";
 import { WorkspaceShortcuts } from "@/components/workspace-shortcuts";
 import { TaskActivitySidebar } from "@/agents/task-activity-sidebar";
 import "./index.css";
-import { installTauriDesktopApi } from "./tauri/desktop-api";
-
-installTauriDesktopApi();
 
 function WorkspaceShell() {
   const { activeAgent } = useAgents();
@@ -43,7 +39,7 @@ function WorkspaceShell() {
         <App />
       </div>
       {rightPanel === "desktop" && <AgentDesktopPanel agent={activeAgent} />}
-      {rightPanel === "models" && <ModelSidebar onClose={() => setRightPanel(null)} />}
+      {rightPanel === "models" && <ModelSidebar />}
       {rightPanel === "activity" && <TaskActivitySidebar />}
     </SidebarProvider>
   );
@@ -59,7 +55,6 @@ document.documentElement.classList.add("dark");
 
 createRoot(rootElement).render(
   <React.StrictMode>
-    <UpdateController />
     <GatewayStartup>
       <AgentProvider>
         <ThreadModelProvider>

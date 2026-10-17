@@ -17,13 +17,8 @@ import {
   threadModelKey,
   useThreadModels,
 } from "@/agents/thread-model-provider";
-import {
-  CLI_OPTIONS,
-  customModels,
-  rememberCustomModel,
-} from "@/agents/cli-options";
+import { CLI_OPTIONS, modelOptions } from "@/agents/cli-options";
 import { ThreadListItems, ThreadListNew } from "@/components/thread-list";
-import { RuntimeIcon } from "@/agents/runtime-icon";
 
 export function LegacyModelPicker() {
   const { activeAgent, updateAgentModel } = useAgents();
@@ -31,10 +26,6 @@ export function LegacyModelPicker() {
   const [search, setSearch] = useState("");
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState("");
-  const [runtimeBackends, setRuntimeBackends] = useState<AgentBackendData[]>([]);
-  const [rememberedModels, setRememberedModels] = useState<string[]>(() =>
-    customModels(activeAgent.cli),
-  );
   const rootRef = useRef<HTMLDivElement>(null);
   const selectedModel = activeAgent.model;
   const provider =
@@ -42,47 +33,11 @@ export function LegacyModelPicker() {
     activeAgent.cli;
   const models = useMemo(
     () =>
-      Array.from(
-        new Set([
-          selectedModel,
-          ...(runtimeBackends.find((backend) => backend.id === activeAgent.cli)
-            ?.models ?? []),
-          ...rememberedModels,
-        ]),
-      ).filter((model) =>
-          model.toLowerCase().includes(search.trim().toLowerCase()),
-        ),
-    [activeAgent.cli, rememberedModels, runtimeBackends, search, selectedModel],
+      modelOptions(activeAgent.cli, selectedModel).filter((model) =>
+        model.toLowerCase().includes(search.trim().toLowerCase()),
+      ),
+    [activeAgent.cli, search, selectedModel],
   );
-  const customModel = search.trim();
-  const canAddCustomModel =
-    customModel.length > 0 &&
-    !models.some((model) => model.toLowerCase() === customModel.toLowerCase());
-
-  useEffect(() => {
-    setRememberedModels(customModels(activeAgent.cli));
-  }, [activeAgent.cli]);
-
-  useEffect(() => {
-    let current = true;
-    void window.desktopApi.agents
-      .backends()
-      .then((backends) => {
-        if (current) setRuntimeBackends(backends);
-      })
-      .catch((reason: unknown) => {
-        if (current) {
-          setError(
-            reason instanceof Error
-              ? reason.message
-              : "Could not load models from the CLI.",
-          );
-        }
-      });
-    return () => {
-      current = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -98,7 +53,6 @@ export function LegacyModelPicker() {
     setError("");
     try {
       await updateAgentModel(activeAgent.id, model);
-      setRememberedModels(rememberCustomModel(activeAgent.cli, model));
       setOpen(false);
       setSearch("");
     } catch (reason) {
@@ -153,16 +107,6 @@ export function LegacyModelPicker() {
             Available models
           </p>
           <div className="grid max-h-64 gap-1 overflow-y-auto">
-            {canAddCustomModel && (
-              <button
-                type="button"
-                disabled={updating}
-                onClick={() => void selectModel(customModel)}
-                className="rounded-lg border border-dashed border-border px-3 py-2.5 text-left text-sm hover:bg-muted disabled:opacity-60"
-              >
-                Use custom model “{customModel}”
-              </button>
-            )}
             {models.map((model) => (
               <button
                 key={model}
@@ -200,8 +144,6 @@ function ModelSidebarButton({
   const key = threadModelKey(activeAgent.id, threadId);
   const saved = selections[key];
   const model = saved?.model ?? activeAgent.model;
-  const runtime = saved?.cli ?? activeAgent.cli;
-  const turnRunning = useAuiState((state) => state.thread.isRunning);
   useEffect(() => {
     setActiveThreadId(threadId);
     if (threadId && !saved) {
@@ -211,15 +153,11 @@ function ModelSidebarButton({
   return (
     <button
       type="button"
-      data-model-menu-trigger="true"
-      disabled={turnRunning}
-      title={turnRunning ? "Models cannot be changed while a turn is running" : undefined}
-      className={`flex h-9 w-44 items-center gap-2 rounded-full border px-3 text-xs shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-55 ${open ? "border-primary bg-primary/10" : "border-border/60 bg-card/65 hover:bg-card"}`}
-      aria-label={turnRunning ? "Model selection locked while turn is running" : open ? "Close model menu" : "Open model menu"}
+      className={`flex h-9 w-44 items-center gap-2 rounded-full border px-3 text-xs shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 ${open ? "border-primary bg-primary/10" : "border-border/60 bg-card/65 hover:bg-card"}`}
+      aria-label={open ? "Close model sidebar" : "Open model sidebar"}
       aria-pressed={open}
       onClick={onToggle}
     >
-      <RuntimeIcon runtime={runtime} className="size-6 rounded-md" />
       <span className="min-w-0 flex-1 truncate text-left">{model}</span>
       <ChevronDownIcon
         className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
@@ -392,7 +330,7 @@ export default function Titlebar({
           </button>
           <button
             className="flex w-12 items-center justify-center hover:bg-red-600"
-            aria-label="Hide Memo to tray"
+            aria-label="Close"
             onClick={() => window.desktopApi.windowControls.close()}
           >
             <XIcon className="size-4" />

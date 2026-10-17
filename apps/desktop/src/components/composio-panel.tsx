@@ -212,7 +212,7 @@ export function ComposioPanel() {
         </div>
         {!configured && !loading && (
           <p className="text-xs text-muted-foreground">
-            Memo's app-connection service is currently unavailable.
+            Add a Composio API key in Settings → API keys to connect apps.
           </p>
         )}
         {pollUntil > 0 && (

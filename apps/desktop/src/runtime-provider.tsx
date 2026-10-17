@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useMemo, useRef, type ReactNode } from "react";
 import {
   AssistantRuntimeProvider,
   type AttachmentAdapter,
@@ -12,7 +12,6 @@ import {
   useLocalRuntime,
   useRemoteThreadListRuntime,
 } from "@assistant-ui/react";
-import { useAui, useAuiState } from "@assistant-ui/store";
 import type { ReadonlyJSONObject } from "assistant-stream/utils";
 import {
   createLocalStorageAdapter,
@@ -20,7 +19,6 @@ import {
 } from "@assistant-ui/core/react";
 import { gatewaySpeechAdapter } from "@/lib/gateway-speech-adapter";
 import { nativeSpeechDictationAdapter } from "@/lib/native-speech-dictation";
-import { getPermissionMode } from "@/lib/permission-mode";
 import { agentSystemPrompt } from "@/agents/agent-personality";
 import { useAgents } from "@/agents/agent-provider";
 import type { AgentProfile } from "@/agents/agent-provider";
@@ -110,38 +108,6 @@ const threadListAdapter = createLocalStorageAdapter({
   titleGenerator: createSimpleTitleAdapter(),
 });
 
-const ACTIVE_THREAD_KEY = "memoactive-thread";
-
-function ActiveThreadPersistence(): null {
-  const aui = useAui();
-  const restored = useRef(false);
-  const mainThreadId = useAuiState((state) => state.threads.mainThreadId);
-  const threadIds = useAuiState((state) => state.threads.threadIds);
-  const isLoading = useAuiState((state) => state.threads.isLoading);
-
-  useEffect(() => {
-    if (isLoading || restored.current) return;
-    restored.current = true;
-    void window.desktopApi.chatHistory
-      .getItem(ACTIVE_THREAD_KEY)
-      .then((threadId) => {
-        if (threadId && threadIds.includes(threadId)) {
-          aui.threads().switchToThread(threadId);
-        }
-      })
-      .catch((): undefined => undefined);
-  }, [aui, isLoading, threadIds]);
-
-  useEffect(() => {
-    if (!restored.current || !threadIds.includes(mainThreadId)) return;
-    void window.desktopApi.chatHistory
-      .setItem(ACTIVE_THREAD_KEY, mainThreadId)
-      .catch((): undefined => undefined);
-  }, [mainThreadId, threadIds]);
-
-  return null;
-}
-
 type DesktopContentPart =
   | { type: "text"; text: string }
   | { type: "image_url"; image_url: { url: string } }
@@ -177,21 +143,9 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
     setAgentActivity(agent.id, "loading");
     const requestId = crypto.randomUUID();
     const activity = useTaskActivity.getState();
-    const lastUserMessage = [...messages]
-      .reverse()
-      .find((message) => message.role === "user");
-    const titlePart = lastUserMessage?.content.find(
-      (part) => part.type === "text",
-    );
-    activity.start({
-      id: requestId,
-      agentId: agent.id,
-      title:
-        titlePart?.type === "text" ? titlePart.text.slice(0, 80) : "Agent task",
-      status: "running",
-      startedAt: Date.now(),
-      tools: [],
-    });
+    const lastUserMessage = [...messages].reverse().find((message) => message.role === "user");
+    const titlePart = lastUserMessage?.content.find((part) => part.type === "text");
+    activity.start({ id: requestId, agentId: agent.id, title: titlePart?.type === "text" ? titlePart.text.slice(0, 80) : "Agent task", status: "running", startedAt: Date.now(), tools: [] });
     const request = {
       id: requestId,
       agent: {
@@ -202,7 +156,6 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
         composioToolkits: agent.composioToolkits,
         computerTarget: agent.computerTarget,
       },
-      permissionMode: getPermissionMode(),
       messages: [
         { role: "system" as const, content: agentSystemPrompt(agent) },
         ...messages
@@ -303,15 +256,7 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
               : {}),
           };
           const index = toolPartIndexes.get(toolCall.id);
-          activity.tool(requestId, {
-            id: toolCall.id,
-            name: toolCall.name,
-            status: toolCall.isError
-              ? "error"
-              : "result" in toolCall
-                ? "done"
-                : "running",
-          });
+          activity.tool(requestId, { id: toolCall.id, name: toolCall.name, status: toolCall.isError ? "error" : "result" in toolCall ? "done" : "running" });
           if (index === undefined) {
             toolPartIndexes.set(toolCall.id, content.length);
             content.push(part);
@@ -337,11 +282,7 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
       activity.finish(requestId, abortSignal.aborted ? "cancelled" : "done");
     } catch (error) {
       setAgentActivity(agent.id, abortSignal.aborted ? "idle" : "error");
-      activity.finish(
-        requestId,
-        abortSignal.aborted ? "cancelled" : "error",
-        error instanceof Error ? error.message : String(error),
-      );
+      activity.finish(requestId, abortSignal.aborted ? "cancelled" : "error", error instanceof Error ? error.message : String(error));
       throw error;
     } finally {
       streamClosed = true;
@@ -385,7 +326,6 @@ export function RuntimeProvider({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <ActiveThreadPersistence />
       {children}
     </AssistantRuntimeProvider>
   );
