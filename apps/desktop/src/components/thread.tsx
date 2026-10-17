@@ -24,6 +24,7 @@ import {
 import { TooltipIconButton } from "@/components/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { ComposerVoiceButton } from "@/components/voice";
+import { AsciiAgent } from "@/components/ascii-agent";
 import { cn } from "@/lib/utils";
 import {
   ActionBarMorePrimitive,
@@ -227,11 +228,12 @@ function fillComposer(prompt: string) {
 const ThreadWelcome: FC = () => {
   return (
     <section className="memo-welcome mx-auto mb-6 flex w-full max-w-xl flex-col items-center text-center">
-      <h1 className="text-balance text-2xl font-semibold tracking-tight text-foreground">
-        How can I help?
+      <AsciiAgent />
+      <h1 className="mt-4 text-balance font-mono text-lg font-semibold tracking-wide text-foreground">
+        // READY FOR INPUT
       </h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Ask a question, attach a file, or start with an idea.
+      <p className="mt-2 font-mono text-xs text-muted-foreground">
+        $ ask a question, attach a file, or select a task
       </p>
       <div className="memo-starters mt-5 flex w-full flex-wrap justify-center gap-2">
         {STARTERS.map((starter) => (
@@ -241,7 +243,7 @@ const ThreadWelcome: FC = () => {
             className="memo-starter rounded-full border border-border/70 bg-card/35 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/30"
             onClick={() => fillComposer(starter.prompt)}
           >
-            {starter.title}
+            &gt; {starter.title}
           </button>
         ))}
       </div>
@@ -293,7 +295,7 @@ const Composer: FC = () => {
         <div className="flex items-end gap-1">
           <ComposerAddAttachment />
           <ComposerPrimitive.Input
-            placeholder="Send a message..."
+            placeholder="$ type a command or message..."
             className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 min-h-8 min-w-0 flex-1 resize-none bg-transparent px-2 py-1 text-base outline-none"
             rows={1}
             autoFocus

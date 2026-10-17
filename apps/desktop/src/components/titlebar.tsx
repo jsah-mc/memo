@@ -158,7 +158,7 @@ function ModelSidebarButton({
       aria-pressed={open}
       onClick={onToggle}
     >
-      <span className="min-w-0 flex-1 truncate text-left">{model}</span>
+      <span className="min-w-0 flex-1 truncate text-left">model://{model}</span>
       <ChevronDownIcon
         className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
       />
@@ -191,7 +191,7 @@ function AgentThreadPicker({ online }: Readonly<{ online: boolean }>) {
       >
         <AgentActivityFace
           agentId={activeAgent.id}
-          className="flex size-7 shrink-0 items-center justify-center font-mono text-xs font-bold text-primary"
+          className="flex w-11 shrink-0 items-center justify-center font-mono text-[9px] font-bold text-primary"
         />
         <span className="min-w-0 flex-1 truncate text-left text-xs font-semibold">
           {activeAgent.name}
@@ -218,7 +218,7 @@ function AgentThreadPicker({ online }: Readonly<{ online: boolean }>) {
                   onClick={() => selectAgent(agent.id)}
                   className={`flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs ${agent.id === activeAgent.id ? "bg-accent text-accent-foreground" : "hover:bg-muted"}`}
                 >
-                  <AgentActivityFace agentId={agent.id} className="flex size-6 shrink-0 items-center justify-center font-mono text-[10px] font-bold text-primary" />
+                  <AgentActivityFace agentId={agent.id} className="flex w-10 shrink-0 items-center justify-center font-mono text-[8px] font-bold text-primary" />
                   <span className="truncate">{agent.name}</span>
                 </button>
               ))}

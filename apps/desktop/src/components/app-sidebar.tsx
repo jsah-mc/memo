@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MonitorIcon, SearchIcon } from "lucide-react";
+import { SearchIcon } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -21,16 +21,15 @@ export function AppSidebar() {
       <SidebarHeader
         className={`gap-3 px-3 pb-2 ${isMac ? "pt-12" : "pt-4"}`}
       >
-        <div className="flex items-center gap-2 px-1 text-sm font-semibold tracking-tight">
-          <MonitorIcon className="size-3.5 text-muted-foreground" />
-          This computer
+        <div className="flex items-center gap-2 px-1 font-mono text-xs font-semibold tracking-wider text-primary">
+          // LOCAL_HOST
         </div>
         <label className="no-drag flex h-9 items-center gap-2 rounded-lg border border-sidebar-border bg-background/35 px-3 text-muted-foreground focus-within:border-primary/45">
           <SearchIcon className="size-3.5 shrink-0" />
           <input
             type="search"
             aria-label="Search agents"
-            placeholder="Search"
+            placeholder="grep agents..."
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"

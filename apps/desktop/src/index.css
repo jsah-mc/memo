@@ -357,9 +357,9 @@
   --sidebar-accent-foreground: oklch(0.2235 0.0049 145.4099);
   --sidebar-border: oklch(0.9247 0.0103 145.4919);
   --sidebar-ring: oklch(0.4731 0.045 149.2237);
-  --font-sans: Inter, system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
-  --radius: 0.6rem;
+  --font-sans: "Cascadia Code", "SFMono-Regular", Menlo, Consolas, monospace;
+  --font-mono: "Cascadia Code", "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius: 0.2rem;
   --tracking-normal: -0.01em;
   --shadow-2xs: 0 4px 10px 0 hsl(0 0% 0% / 0.03);
   --shadow-xs: 0 4px 10px 0 hsl(0 0% 0% / 0.03);
@@ -464,6 +464,41 @@
 }
 
 @layer components {
+  .ascii-agent {
+    color: var(--primary);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.15;
+    text-align: left;
+  }
+
+  .ascii-agent-label {
+    margin-bottom: 0.35rem;
+    color: var(--muted-foreground);
+    font-size: 0.625rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .ascii-agent pre {
+    margin: 0;
+    font: inherit;
+    text-shadow: 0 0 12px color-mix(in oklab, var(--primary) 35%, transparent);
+  }
+
+  .ascii-agent-status {
+    margin-top: 0.35rem;
+    font-size: 0.625rem;
+  }
+
+  .terminal-cursor {
+    animation: terminal-cursor 900ms steps(1, end) infinite;
+  }
+
+  @keyframes terminal-cursor {
+    50% { opacity: 0; }
+  }
+
   .terminal-card {
     background:
       linear-gradient(90deg, rgb(100 217 139 / 4%) 1px, transparent 1px),
@@ -599,7 +634,13 @@
 
   .aui-thread-welcome-suggestion {
     min-height: 2.5rem;
-    border-radius: 999px;
+    border-radius: 0.2rem;
+  }
+
+  .memo-starter,
+  [data-slot="aui_composer-shell"],
+  .agent-title-pill {
+    border-radius: 0.2rem !important;
   }
 
   [data-slot="aui_user-message-root"] > div:first-child {

@@ -51,7 +51,7 @@ export function AgentSidebarSection({
   return (
     <SidebarGroup className="shrink-0 px-2.5 pt-3 pb-2">
       <SidebarGroupLabel className="text-xs font-medium">
-        Agents
+        // AGENTS
       </SidebarGroupLabel>
       <SidebarGroupContent>
         <div className="mb-1">
@@ -69,7 +69,7 @@ export function AgentSidebarSection({
               >
                 <AgentActivityFace
                   agentId={agent.id}
-                  className="flex size-8 shrink-0 items-center justify-center font-mono text-xs font-bold text-primary"
+                  className="flex w-11 shrink-0 items-center justify-center font-mono text-[9px] font-bold text-primary"
                 />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center truncate text-sm font-medium">
