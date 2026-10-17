@@ -12,15 +12,21 @@ import path from "node:path";
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    appBundleId: "com.jsah.memo",
+    appCategoryType: "public.app-category.developer-tools",
     executableName: "Memo",
     icon: path.resolve(__dirname, "assets", "memo-icon"),
     extraResource: [path.resolve(__dirname, "assets")],
+    extendInfo: {
+      NSMicrophoneUsageDescription: "Memo uses the microphone for voice conversations.",
+      NSSpeechRecognitionUsageDescription: "Memo uses speech recognition for voice conversations.",
+    },
   },
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({ name: "Memo" }),
     new MakerZIP({}, ["darwin", "linux"]),
-    new MakerDMG({ format: "ULFO" }),
+    new MakerDMG({ format: "ULFO", icon: path.resolve(__dirname, "assets", "memo-icon.icns") }),
     new MakerRpm({ options: { name: "memo", bin: "Memo" } }),
     new MakerDeb({ options: { name: "memo", bin: "Memo" } }),
   ],

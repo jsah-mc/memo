@@ -40,6 +40,11 @@ const getAppIconPath = () =>
     ? path.join(process.resourcesPath, "assets", "memo-icon.png")
     : path.join(app.getAppPath(), "assets", "memo-icon.png");
 
+const getTrayIconPath = () =>
+  app.isPackaged
+    ? path.join(process.resourcesPath, "assets", "memo-trayTemplate.png")
+    : path.join(app.getAppPath(), "assets", "memo-trayTemplate.png");
+
 ipcMain.on("window:minimize", (event) =>
   BrowserWindow.fromWebContents(event.sender)?.minimize(),
 );
@@ -143,9 +148,15 @@ app.on("ready", () => {
   void ensureGatewayRunning().catch((error: unknown) => {
     console.error("Memo gateway startup failed:", error);
   });
+  if (process.platform === "darwin") app.dock.setIcon(getAppIconPath());
   createWindow();
-  const trayIcon = nativeImage.createFromPath(getAppIconPath());
-  tray = new Tray(trayIcon.resize({ width: 20, height: 20 }));
+  const trayIcon = nativeImage.createFromPath(
+    process.platform === "darwin" ? getTrayIconPath() : getAppIconPath(),
+  );
+  if (process.platform === "darwin") trayIcon.setTemplateImage(true);
+  tray = new Tray(
+    process.platform === "darwin" ? trayIcon : trayIcon.resize({ width: 20, height: 20 }),
+  );
   tray.setToolTip("Memo — running in the background");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open Memo", click: showMainWindow },

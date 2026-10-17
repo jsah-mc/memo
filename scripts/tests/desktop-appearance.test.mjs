@@ -32,5 +32,10 @@ test("desktop packages and uses the supplied Memo icon", () => {
   }
   assert.match(forge, /memo-icon/);
   assert.match(forge, /extraResource/);
-  assert.match(electron, /nativeImage\.createFromPath\(getAppIconPath\(\)\)/);
+  assert.match(forge, /appBundleId: "com\.jsah\.memo"/);
+  assert.ok(existsSync("apps/desktop/assets/memo-trayTemplate.png"));
+  assert.ok(existsSync("apps/desktop/assets/memo-trayTemplate@2x.png"));
+  assert.match(electron, /getTrayIconPath/);
+  assert.match(electron, /setTemplateImage\(true\)/);
+  assert.match(electron, /app\.dock\.setIcon\(getAppIconPath\(\)\)/);
 });

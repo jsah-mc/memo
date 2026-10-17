@@ -46,3 +46,7 @@ jobs:
         working-directory: apps/desktop
       - run: npx --no-install vite build
         working-directory: apps/desktop
+      - name: Package the macOS application bundle
+        if: matrix.os == 'macos-latest'
+        run: npm run package
+        working-directory: apps/desktop

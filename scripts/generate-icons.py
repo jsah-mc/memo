@@ -13,3 +13,9 @@ master.save(
     format="ICO",
     sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
 )
+
+for size, suffix in ((18, ""), (36, "@2x")):
+    glyph = source.resize((size, size), Image.Resampling.LANCZOS).convert("L")
+    template = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    template.putalpha(glyph)
+    template.save(assets / f"memo-trayTemplate{suffix}.png")
