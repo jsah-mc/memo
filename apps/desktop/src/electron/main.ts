@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, shell } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, session, shell, Tray } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
 import { registerChatApi } from "./chat-api";
@@ -11,6 +11,7 @@ import {
 import { registerVirtualDesktop } from "./virtual-desktop";
 import { stopAllDesktopControlIndicators } from "./desktop-control-indicator";
 import { registerWorkspace } from "./workspace";
+import { registerSourceUpdater } from "./source-updater";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -27,6 +28,10 @@ registerChatHistory();
 registerGatewayLifecycle();
 registerVirtualDesktop();
 registerWorkspace();
+registerSourceUpdater();
+
+let tray: Tray | null = null;
+let quitting = false;
 
 ipcMain.on("window:minimize", (event) =>
   BrowserWindow.fromWebContents(event.sender)?.minimize(),
@@ -38,7 +43,7 @@ ipcMain.on("window:toggle-maximize", (event) => {
   else win.maximize();
 });
 ipcMain.on("window:close", (event) =>
-  BrowserWindow.fromWebContents(event.sender)?.close(),
+  BrowserWindow.fromWebContents(event.sender)?.hide(),
 );
 
 const createWindow = () => {
@@ -60,6 +65,11 @@ const createWindow = () => {
   });
 
   win.once("ready-to-show", () => win.show());
+  win.on("close", (event) => {
+    if (quitting) return;
+    event.preventDefault();
+    win.hide();
+  });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("https://")) void shell.openExternal(url);
@@ -126,18 +136,28 @@ app.on("ready", () => {
     console.error("Memo gateway startup failed:", error);
   });
   createWindow();
+  const trayIcon = nativeImage.createFromDataURL(
+    "data:image/svg+xml;base64," + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="2" y="2" width="60" height="60" rx="18" fill="#17130f"/><path d="M14 47V17h9l9 12 9-12h9v30H40V32l-8 10-8-10v15z" fill="#d48a2c"/></svg>').toString("base64"),
+  );
+  tray = new Tray(trayIcon.resize({ width: 20, height: 20 }));
+  tray.setToolTip("Memo — running in the background");
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Open Memo", click: showMainWindow },
+    { type: "separator" },
+    { label: "Quit Memo", click: () => { quitting = true; app.quit(); } },
+  ]));
+  tray.on("click", showMainWindow);
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+  // Memo stays available in the tray until Quit Memo is selected.
 });
 
 app.on("before-quit", () => {
+  quitting = true;
   stopAllDesktopControlIndicators();
   stopManagedGateway();
   closeChatHistory();

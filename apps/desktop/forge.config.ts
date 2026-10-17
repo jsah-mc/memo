@@ -1,6 +1,3 @@
-import path from "node:path";
-import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { MakerDMG } from "@electron-forge/maker-dmg";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
@@ -15,56 +12,6 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     executableName: "Memo",
-    extraResource: [
-      path.resolve(__dirname, "../../.gateway-build/gateway"),
-      path.resolve(__dirname, "../../deploy/cua-desktop"),
-      ...(process.platform === "win32"
-        ? [path.resolve(__dirname, "../../.sandbox-build/MemoSandbox.exe")]
-        : []),
-    ],
-  },
-  hooks: {
-    prePackage: async () => {
-      if (process.platform === "win32") {
-        execFileSync(
-          "powershell.exe",
-          [
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            path.resolve(
-              __dirname,
-              "../../scripts/build_windows_sandbox.ps1",
-            ),
-          ],
-          { stdio: "inherit" },
-        );
-      }
-      if (
-        !existsSync(
-          path.resolve(__dirname, "../../.gateway-build/gateway/manifest.json"),
-        )
-      ) {
-        throw new Error(
-          "Build the bundled gateway first: python scripts/build_gateway.py",
-        );
-      }
-    },
-    postPackage: async (_config, { outputPaths, platform }) => {
-      if (platform !== "darwin") return;
-      for (const output of outputPaths) {
-        const bundle = path.join(output, "Memo.app");
-        // Clearing extended attributes is cleanup, not code signing.
-        execFileSync("xattr", ["-cr", bundle]);
-        execFileSync("codesign", ["--force", "--deep", "--sign", "-", bundle], {
-          stdio: "inherit",
-        });
-        execFileSync("codesign", ["--verify", "--deep", "--strict", bundle], {
-          stdio: "inherit",
-        });
-      }
-    },
   },
   rebuildConfig: {},
   makers: [

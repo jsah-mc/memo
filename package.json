@@ -1,16 +1,16 @@
 {
   "name": "memo",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "private": true,
-  "packageManager": "pnpm@11.15.1",
+  "packageManager": "pnpm@11.20.0",
   "scripts": {
-    "dev": "pnpm --filter @memo/desktop tauri:dev",
-    "dev:desktop": "pnpm --filter @memo/desktop tauri:dev",
+    "dev": "pnpm --filter @memo/desktop start",
+    "dev:desktop": "pnpm --filter @memo/desktop start",
     "dev:vite": "pnpm --filter @memo/desktop start:vite",
     "dev:gateway": "uv run memo-legacy gateway",
-    "build": "pnpm --filter @memo/desktop tauri:build",
-    "package": "pnpm --filter @memo/desktop tauri:build",
-    "make": "pnpm --filter @memo/desktop tauri:build",
+    "build": "pnpm --filter @memo/desktop package",
+    "package": "pnpm --filter @memo/desktop package",
+    "make": "pnpm --filter @memo/desktop make",
     "lint": "pnpm --filter @memo/desktop lint",
     "typecheck": "pnpm --filter @memo/desktop typecheck",
     "version:sync": "node scripts/sync-version.mjs"

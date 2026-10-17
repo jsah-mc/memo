@@ -10,12 +10,12 @@ from utils.gateway.settings import GatewaySettings
 
 
 class HealthTests(unittest.TestCase):
-    def test_tauri_renderer_can_reach_gateway(self) -> None:
+    def test_electron_renderer_can_reach_gateway(self) -> None:
         with TestClient(create_app(GatewaySettings())) as client:
             response = client.options(
                 "/v1/agents",
                 headers={
-                    "Origin": "http://tauri.localhost",
+                    "Origin": "http://localhost:5173",
                     "Access-Control-Request-Method": "GET",
                     "Access-Control-Request-Headers": "x-memo-desktop",
                 },
@@ -24,7 +24,7 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.headers["access-control-allow-origin"],
-            "http://tauri.localhost",
+            "http://localhost:5173",
         )
         self.assertIn(
             "x-memo-desktop",

@@ -10,11 +10,7 @@ const pythonVersion = pyproject.match(/^version = "([^"]+)"/m)?.[1];
 test("package versions stay synchronized", () => {
   assert.equal(root.version, desktop.version);
   assert.equal(pythonVersion, desktop.version);
-  const tauri = JSON.parse(readFileSync("apps/desktop/src-tauri/tauri.conf.json", "utf8"));
-  assert.equal(tauri.version, desktop.version);
-  const cargo = readFileSync("apps/desktop/src-tauri/Cargo.toml", "utf8");
-  assert.equal(cargo.match(/^version = "([^"]+)"/m)?.[1], desktop.version);
-  for (const [file, name] of [["uv.lock", "memo"], ["apps/desktop/src-tauri/Cargo.lock", "memo-desktop"]]) {
+  for (const [file, name] of [["uv.lock", "memo"]]) {
     const contents = readFileSync(file, "utf8");
     const pattern = new RegExp(`\\[\\[package\\]\\]\\r?\\nname = "${name}"\\r?\\nversion = "([^"]+)"`);
     assert.equal(contents.match(pattern)?.[1], desktop.version, file);

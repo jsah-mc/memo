@@ -2,6 +2,10 @@ import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("desktopApi", {
   platform: process.platform,
+  updates: {
+    check: () => ipcRenderer.invoke("update:check"),
+    install: () => ipcRenderer.invoke("update:install"),
+  },
   windowControls: {
     minimize: () => ipcRenderer.send("window:minimize"),
     toggleMaximize: () => ipcRenderer.send("window:toggle-maximize"),

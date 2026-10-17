@@ -9,7 +9,6 @@ import {
   getResourceMode,
   getWorkspacePath,
 } from "./settings-store";
-import { bundledGatewayLaunch } from "./gateway-runtime";
 
 const DESKTOP_GATEWAY_PORT = process.env.MEMO_DESKTOP_GATEWAY_PORT ?? "4010";
 export const GATEWAY_BASE_URL = `http://127.0.0.1:${DESKTOP_GATEWAY_PORT}`;
@@ -206,16 +205,8 @@ async function startGateway() {
 
   let launch: { command: string; args: string[]; cwd: string };
   try {
-    if (app.isPackaged && !process.env.MEMO_GATEWAY_ROOT) {
-      launch = bundledGatewayLaunch(
-        process.resourcesPath,
-        app.getPath("userData"),
-        process.platform,
-      );
-    } else {
-      const root = findMemoRoot();
-      launch = { ...gatewayCommand(root), cwd: root };
-    }
+    const root = findMemoRoot();
+    launch = { ...gatewayCommand(root), cwd: root };
   } catch (error) {
     status = {
       state: "error",
@@ -235,33 +226,15 @@ async function startGateway() {
       GATEWAY_PORT: DESKTOP_GATEWAY_PORT,
       MEMO_SANDBOX_ROOT:
         getWorkspacePath() || path.join(app.getPath("userData"), "workspace"),
-      ...(app.isPackaged
-        ? {
-            PYTHONHOME: "",
-            PYTHONPATH: "",
-            LD_LIBRARY_PATH: path.join(
-              process.resourcesPath,
-              "gateway",
-              "runtime",
-              "lib",
-            ),
-            DYLD_FALLBACK_LIBRARY_PATH: path.join(
-              process.resourcesPath,
-              "gateway",
-              "runtime",
-              "lib",
-            ),
-            MEMO_WHISPER_DEVICE: "cpu",
-            MEMO_POCKETTTS_DEVICE: "cpu",
-          }
-        : {}),
       MEMO_COMPUTER_ENABLED: "1",
       ...(process.platform === "win32"
         ? {
             MEMO_WINDOWS_PROCESS_SANDBOX: "required",
-            MEMO_WINDOWS_SANDBOX_RUNNER: app.isPackaged
-              ? path.join(process.resourcesPath, "MemoSandbox.exe")
-              : path.join(findMemoRoot(), ".sandbox-build", "MemoSandbox.exe"),
+            MEMO_WINDOWS_SANDBOX_RUNNER: path.join(
+              findMemoRoot(),
+              ".sandbox-build",
+              "MemoSandbox.exe",
+            ),
           }
         : {}),
       // Loading both local speech models can monopolize startup long enough

@@ -133,8 +133,8 @@ _COMMAND_VERB = re.compile(
 )
 _SHELL_REQUEST = re.compile(
     r"\b(?:run|execute)\b.{0,80}\b(?:command|terminal|shell|cmd|powershell|"
-    r"pwsh|npm|npx|pnpm|yarn|uv|python|py|pip|git|cargo|dotnet|node|"
-    r"pytest|ruff|ls|curl|wget|make|cmake|java|gradle|go|rustc|docker|"
+    r"pwsh|npm|npx|pnpm|yarn|uv|python|py|pip|git|dotnet|node|"
+    r"pytest|ruff|ls|curl|wget|make|cmake|java|gradle|go|docker|"
     r"podman|wsl|bash|sh|[\w.-]+\.exe)\b",
     re.IGNORECASE | re.DOTALL,
 )

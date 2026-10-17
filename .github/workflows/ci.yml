@@ -12,61 +12,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: uv sync --locked
+      - run: uv run python -m unittest discover -s tests
 
-
-  frontend:
-    name: Frontend (${{ matrix.os }})
+  electron:
+    name: Electron (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: apps/desktop
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      - name: Install locked workspace dependencies
-        working-directory: .
-        run: npm exec --yes --package=pnpm@11.15.1 -- pnpm install --frozen-lockfile
-      - name: Test desktop shell
-        working-directory: .
-        run: node --test scripts/tests/*.test.mjs
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Lint
-        run: npm run lint
-      - name: Build renderer
-        run: npx --no-install vite build
-
-  rust:
-    name: Rust (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxinerama-dev libxcursor-dev libxrandr-dev libxi-dev pkg-config
-      - name: Configure macOS Swift runtime path
-        if: runner.os == 'macOS'
-        run: |
-          SWIFT_LIB_DIR="$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx"
-          echo "RUSTFLAGS=-C link-args=-Wl,-rpath,/usr/lib/swift -C link-args=-Wl,-rpath,${SWIFT_LIB_DIR}" >> $GITHUB_ENV
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - name: Check all Rust targets
-        run: cargo check --all-targets
-      - name: Run Rust tests
-        run: cargo test
-      - name: Run Clippy
-        run: cargo clippy -- -D warnings
-      - name: Check formatting
-        run: cargo fmt --check
+      - run: npm exec --yes --package=pnpm@11.20.0 -- pnpm install --frozen-lockfile
+      - run: node --test scripts/tests/*.test.mjs
+      - run: npm run typecheck
+        working-directory: apps/desktop
+      - run: npm run lint
+        working-directory: apps/desktop
+      - run: npx --no-install vite build
+        working-directory: apps/desktop

@@ -4,6 +4,10 @@ declare global {
   interface Window {
     desktopApi: {
       platform: NodeJS.Platform;
+      updates: {
+        check(): Promise<{ available: boolean }>;
+        install(): Promise<void>;
+      };
       windowControls: {
         minimize(): void;
         toggleMaximize(): void;
