@@ -26,7 +26,24 @@ function sourceRoot() {
 }
 
 async function run(program: string, args: string[], cwd: string) {
-  return exec(program, args, { cwd, windowsHide: true, timeout: 15 * 60 * 1000 });
+  return exec(program, args, {
+    cwd,
+    env: { ...process.env, CI: "true" },
+    windowsHide: true,
+    timeout: 15 * 60 * 1000,
+  });
+}
+
+async function installPnpmDependencies(root: string) {
+  if (process.platform !== "win32") {
+    await run("pnpm", ["install", "--frozen-lockfile"], root);
+    return;
+  }
+  await run(
+    process.env.ComSpec || "cmd.exe",
+    ["/d", "/s", "/c", "pnpm install --frozen-lockfile"],
+    root,
+  );
 }
 
 export async function checkForSourceUpdate() {
@@ -47,7 +64,7 @@ export async function installSourceUpdate() {
     }
     await run("git", ["pull", "--ff-only", "origin", "main"], root);
     await run(process.platform === "win32" ? "uv.exe" : "uv", ["sync", "--locked"], root);
-    await run(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["install", "--frozen-lockfile"], root);
+    await installPnpmDependencies(root);
     app.relaunch();
     app.exit(0);
   } finally {

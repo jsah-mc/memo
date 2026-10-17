@@ -21,4 +21,5 @@ test("installers clone Memo into the managed app directory", () => {
   assert.match(posix, /git clone/);
   assert.match(posix, /uv sync --locked/);
   assert.match(posix, /pnpm install --frozen-lockfile/);
+  assert.match(posix, /portaudio/);
 });
