@@ -28,6 +28,7 @@ import {
   threadModelKey,
   useThreadModels,
 } from "@/agents/thread-model-provider";
+import { botSystemPrompt, getBotSettings } from "@/agents/bot-settings";
 
 const fileToDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -146,6 +147,7 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
     const lastUserMessage = [...messages].reverse().find((message) => message.role === "user");
     const titlePart = lastUserMessage?.content.find((part) => part.type === "text");
     activity.start({ id: requestId, agentId: agent.id, title: titlePart?.type === "text" ? titlePart.text.slice(0, 80) : "Agent task", status: "running", startedAt: Date.now(), tools: [] });
+    const botPrompt = botSystemPrompt(getBotSettings(agent.id, agent.name));
     const request = {
       id: requestId,
       agent: {
@@ -157,7 +159,12 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
         computerTarget: agent.computerTarget,
       },
       messages: [
-        { role: "system" as const, content: agentSystemPrompt(agent) },
+        {
+          role: "system" as const,
+          content: [agentSystemPrompt(agent), botPrompt]
+            .filter(Boolean)
+            .join("\n\n"),
+        },
         ...messages
           .map((message) => {
             const content: DesktopContentPart[] = [];

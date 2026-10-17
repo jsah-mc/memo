@@ -3,6 +3,7 @@ import { LoaderCircleIcon, Trash2Icon } from "lucide-react";
 import { CreateAgentDialog } from "@/agents/create-agent-dialog";
 import { useAgents } from "@/agents/agent-provider";
 import { AgentActivityFace } from "@/agents/agent-activity";
+import { useBotSettings } from "@/agents/bot-settings";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -12,6 +13,16 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+
+function BotStatus({ agentId, agentName }: Readonly<{ agentId: string; agentName: string }>) {
+  const bot = useBotSettings(agentId, agentName);
+  if (!bot.enabled) return null;
+  return (
+    <span className="ml-2 border border-primary/50 px-1 font-mono text-[9px] text-primary">
+      BOT /{bot.command}
+    </span>
+  );
+}
 
 export function AgentSidebarSection({
   search = "",
@@ -53,7 +64,7 @@ export function AgentSidebarSection({
                 isActive={agent.id === activeAgent.id}
                 aria-pressed={agent.id === activeAgent.id}
                 onClick={() => selectAgent(agent.id)}
-                className="h-11 rounded-xl data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
+                className="h-11 rounded-sm data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
                 tooltip={`${agent.name} — ${agent.role}`}
               >
                 <AgentActivityFace
@@ -61,8 +72,9 @@ export function AgentSidebarSection({
                   className="flex size-8 shrink-0 items-center justify-center font-mono text-xs font-bold text-primary"
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">
-                    {agent.name}
+                  <span className="flex items-center truncate text-sm font-medium">
+                    <span className="truncate">{agent.name}</span>
+                    <BotStatus agentId={agent.id} agentName={agent.name} />
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">
                     {agent.role}

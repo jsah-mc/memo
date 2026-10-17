@@ -424,32 +424,35 @@
 
 /* Warm desktop palette inspired by focused creative tools. */
 .dark {
-  --background: #17130f;
-  --foreground: #e9e1d7;
-  --card: #211b16;
-  --card-foreground: #e9e1d7;
-  --popover: #211b16;
-  --popover-foreground: #e9e1d7;
-  --primary: #b47a31;
-  --primary-foreground: #fff8ed;
-  --secondary: #2a231d;
-  --secondary-foreground: #e9e1d7;
-  --muted: #29231d;
-  --muted-foreground: #a79d90;
-  --accent: #34271a;
-  --accent-foreground: #f1c27d;
-  --border: #342c24;
-  --input: #44392e;
-  --ring: #b47a31;
-  --sidebar: #14110e;
-  --sidebar-foreground: #e9e1d7;
-  --sidebar-primary: #b47a31;
-  --sidebar-primary-foreground: #fff8ed;
-  --sidebar-accent: #28211b;
-  --sidebar-accent-foreground: #fff8ed;
-  --sidebar-border: #28221c;
-  --sidebar-ring: #b47a31;
-  --memo-composer-elevation: 0 10px 32px -22px rgb(0 0 0 / 70%);
+  --background: #090c0a;
+  --foreground: #d8e3da;
+  --card: #0f1511;
+  --card-foreground: #d8e3da;
+  --popover: #0d120f;
+  --popover-foreground: #d8e3da;
+  --primary: #64d98b;
+  --primary-foreground: #071009;
+  --secondary: #151d18;
+  --secondary-foreground: #d8e3da;
+  --muted: #141b16;
+  --muted-foreground: #829187;
+  --accent: #14251a;
+  --accent-foreground: #8becaa;
+  --border: #26332a;
+  --input: #314038;
+  --ring: #64d98b;
+  --sidebar: #070a08;
+  --sidebar-foreground: #d8e3da;
+  --sidebar-primary: #64d98b;
+  --sidebar-primary-foreground: #071009;
+  --sidebar-accent: #132018;
+  --sidebar-accent-foreground: #e7ffed;
+  --sidebar-border: #202c24;
+  --sidebar-ring: #64d98b;
+  --font-sans: "Cascadia Code", "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius: 0.2rem;
+  --memo-composer-radius: 0.25rem;
+  --memo-composer-elevation: 0 0 0 1px rgb(100 217 139 / 8%);
 }
 
 @utility drag {
@@ -461,6 +464,13 @@
 }
 
 @layer components {
+  .terminal-card {
+    background:
+      linear-gradient(90deg, rgb(100 217 139 / 4%) 1px, transparent 1px),
+      color-mix(in oklab, var(--card) 94%, transparent);
+    background-size: 1.5rem 100%;
+  }
+
   .liquid-panel,
   .liquid-titlebar,
   .liquid-dialog,
@@ -518,6 +528,25 @@
       inset 0 1px 0 color-mix(in oklab, white 14%, transparent),
       inset 0 0 0 1px color-mix(in oklab, var(--foreground) 7%, transparent),
       var(--memo-composer-elevation);
+  }
+
+  [data-slot="aui_assistant-message-content"],
+  .aui-user-message-content,
+  .agent-title-pill,
+  [data-slot="aui_thread-list-item"] {
+    border-radius: 0.2rem !important;
+  }
+
+  [data-slot="aui_assistant-message-content"]::before {
+    color: var(--primary);
+    content: "> ";
+    font-family: var(--font-mono);
+  }
+
+  [data-slot="sidebar-group-label"] {
+    font-family: var(--font-mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
   [data-slot="sidebar-menu-button"]:hover,
@@ -638,11 +667,15 @@
   }
   body {
     @apply m-0 overflow-hidden bg-background text-foreground;
-    background-image: linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--background) 98%, var(--primary)),
-      var(--background)
-    );
+    background-image:
+      linear-gradient(rgb(100 217 139 / 2.5%) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(100 217 139 / 2%) 1px, transparent 1px),
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--background) 98%, var(--primary)),
+        var(--background)
+      );
+    background-size: 24px 24px, 24px 24px, 100% 100%;
     letter-spacing: var(--tracking-normal);
     font-synthesis: none;
     text-rendering: optimizeLegibility;
