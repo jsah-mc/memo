@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld("desktopApi", {
         composioUserId: string;
         composioToolkits: readonly string[];
         allowedTools?: readonly string[];
+        permissionMode: "full_access" | "approve_for_me" | "always_ask";
+        allowedComposioTools: readonly string[];
+        allowedMcpServers: readonly string[];
       };
       messages: Array<{
         role: "system" | "user" | "assistant";
@@ -81,6 +84,9 @@ contextBridge.exposeInMainWorld("desktopApi", {
       instructions: string;
       enabled: boolean;
       allowedTools: readonly string[];
+      permissionMode: "full_access" | "approve_for_me" | "always_ask";
+      allowedComposioTools: readonly string[];
+      allowedMcpServers: readonly string[];
     }) => ipcRenderer.invoke("bots:save", bot),
   },
   onPermissionRequest: (onRequest: (request: unknown) => void) => {

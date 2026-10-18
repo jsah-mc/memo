@@ -190,6 +190,10 @@ class ProgramAITests(unittest.IsolatedAsyncioTestCase):
 
         self.assertNotIn("tools", FakeSDK.calls[0][1])
 
+    def test_invalid_permission_mode_falls_back_to_always_ask(self) -> None:
+        self.ai.set_permission_mode("invalid")
+        self.assertEqual(self.ai.permission_mode, "always_ask")
+
     async def test_computer_request_runs_responses_tool_loop(self) -> None:
         FakeComputerSDK.call_count = 0
         computer = FakeComputer()

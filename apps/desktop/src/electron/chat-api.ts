@@ -34,6 +34,9 @@ type ChatRequest = {
     composioToolkits: readonly string[];
     computerTarget: "host" | "local_vm" | "vps";
     allowedTools?: readonly string[];
+    permissionMode: "full_access" | "approve_for_me" | "always_ask";
+    allowedComposioTools: readonly string[];
+    allowedMcpServers: readonly string[];
   };
   messages: ChatMessage[];
 };
@@ -371,6 +374,21 @@ async function emitSseData(
       typeof toolCall.arguments === "object" &&
       !Array.isArray(toolCall.arguments)
     ) {
+      if (
+        toolCall.result &&
+        typeof toolCall.result === "object" &&
+        "memo_sign_in_url" in toolCall.result &&
+        typeof toolCall.result.memo_sign_in_url === "string"
+      ) {
+        try {
+          const signInUrl = new URL(toolCall.result.memo_sign_in_url);
+          if (signInUrl.protocol === "https:") {
+            await shell.openExternal(signInUrl.toString());
+          }
+        } catch {
+          // Ignore malformed authorization URLs from an integration provider.
+        }
+      }
       sendChatEvent(event, {
         id: requestId,
         type: "tool-call",
@@ -514,6 +532,17 @@ function isChatRequest(value: unknown): value is ChatRequest {
         request.agent.allowedTools.every((tool) =>
           ["browser", "computer", "integrations"].includes(tool),
         ))) &&
+    ["full_access", "approve_for_me", "always_ask"].includes(
+      request.agent.permissionMode,
+    ) &&
+    Array.isArray(request.agent.allowedComposioTools) &&
+    request.agent.allowedComposioTools.every(
+      (tool) => typeof tool === "string",
+    ) &&
+    Array.isArray(request.agent.allowedMcpServers) &&
+    request.agent.allowedMcpServers.every(
+      (server) => typeof server === "string",
+    ) &&
     Array.isArray(request.messages) &&
     request.messages.every(
       (message) =>

@@ -28,6 +28,9 @@ declare global {
             composioToolkits: readonly string[];
             computerTarget: "host" | "local_vm" | "vps";
             allowedTools?: readonly string[];
+            permissionMode: "full_access" | "approve_for_me" | "always_ask";
+            allowedComposioTools: readonly string[];
+            allowedMcpServers: readonly string[];
           };
           messages: Array<{
             role: "system" | "user" | "assistant";
@@ -74,6 +77,9 @@ declare global {
           instructions: string;
           enabled: boolean;
           allowedTools: readonly string[];
+          permissionMode: "full_access" | "approve_for_me" | "always_ask";
+          allowedComposioTools: readonly string[];
+          allowedMcpServers: readonly string[];
         }) => Promise<{ saved: true }>;
       };
       onPermissionRequest(

@@ -122,6 +122,90 @@ export function BotSettingsPanel() {
         ))}
       </fieldset>
 
+      <fieldset className="grid gap-2 border border-border p-3">
+        <legend className="px-1 font-mono text-[10px] tracking-wider text-muted-foreground">
+          // PERMISSIONS
+        </legend>
+        {(
+          [
+            [
+              "full_access",
+              "Full access",
+              "Approve shell commands and desktop control.",
+            ],
+            [
+              "approve_for_me",
+              "Approve for me",
+              "Approve shell commands; ask before desktop control.",
+            ],
+            [
+              "always_ask",
+              "Always ask",
+              "Ask before shell commands and desktop control.",
+            ],
+          ] as const
+        ).map(([value, label, description]) => (
+          <label key={value} className="flex cursor-pointer items-start gap-3">
+            <input
+              type="radio"
+              name={`permission-mode-${activeAgent.id}`}
+              checked={settings.permissionMode === value}
+              onChange={() => update({ permissionMode: value })}
+              className="mt-0.5 size-4 accent-primary"
+            />
+            <span className="grid gap-0.5">
+              <span className="font-mono text-xs">{label}</span>
+              <span className="text-[11px] font-normal text-muted-foreground">
+                {description}
+              </span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+
+      <label className="grid gap-1.5 text-xs font-medium">
+        <span className="text-muted-foreground">Allowed Composio tools</span>
+        <Input
+          aria-label="Allowed Composio tools"
+          value={settings.allowedComposioTools.join(", ")}
+          onChange={(event) =>
+            update({
+              allowedComposioTools: event.target.value
+                .split(",")
+                .map((value) => value.trim().toUpperCase())
+                .filter(Boolean),
+            })
+          }
+          placeholder="*, GITHUB_CREATE_ISSUE"
+          className="font-mono"
+        />
+        <span className="font-mono text-[10px] text-muted-foreground">
+          Comma-separated tool slugs. Use * for every tool in the bot&apos;s
+          connected apps.
+        </span>
+      </label>
+
+      <label className="grid gap-1.5 text-xs font-medium">
+        <span className="text-muted-foreground">Allowed MCP servers</span>
+        <Input
+          aria-label="Allowed MCP servers"
+          value={settings.allowedMcpServers.join(", ")}
+          onChange={(event) =>
+            update({
+              allowedMcpServers: event.target.value
+                .split(",")
+                .map((value) => value.trim())
+                .filter(Boolean),
+            })
+          }
+          placeholder="github, filesystem"
+          className="font-mono"
+        />
+        <span className="font-mono text-[10px] text-muted-foreground">
+          Server IDs are passed only to runtimes that provide those MCP servers.
+        </span>
+      </label>
+
       <label className="grid gap-1.5 text-xs font-medium">
         <span className="flex items-center gap-2 text-muted-foreground">
           <TerminalSquareIcon className="size-4" /> Command name

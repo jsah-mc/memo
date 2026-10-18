@@ -216,4 +216,13 @@ def validate_agent_config(value: object) -> tuple[CLIBackend, str]:
         )
     ):
         raise ValueError("memo_agent.allowedTools contains an unknown tool group")
+    permission_mode = value.get("permissionMode", "always_ask")
+    if permission_mode not in {"full_access", "approve_for_me", "always_ask"}:
+        raise ValueError("memo_agent.permissionMode is invalid")
+    for field in ("allowedComposioTools", "allowedMcpServers"):
+        items = value.get(field, [])
+        if not isinstance(items, list) or not all(
+            isinstance(item, str) and item.strip() for item in items
+        ):
+            raise ValueError(f"memo_agent.{field} must be a list of names")
     return get_cli_backend(backend_id), model.strip()

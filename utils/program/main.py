@@ -146,6 +146,9 @@ class MemoApp(VoiceModeMixin, App):
             set_allowed_tools(
                 bot.get("allowedTools", ["browser", "computer", "integrations"])
             )
+        set_permission_mode = getattr(self.ai, "set_permission_mode", None)
+        if callable(set_permission_mode):
+            set_permission_mode(bot.get("permissionMode", "always_ask"))
         self.ai.clear_history()
         self._active_bot_name = str(bot["name"]).strip()
         self._set_activity("done", f'Bot switched to "{self._active_bot_name}"')

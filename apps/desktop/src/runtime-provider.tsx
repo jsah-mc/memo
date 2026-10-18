@@ -173,6 +173,15 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
         allowedTools: botSettings.enabled
           ? botSettings.allowedTools
           : undefined,
+        permissionMode: botSettings.enabled
+          ? botSettings.permissionMode
+          : "always_ask",
+        allowedComposioTools: botSettings.enabled
+          ? botSettings.allowedComposioTools
+          : ["*"],
+        allowedMcpServers: botSettings.enabled
+          ? botSettings.allowedMcpServers
+          : [],
       },
       messages: [
         {

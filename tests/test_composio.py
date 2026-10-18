@@ -185,6 +185,39 @@ class ComposioConnectionTests(TestCase):
 
 
 class ComposioTurnTests(IsolatedAsyncioTestCase):
+    async def test_filters_session_tools_to_the_bot_allowlist(self):
+        session = MagicMock()
+        session.tools.return_value = [
+            {"type": "function", "function": {"name": "READ"}},
+            {"type": "function", "function": {"name": "DELETE"}},
+        ]
+        composio = ComposioTools(
+            SimpleNamespace(sessions=SimpleNamespace(create=lambda **kwargs: session))
+        )
+
+        class SDK:
+            async def responses(self, payload):
+                self.payload = payload
+
+                async def events():
+                    yield {"type": "response.completed", "response": {"output": []}}
+
+                return SDKResponseStream(events())
+
+        sdk = SDK()
+        stream = await composio_tool_turn(
+            sdk,
+            {"input": "read it"},
+            composio,
+            "alice",
+            ["github"],
+            allowed_tools=["READ"],
+        )
+        _ = [event async for event in stream.events()]
+        self.assertEqual(
+            [tool["function"]["name"] for tool in sdk.payload["tools"]], ["READ"]
+        )
+
     async def test_executes_in_same_session_then_continues_with_tool_result(self):
         session = MagicMock()
         session.tools.return_value = [

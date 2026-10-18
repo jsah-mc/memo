@@ -20,12 +20,17 @@ async def composio_tool_turn(
     composio: ComposioTools,
     user_id: str,
     toolkits: list[str],
+    *,
+    allowed_tools: list[str] | None = None,
 ) -> SDKResponseStream:
     session = await asyncio.to_thread(composio.create_session, user_id, toolkits)
     tools = await asyncio.to_thread(session.tools)
     if not isinstance(tools, list) or not all(isinstance(tool, dict) for tool in tools):
         raise RuntimeError("Composio returned an invalid tool collection.")
-    allowed = {tool_name(tool) for tool in tools} - {""}
+    available = {tool_name(tool) for tool in tools} - {""}
+    configured = set(["*"] if allowed_tools is None else allowed_tools)
+    allowed = available if "*" in configured else available & configured
+    tools = [tool for tool in tools if tool_name(tool) in allowed]
     original = payload.get("input", [])
     history = (
         [{"role": "user", "content": original}]
@@ -81,10 +86,32 @@ async def composio_tool_turn(
                         isinstance(result, dict)
                         and (result.get("error") or result.get("successful") is False)
                     )
-                except Exception:
+                except Exception as exc:
                     result = {
-                        "error": "Integration request failed. Check the app connection in Settings and try again."
+                        "error": "Integration request failed. Check the app connection and try again."
                     }
+                    message = str(exc).casefold()
+                    if len(toolkits) == 1 and any(
+                        marker in message
+                        for marker in (
+                            "auth",
+                            "connect",
+                            "sign in",
+                            "account",
+                            "unauthorized",
+                        )
+                    ):
+                        try:
+                            authorization = await asyncio.to_thread(
+                                composio.authorize, user_id, toolkits[0]
+                            )
+                            result.update(
+                                memo_sign_in_url=authorization["redirect_url"],
+                                toolkit=toolkits[0],
+                                error=f"Sign in to {toolkits[0]} to continue.",
+                            )
+                        except Exception:
+                            pass
                     is_error = True
                 yield {
                     "type": "memo.tool_call.completed",

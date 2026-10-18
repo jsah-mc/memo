@@ -49,11 +49,19 @@ class ProgramAI:
         )
         self.history: list[dict[str, Any]] = []
         self.allowed_tools = {"browser", "computer", "integrations"}
+        self.permission_mode = "always_ask"
 
     def set_allowed_tools(self, tools: list[str] | set[str] | tuple[str, ...]) -> None:
         """Limit tool groups for subsequent requests from the selected bot."""
 
         self.allowed_tools = set(tools) & {"browser", "computer", "integrations"}
+
+    def set_permission_mode(self, mode: str) -> None:
+        self.permission_mode = (
+            mode
+            if mode in {"full_access", "approve_for_me", "always_ask"}
+            else "always_ask"
+        )
 
     def _sdk(self, model: str) -> ModelSDK:
         return self.sdk_factory(
@@ -84,6 +92,7 @@ class ProgramAI:
                         else None
                     ),
                     permission_broker=self.permission_broker,
+                    permission_mode=self.permission_mode,
                 )
             )
         return await sdk.responses(payload)

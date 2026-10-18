@@ -6,7 +6,12 @@ export type BotSettings = Readonly<{
   command: string;
   instructions: string;
   allowedTools: readonly BotTool[];
+  permissionMode: PermissionMode;
+  allowedComposioTools: readonly string[];
+  allowedMcpServers: readonly string[];
 }>;
+
+export type PermissionMode = "full_access" | "approve_for_me" | "always_ask";
 
 export const BOT_TOOL_OPTIONS = [
   {
@@ -39,6 +44,9 @@ const defaults = (agentName = "memo"): BotSettings => ({
   instructions:
     "Act as a persistent task bot. Track the current objective, report progress briefly, and finish with the next useful action.",
   allowedTools: ALL_BOT_TOOLS,
+  permissionMode: "always_ask",
+  allowedComposioTools: ["*"],
+  allowedMcpServers: [],
 });
 
 const readAll = (): Record<string, BotSettings> => {
@@ -71,6 +79,23 @@ export function getBotSettings(agentId: string, agentName = "memo") {
               ALL_BOT_TOOLS.includes(tool as BotTool),
             )
           : ALL_BOT_TOOLS,
+        permissionMode: [
+          "full_access",
+          "approve_for_me",
+          "always_ask",
+        ].includes(stored.permissionMode)
+          ? stored.permissionMode
+          : "always_ask",
+        allowedComposioTools: Array.isArray(stored.allowedComposioTools)
+          ? stored.allowedComposioTools.filter(
+              (tool) => typeof tool === "string",
+            )
+          : ["*"],
+        allowedMcpServers: Array.isArray(stored.allowedMcpServers)
+          ? stored.allowedMcpServers.filter(
+              (server) => typeof server === "string",
+            )
+          : [],
       }
     : defaults(agentName);
 }
@@ -117,6 +142,9 @@ export function botSystemPrompt(settings: BotSettings) {
     `Its bot name is ${settings.name}.`,
     `Its command name is /${settings.command}.`,
     `Allowed tool groups: ${settings.allowedTools.length ? settings.allowedTools.join(", ") : "none"}.`,
+    `Permission mode: ${settings.permissionMode}.`,
+    `Allowed Composio tools: ${settings.allowedComposioTools.join(", ") || "none"}.`,
+    `Allowed MCP servers: ${settings.allowedMcpServers.join(", ") || "none"}.`,
     settings.instructions.trim(),
   ]
     .filter(Boolean)

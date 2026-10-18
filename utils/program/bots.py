@@ -29,6 +29,9 @@ def load_bots(path: Path | None = None) -> list[dict[str, Any]]:
                 for tool in bot.get("allowedTools", sorted(BOT_TOOL_IDS))
                 if isinstance(tool, str) and tool in BOT_TOOL_IDS
             ],
+            "permissionMode": bot.get("permissionMode", "always_ask"),
+            "allowedComposioTools": bot.get("allowedComposioTools", ["*"]),
+            "allowedMcpServers": bot.get("allowedMcpServers", []),
         }
         for bot in value
         if isinstance(bot, dict)
@@ -74,6 +77,10 @@ def bot_prompt(bot: dict[str, Any]) -> str:
             f"Your command name is /{command}.",
             "Allowed tool groups: "
             + ", ".join(bot.get("allowedTools", sorted(BOT_TOOL_IDS))),
+            f"Permission mode: {bot.get('permissionMode', 'always_ask')}.",
+            "Allowed Composio tools: "
+            + ", ".join(bot.get("allowedComposioTools", ["*"])),
+            "Allowed MCP servers: " + ", ".join(bot.get("allowedMcpServers", [])),
             instructions,
         )
         if part

@@ -170,7 +170,14 @@ def create_app(
                     "toolkits": agent.get("composioToolkits", []),
                 }
             )
-            return await composio_tool_turn(sdk, payload, composio, user_id, toolkits)
+            return await composio_tool_turn(
+                sdk,
+                payload,
+                composio,
+                user_id,
+                toolkits,
+                allowed_tools=agent.get("allowedComposioTools", ["*"]),
+            )
         computer_enabled = allow_computer and settings.computer_enabled
         if allow_browser or computer_enabled:
             from .sdk import SDKResponseStream
@@ -182,6 +189,7 @@ def create_app(
                     browser_tool=web_tool if allow_browser else None,
                     computer_tool=computer_for(payload) if computer_enabled else None,
                     permission_broker=(approvals if interactive_permissions else None),
+                    permission_mode=agent.get("permissionMode", "always_ask"),
                 )
             )
         return await sdk.responses(payload)

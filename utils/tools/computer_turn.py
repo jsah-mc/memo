@@ -100,7 +100,9 @@ def _matches_approved_app_launch(command: str, user_text: str) -> bool:
     """Bind conversational approval to one plain Windows app launch."""
 
     folder = known_folder_request(user_text)
-    requested_app = folder[0] if folder is not None else generic_app_request_name(user_text)
+    requested_app = (
+        folder[0] if folder is not None else generic_app_request_name(user_text)
+    )
     if requested_app is None:
         return False
     launch = re.fullmatch(
@@ -310,6 +312,7 @@ async def agent_tool_events(
     browser_tool: BrowserUseTool | None = None,
     computer_tool: ComputerSandboxTool | None = None,
     permission_broker: PermissionBroker | None = None,
+    permission_mode: str = "always_ask",
 ) -> AsyncIterator[dict[str, Any]]:
     """Expose enabled tools and let the model decide whether to use them."""
 
@@ -407,7 +410,10 @@ async def agent_tool_events(
             }
             permission_granted = False
             if name in desktop_names:
-                if desktop_session_granted:
+                if permission_mode == "full_access":
+                    permission_granted = True
+                    desktop_session_granted = True
+                elif desktop_session_granted:
                     permission_granted = True
                 elif one_time_approval:
                     one_time_approval = False
@@ -436,7 +442,9 @@ async def agent_tool_events(
                     desktop_session_granted = permission_granted
             elif name == shell_name:
                 command = arguments.get("command")
-                if one_time_approval:
+                if permission_mode in {"full_access", "approve_for_me"}:
+                    permission_granted = True
+                elif one_time_approval:
                     one_time_approval = False
                     permission_granted = isinstance(
                         command,
