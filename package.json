@@ -1,6 +1,6 @@
 {
   "name": "memo",
-  "version": "3.1.14",
+  "version": "3.1.15",
   "private": true,
   "packageManager": "pnpm@11.20.0",
   "scripts": {

@@ -15,6 +15,7 @@ import { WorkspaceShortcuts } from "@/components/workspace-shortcuts";
 import { TaskActivitySidebar } from "@/agents/task-activity-sidebar";
 import "./index.css";
 import { initializeTheme } from "./theme";
+import { AgentGroupProvider } from "@/agents/agent-groups";
 
 function WorkspaceShell() {
   const { activeAgent } = useAgents();
@@ -58,14 +59,16 @@ createRoot(rootElement).render(
   <React.StrictMode>
     <GatewayStartup>
       <AgentProvider>
-        <ThreadModelProvider>
-          <AgentSetupGate>
-            <RuntimeProvider>
-              <WorkspaceShortcuts />
-              <WorkspaceShell />
-            </RuntimeProvider>
-          </AgentSetupGate>
-        </ThreadModelProvider>
+        <AgentGroupProvider>
+          <ThreadModelProvider>
+            <AgentSetupGate>
+              <RuntimeProvider>
+                <WorkspaceShortcuts />
+                <WorkspaceShell />
+              </RuntimeProvider>
+            </AgentSetupGate>
+          </ThreadModelProvider>
+        </AgentGroupProvider>
       </AgentProvider>
     </GatewayStartup>
   </React.StrictMode>,

@@ -29,7 +29,7 @@ export function setAgentActivity(agentId: string, activity: AgentActivity) {
   }
 }
 
-export function AgentActivityFace({ agentId, className = "" }: Readonly<{ agentId: string; className?: string }>) {
+export function AgentActivityFace({ agentId, className = "", color }: Readonly<{ agentId: string; className?: string; color?: string }>) {
   const activity = useActivityStore((state) => state.activities[agentId] ?? "idle");
   const [frame, setFrame] = useState(0);
 
@@ -46,5 +46,5 @@ export function AgentActivityFace({ agentId, className = "" }: Readonly<{ agentI
       : activity === "error"
         ? "[x_x]"
         : "[o_o]";
-  return <span className={className} role="status" aria-label={`Agent ${activity}`} title={activity}>{face}</span>;
+  return <span className={className} style={color ? { color } : undefined} role="status" aria-label={`Agent ${activity}`} title={activity}>{face}</span>;
 }

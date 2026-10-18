@@ -29,6 +29,7 @@ import {
   useThreadModels,
 } from "@/agents/thread-model-provider";
 import { botSystemPrompt, getBotSettings } from "@/agents/bot-settings";
+import { useAgentGroups } from "@/agents/agent-groups";
 
 const fileToDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -82,11 +83,27 @@ const attachmentAdapter = new CompositeAttachmentAdapter([
   documentAttachmentAdapter,
 ]);
 
-const threadListAdapter = createLocalStorageAdapter({
-  storage: {
+const createThreadListAdapter = (scope: string, migrateLegacy = false) =>
+  createLocalStorageAdapter({
+    storage: {
     getItem: async (key) => {
       const stored = await window.desktopApi.chatHistory.getItem(key);
       if (stored !== null) return stored;
+
+      if (migrateLegacy) {
+        const legacyKey = key.replace(/^memo\.agent\.memo/, "memo");
+        const legacyStored = await window.desktopApi.chatHistory.getItem(legacyKey);
+        if (legacyStored !== null) {
+          await window.desktopApi.chatHistory.setItem(key, legacyStored);
+          return legacyStored;
+        }
+        const legacyLocal = window.localStorage.getItem(legacyKey);
+        if (legacyLocal !== null) {
+          await window.desktopApi.chatHistory.setItem(key, legacyLocal);
+          window.localStorage.removeItem(legacyKey);
+          return legacyLocal;
+        }
+      }
 
       // Migrate a previously saved localStorage entry the first time it is read.
       const legacy = window.localStorage.getItem(key);
@@ -104,10 +121,10 @@ const threadListAdapter = createLocalStorageAdapter({
       await window.desktopApi.chatHistory.removeItem(key);
       window.localStorage.removeItem(key);
     },
-  },
-  prefix: "memo",
-  titleGenerator: createSimpleTitleAdapter(),
-});
+    },
+    prefix: `memo.${scope}`,
+    titleGenerator: createSimpleTitleAdapter(),
+  });
 
 type DesktopContentPart =
   | { type: "text"; text: string }
@@ -139,7 +156,10 @@ const appendModelPart = (
   }
 };
 
-const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
+const createModelAdapter = (
+  agent: AgentProfile,
+  collaborationContext = "",
+): ChatModelAdapter => ({
   async *run({ messages, abortSignal }) {
     setAgentActivity(agent.id, "loading");
     const requestId = crypto.randomUUID();
@@ -198,6 +218,7 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
         {
           role: "system" as const,
           content: [agentSystemPrompt(agent), botPrompt]
+            .concat(collaborationContext)
             .filter(Boolean)
             .join("\n\n"),
         },
@@ -348,9 +369,71 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
   },
 });
 
-export function RuntimeProvider({
+async function* iterateModelRun(
+  adapter: ChatModelAdapter,
+  options: Parameters<ChatModelAdapter["run"]>[0],
+) {
+  const result = adapter.run(options);
+  if (Symbol.asyncIterator in result) {
+    yield* result;
+  } else {
+    yield await result;
+  }
+}
+
+const createGroupModelAdapter = (
+  groupName: string,
+  members: readonly AgentProfile[],
+): ChatModelAdapter => ({
+  async *run(options) {
+    let combined: ThreadAssistantMessagePart[] = [];
+    let transcript = "";
+    for (const member of members) {
+      if (options.abortSignal.aborted) break;
+      const context = [
+        `You are collaborating in the agent group "${groupName}". Respond as ${member.name}, from your own role and expertise. Address useful points from the other agents and do not impersonate them.`,
+        transcript ? `Earlier agent replies in this turn:\n${transcript}` : "You are the first agent to respond this turn.",
+      ].join("\n\n");
+      let latest: ThreadAssistantMessagePart[] = [];
+      for await (const update of iterateModelRun(
+        createModelAdapter(member, context),
+        options,
+      )) {
+        latest = [...update.content];
+        yield {
+          ...update,
+          content: [
+            ...combined,
+            { type: "text" as const, text: `// ${member.name}\n` },
+            ...latest,
+          ],
+        };
+      }
+      combined = [
+        ...combined,
+        { type: "text" as const, text: `// ${member.name}\n` },
+        ...latest,
+      ];
+      const reply = latest
+        .filter((part): part is Extract<ThreadAssistantMessagePart, { type: "text" }> => part.type === "text")
+        .map((part) => part.text)
+        .join("\n");
+      if (reply) transcript += `${member.name}: ${reply}\n\n`;
+    }
+  },
+});
+
+function RuntimeSession({
   children,
-}: Readonly<{ children: ReactNode }>) {
+  scope,
+  members,
+  groupName,
+}: Readonly<{
+  children: ReactNode;
+  scope: string;
+  members: readonly AgentProfile[];
+  groupName?: string;
+}>) {
   const { activeAgent } = useAgents();
   const { activeThreadId, selections } = useThreadModels();
   const saved = selections[threadModelKey(activeAgent.id, activeThreadId)];
@@ -359,16 +442,24 @@ export function RuntimeProvider({
     cli: saved?.cli ?? activeAgent.cli,
     model: saved?.model ?? activeAgent.model,
   };
-  const activeAgentRef = useRef(effectiveAgent);
-  activeAgentRef.current = effectiveAgent;
+  const effectiveMembers = groupName ? members : [effectiveAgent];
+  const membersRef = useRef(effectiveMembers);
+  membersRef.current = effectiveMembers;
   const modelAdapter = useMemo<ChatModelAdapter>(
     () => ({
-      run: (options) => createModelAdapter(activeAgentRef.current).run(options),
+      run: (options) =>
+        groupName
+          ? createGroupModelAdapter(groupName, membersRef.current).run(options)
+          : createModelAdapter(membersRef.current[0]).run(options),
     }),
-    [],
+    [groupName],
+  );
+  const adapter = useMemo(
+    () => createThreadListAdapter(scope, scope === "agent.memo"),
+    [scope],
   );
   const runtime = useRemoteThreadListRuntime({
-    adapter: threadListAdapter,
+    adapter,
     runtimeHook: () =>
       useLocalRuntime(modelAdapter, {
         adapters: {
@@ -379,9 +470,27 @@ export function RuntimeProvider({
       }),
   });
 
+  return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
+}
+
+export function RuntimeProvider({
+  children,
+}: Readonly<{ children: ReactNode }>) {
+  const { agents, activeAgent } = useAgents();
+  const { activeGroup } = useAgentGroups();
+  const members = activeGroup
+    ? activeGroup.memberIds.flatMap((id) => agents.filter((agent) => agent.id === id))
+    : [activeAgent];
+  const scope = activeGroup ? `group.${activeGroup.id}` : `agent.${activeAgent.id}`;
+
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
+    <RuntimeSession
+      key={scope}
+      scope={scope}
+      members={members}
+      groupName={activeGroup?.name}
+    >
       {children}
-    </AssistantRuntimeProvider>
+    </RuntimeSession>
   );
 }

@@ -11,6 +11,7 @@ import { AGENT_STYLES } from "@/agents/agent-personality";
 import { useAgents } from "@/agents/agent-provider";
 import { CLI_OPTIONS, type CLIBackendId } from "@/agents/cli-options";
 import { useRuntimeModels } from "@/agents/runtime-models";
+import { DEFAULT_AGENT_COLOR, moderatedAgentColor } from "@/agents/agent-color";
 import { COMPOSIO_TOOLKITS } from "@/agents/composio-options";
 import { ComposioPanel } from "@/components/composio-panel";
 import { Button } from "@/components/ui/button";
@@ -40,7 +41,7 @@ export function CreateAgentDialog({
   const [instructions, setInstructions] = useState(
     AGENT_PRESETS[0].instructions,
   );
-  const [color, setColor] = useState("var(--chart-5)");
+  const [color, setColor] = useState(DEFAULT_AGENT_COLOR);
   const [cli, setCli] = useState<CLIBackendId>("codex");
   const [model, setModel] = useState("gpt-5.6-luna");
   const [composioEnabled, setComposioEnabled] = useState(false);
@@ -65,7 +66,7 @@ export function CreateAgentDialog({
     choosePreset(AGENT_PRESETS[0]);
     setStyle("balanced");
     setSoul(DEFAULT_AGENT_SOUL);
-    setColor("var(--chart-5)");
+    setColor(DEFAULT_AGENT_COLOR);
     setCli("codex");
     setModel("gpt-5.6-luna");
     setComposioEnabled(false);
@@ -241,24 +242,22 @@ export function CreateAgentDialog({
                 <legend className="mb-2 text-xs font-medium">
                   Profile color
                 </legend>
-                <div className="flex gap-3">
-                  {[
-                    "var(--primary)",
-                    "var(--chart-1)",
-                    "var(--chart-2)",
-                    "var(--chart-4)",
-                    "var(--chart-5)",
-                  ].map((value, i) => (
-                    <button
-                      key={value}
-                      type="button"
-                      aria-label={`Profile color ${i + 1}`}
-                      aria-pressed={color === value}
-                      onClick={() => setColor(value)}
-                      style={{ backgroundColor: value }}
-                      className={`size-7 rounded-full ${color === value ? "ring-2 ring-foreground ring-offset-2 ring-offset-background" : ""}`}
-                    />
-                  ))}
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={color}
+                    onChange={(event) => setColor(event.target.value)}
+                    aria-label="Choose any profile color"
+                    className="h-9 w-12 cursor-pointer rounded-md border border-input bg-background p-1"
+                  />
+                  <span
+                    aria-label="Profile color preview"
+                    className="size-8 rounded-full ring-1 ring-border"
+                    style={{ backgroundColor: moderatedAgentColor(color) }}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Memo softens extreme contrast for the active theme.
+                  </span>
                 </div>
               </fieldset>
             </div>

@@ -15,10 +15,10 @@ const threadModels = readFileSync(
   "utf8",
 );
 test("each chat run reads the latest agent runtime and model", () => {
-  assert.match(runtimeProvider, /activeAgentRef\.current = effectiveAgent/);
+  assert.match(runtimeProvider, /membersRef\.current = effectiveMembers/);
   assert.match(
     runtimeProvider,
-    /createModelAdapter\(activeAgentRef\.current\)\.run\(options\)/,
+    /createModelAdapter\(membersRef\.current\[0\]\)\.run\(options\)/,
   );
 });
 

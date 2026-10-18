@@ -19,6 +19,8 @@ import {
 } from "@/agents/thread-model-provider";
 import { CLI_OPTIONS, modelOptions } from "@/agents/cli-options";
 import { useRuntimeModels } from "@/agents/runtime-models";
+import { useAgentGroups } from "@/agents/agent-groups";
+import { moderatedAgentColor } from "@/agents/agent-color";
 import { ThreadListItems, ThreadListNew } from "@/components/thread-list";
 
 export function LegacyModelPicker() {
@@ -183,6 +185,7 @@ function ModelSidebarButton({
 
 function AgentThreadPicker({ online }: Readonly<{ online: boolean }>) {
   const { agents, activeAgent, selectAgent } = useAgents();
+  const { activeGroup, clearActiveGroup } = useAgentGroups();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -206,10 +209,11 @@ function AgentThreadPicker({ online }: Readonly<{ online: boolean }>) {
       >
         <AgentActivityFace
           agentId={activeAgent.id}
-          className="flex w-11 shrink-0 items-center justify-center font-mono text-[9px] font-bold text-primary"
+          className="flex w-11 shrink-0 items-center justify-center font-mono text-[9px] font-bold"
+          color={moderatedAgentColor(activeAgent.color)}
         />
         <span className="min-w-0 flex-1 truncate text-left text-xs font-semibold">
-          {activeAgent.name}
+          {activeGroup?.name ?? activeAgent.name}
         </span>
         <span
           className={`size-1.5 rounded-full ${online ? "bg-emerald-400" : "bg-amber-400"}`}
@@ -234,12 +238,16 @@ function AgentThreadPicker({ online }: Readonly<{ online: boolean }>) {
                 <button
                   key={agent.id}
                   type="button"
-                  onClick={() => selectAgent(agent.id)}
+                  onClick={() => {
+                    clearActiveGroup();
+                    selectAgent(agent.id);
+                  }}
                   className={`flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs ${agent.id === activeAgent.id ? "bg-accent text-accent-foreground" : "hover:bg-muted"}`}
                 >
                   <AgentActivityFace
                     agentId={agent.id}
-                    className="flex w-10 shrink-0 items-center justify-center font-mono text-[8px] font-bold text-primary"
+                    className="flex w-10 shrink-0 items-center justify-center font-mono text-[8px] font-bold"
+                    color={moderatedAgentColor(agent.color)}
                   />
                   <span className="truncate">{agent.name}</span>
                 </button>
@@ -249,7 +257,7 @@ function AgentThreadPicker({ online }: Readonly<{ online: boolean }>) {
           <div className="min-w-0 p-2">
             <div className="flex items-center justify-between px-2 py-1.5">
               <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-                {activeAgent.name} threads
+                {activeGroup?.name ?? activeAgent.name} threads
               </p>
             </div>
             <ThreadListNew className="mb-1 h-8 text-xs" />
