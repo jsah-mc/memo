@@ -170,6 +170,13 @@ type AgentBackendPayload = {
   resolved_executable: string | null;
 };
 
+const NODE_RUNTIME_PACKAGES: Readonly<Record<string, string>> = {
+  codex: "@openai/codex",
+  claude: "@anthropic-ai/claude-code",
+  opencode: "opencode-ai",
+  pi: "@mariozechner/pi-coding-agent",
+};
+
 async function agentBackends(): Promise<AgentBackendPayload[]> {
   await ensureGatewayRunning();
   const response = await fetch(`${GATEWAY_BASE_URL}/v1/cli-backends`);
@@ -180,17 +187,17 @@ async function agentBackends(): Promise<AgentBackendPayload[]> {
   return payload.data as AgentBackendPayload[];
 }
 
-async function launchCodexLogin(executable: string) {
+async function launchTerminalCommand(command: string) {
   if (process.platform === "darwin") {
     const script = `on run argv
-set executablePath to item 1 of argv
+set commandText to item 1 of argv
 tell application "Terminal"
   activate
-  do script (quoted form of executablePath & " login")
+  do script commandText
 end tell
 end run`;
     await new Promise<void>((resolve, reject) => {
-      execFile("/usr/bin/osascript", ["-e", script, executable], (error) =>
+      execFile("/usr/bin/osascript", ["-e", script, command], (error) =>
         error ? reject(error) : resolve(),
       );
     });
@@ -198,16 +205,36 @@ end run`;
   }
   const child =
     process.platform === "win32"
-      ? spawn("cmd.exe", ["/d", "/k", `"${executable}" login`], {
+      ? spawn("cmd.exe", ["/d", "/k", command], {
           detached: true,
           stdio: "ignore",
           windowsHide: false,
         })
-      : spawn("x-terminal-emulator", ["-e", executable, "login"], {
-          detached: true,
-          stdio: "ignore",
-        });
+      : spawn(
+          "x-terminal-emulator",
+          ["-e", "sh", "-lc", `${command}; exec sh`],
+          {
+            detached: true,
+            stdio: "ignore",
+          },
+        );
   child.unref();
+}
+
+function uninstallCommand(backend: AgentBackendPayload): string | null {
+  const packageName = NODE_RUNTIME_PACKAGES[backend.id];
+  if (!packageName || !backend.resolved_executable) return null;
+  const executable = backend.resolved_executable
+    .replaceAll("\\", "/")
+    .toLowerCase();
+  if (executable.includes("/.bun/bin/")) return `bun remove -g ${packageName}`;
+  if (executable.includes("/pnpm/") || executable.includes("/library/pnpm/")) {
+    return `pnpm remove -g ${packageName}`;
+  }
+  if (process.platform === "darwin" && backend.id === "codex") {
+    return `if command -v brew >/dev/null 2>&1 && brew list --cask codex >/dev/null 2>&1; then brew uninstall --cask codex; else npm uninstall -g ${packageName}; fi`;
+  }
+  return `npm uninstall -g ${packageName}`;
 }
 
 function sendChatEvent(event: IpcMainEvent, payload: ChatStreamEvent) {
@@ -577,8 +604,31 @@ export function registerChatApi() {
     if (!backend?.resolved_executable) {
       throw new Error("Install Codex CLI before signing in.");
     }
-    await launchCodexLogin(backend.resolved_executable);
+    await launchTerminalCommand(
+      process.platform === "win32"
+        ? `"${backend.resolved_executable}" login`
+        : `'${backend.resolved_executable.replaceAll("'", `'\\''`)}' login`,
+    );
     return { launched: true };
+  });
+
+  ipcMain.handle("agents:uninstall", async (_event, backendId: unknown) => {
+    if (typeof backendId !== "string") throw new Error("Invalid runtime.");
+    const backend = (await agentBackends()).find(
+      (item) => item.id === backendId,
+    );
+    if (!backend?.resolved_executable)
+      throw new Error("Runtime is not installed.");
+    const command = uninstallCommand(backend);
+    if (!command) {
+      const url = new URL(backend.install_url);
+      if (url.protocol !== "https:")
+        throw new Error("Invalid uninstall guide.");
+      await shell.openExternal(url.toString());
+      return { launched: false, openedGuide: true };
+    }
+    await launchTerminalCommand(command);
+    return { launched: true, openedGuide: false };
   });
 
   ipcMain.handle("composio:status", async () => {

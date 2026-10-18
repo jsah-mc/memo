@@ -40,7 +40,10 @@ test("runtime settings expose installation and sign-in actions", () => {
   const chatApi = readFileSync("apps/desktop/src/electron/chat-api.ts", "utf8");
   assert.match(panel, /openInstallGuide\(backend\.id\)/);
   assert.match(panel, /agents\.signIn\(backend\.id\)/);
+  assert.match(panel, /agents\.uninstall\(backend\.id\)/);
   assert.match(chatApi, /agents:open-install-guide/);
   assert.match(chatApi, /agents:sign-in/);
+  assert.match(chatApi, /agents:uninstall/);
+  assert.match(chatApi, /npm uninstall -g/);
   assert.match(chatApi, /tell application "Terminal"/);
 });

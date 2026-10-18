@@ -20,10 +20,12 @@ Download `scripts/install.ps1` from the GitHub repository's `main` branch, then 
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-Open a new terminal after installation and run `memo`. To install and launch the
-desktop application, run `memo desktop`. Its first run builds Electron and adds
-Memo to the Windows Start menu. Closing its window keeps Memo running in the
-system tray; use the tray menu to reopen or quit it.
+Open a new terminal after installation and run `memo`, or launch Memo from the
+Windows Start menu. The first Start menu launch or `memo desktop` command builds
+the Electron application; later launches reuse that build. Closing its window
+keeps Memo running in the system tray; use the tray menu to reopen or quit it.
+Memo also appears in Windows Installed Apps. Remove it there or run
+`memo uninstall` from a terminal.
 
 ### Linux and macOS
 

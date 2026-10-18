@@ -50,6 +50,10 @@ declare global {
         backends(): Promise<AgentBackendData[]>;
         openInstallGuide(backendId: string): Promise<{ opened: true }>;
         signIn(backendId: string): Promise<{ launched: true }>;
+        uninstall(backendId: string): Promise<{
+          launched: boolean;
+          openedGuide: boolean;
+        }>;
         create(agent: NewAgentData): Promise<AgentProfileData>;
         delete(agentId: string): Promise<void>;
         update(

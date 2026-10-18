@@ -7,6 +7,7 @@ import {
   ExternalLinkIcon,
   LogInIcon,
   RefreshCwIcon,
+  Trash2Icon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -44,6 +45,25 @@ export function AiAgentsPanel() {
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Action failed.");
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const uninstall = async (backend: AgentBackendData) => {
+    if (
+      !window.confirm(
+        `Uninstall ${backend.label}? Memo will open a terminal so you can review the removal.`,
+      )
+    ) {
+      return;
+    }
+    setActionId(backend.id);
+    setError("");
+    try {
+      await window.desktopApi.agents.uninstall(backend.id);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Uninstall failed.");
     } finally {
       setActionId(null);
     }
@@ -157,6 +177,17 @@ export function AiAgentsPanel() {
                           <ExternalLinkIcon /> Open installation guide
                         </>
                       )}
+                    </Button>
+                  )}
+                  {backend.installed && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      disabled={actionId === backend.id}
+                      onClick={() => void uninstall(backend)}
+                    >
+                      <Trash2Icon /> Uninstall {backend.label}
                     </Button>
                   )}
                 </div>

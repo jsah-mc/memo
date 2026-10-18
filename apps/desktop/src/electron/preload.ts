@@ -59,6 +59,8 @@ contextBridge.exposeInMainWorld("desktopApi", {
       ipcRenderer.invoke("agents:open-install-guide", backendId),
     signIn: (backendId: string) =>
       ipcRenderer.invoke("agents:sign-in", backendId),
+    uninstall: (backendId: string) =>
+      ipcRenderer.invoke("agents:uninstall", backendId),
     create: (agent: unknown) => ipcRenderer.invoke("agents:create", agent),
     delete: (agentId: string) => ipcRenderer.invoke("agents:delete", agentId),
     update: (

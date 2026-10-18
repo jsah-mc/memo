@@ -50,6 +50,10 @@ if /I "%~1"=="desktop" (
   node "%MEMO_APP%\scripts\launch-desktop.mjs" %*
   exit /b
 )
+if /I "%~1"=="uninstall" (
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%MEMO_APP%\scripts\uninstall.ps1"
+  exit /b
+)
 cd /d "%MEMO_APP%"
 uv run memo-legacy %*
 "@ | Set-Content -LiteralPath $MemoCommand -Encoding ascii
@@ -63,5 +67,14 @@ if (($env:Path -split ";") -notcontains $MemoBin) {
   $env:Path = "$MemoBin;$env:Path"
 }
 
+& (Join-Path $MemoApp "scripts\install-start-menu.ps1") `
+  -Executable $MemoCommand `
+  -WorkingDirectory $MemoApp `
+  -Arguments "desktop" `
+  -Icon (Join-Path $MemoApp "apps\desktop\assets\memo-icon.ico") `
+  -UninstallScript (Join-Path $MemoApp "scripts\uninstall.ps1") `
+  -DisplayVersion ((Get-Content (Join-Path $MemoApp "package.json") -Raw | ConvertFrom-Json).version)
+
 Write-Host "Memo CLI installed in $MemoApp and added to PATH."
-Write-Host "Open a new terminal and run 'memo'. Run 'memo desktop' to build and launch the desktop app."
+Write-Host "Memo is available in the Start menu and as 'memo' in a new terminal."
+Write-Host "The first Start menu launch (or 'memo desktop') builds the desktop app."

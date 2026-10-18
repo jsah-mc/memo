@@ -15,19 +15,25 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const desktopRoot = path.join(root, "apps", "desktop");
 const outRoot = path.join(desktopRoot, "out");
-const bundleRoot = path.join(outRoot, `Memo-${process.platform}-${process.arch}`);
-const executable = process.platform === "win32"
-  ? path.join(bundleRoot, "Memo.exe")
-  : process.platform === "darwin"
-    ? path.join(bundleRoot, "Memo.app", "Contents", "MacOS", "Memo")
-    : path.join(bundleRoot, "Memo");
+const bundleRoot = path.join(
+  outRoot,
+  `Memo-${process.platform}-${process.arch}`,
+);
+const executable =
+  process.platform === "win32"
+    ? path.join(bundleRoot, "Memo.exe")
+    : process.platform === "darwin"
+      ? path.join(bundleRoot, "Memo.app", "Contents", "MacOS", "Memo")
+      : path.join(bundleRoot, "Memo");
 const marker = path.join(outRoot, ".memo-source-revision");
 const buildOnly = process.argv.includes("--build-only");
 const ifInstalled = process.argv.includes("--if-installed");
 const waitArgument = process.argv.indexOf("--wait-for-pid");
-const waitForPid = waitArgument >= 0 ? Number(process.argv[waitArgument + 1]) : 0;
+const waitForPid =
+  waitArgument >= 0 ? Number(process.argv[waitArgument + 1]) : 0;
 
-const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const delay = (milliseconds) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 async function waitForProcessExit(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return;
@@ -53,7 +59,9 @@ function currentRevision() {
 }
 
 function packageDesktop() {
-  console.log("Building Memo desktop for the first launch or updated source...");
+  console.log(
+    "Building Memo desktop for the first launch or updated source...",
+  );
   const environment = { ...process.env, CI: "true" };
   if (process.platform === "win32") {
     run("powershell.exe", [
@@ -82,6 +90,9 @@ function packageDesktop() {
 
 function installApplicationLauncher() {
   if (process.platform === "win32") {
+    const version = JSON.parse(
+      readFileSync(path.join(desktopRoot, "package.json"), "utf8"),
+    ).version;
     run("powershell.exe", [
       "-NoProfile",
       "-ExecutionPolicy",
@@ -92,12 +103,21 @@ function installApplicationLauncher() {
       executable,
       "-WorkingDirectory",
       root,
+      "-UninstallScript",
+      path.join(root, "scripts", "uninstall.ps1"),
+      "-DisplayVersion",
+      version,
     ]);
     return;
   }
 
   if (process.platform === "linux") {
-    const applications = path.join(os.homedir(), ".local", "share", "applications");
+    const applications = path.join(
+      os.homedir(),
+      ".local",
+      "share",
+      "applications",
+    );
     mkdirSync(applications, { recursive: true });
     writeFileSync(
       path.join(applications, "memo.desktop"),
@@ -125,7 +145,9 @@ if (ifInstalled && !existsSync(executable) && !existsSync(marker)) {
 }
 
 const revision = currentRevision();
-const builtRevision = existsSync(marker) ? readFileSync(marker, "utf8").trim() : "";
+const builtRevision = existsSync(marker)
+  ? readFileSync(marker, "utf8").trim()
+  : "";
 if (!existsSync(executable) || builtRevision !== revision) packageDesktop();
 installApplicationLauncher();
 
@@ -141,4 +163,6 @@ const child = spawn(executable, [], {
   stdio: "ignore",
 });
 child.unref();
-console.log("Memo desktop is running and is available from the application menu.");
+console.log(
+  "Memo desktop is running and is available from the application menu.",
+);
