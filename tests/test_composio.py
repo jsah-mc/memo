@@ -6,13 +6,17 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 from utils.gateway.api import create_app
-from utils.gateway.composio_tools import ComposioTools
+from utils.gateway.composio_tools import ComposioTools, connection_status
 from utils.gateway.composio_turn import composio_tool_turn
 from utils.gateway.sdk import SDKResponseStream
 from utils.gateway.settings import GatewaySettings
 
 
 class ComposioConnectionTests(TestCase):
+    def test_connection_status_normalizes_provider_variants(self):
+        for status in ("active", "CONNECTED", "AccountStatus.ENABLED", "success"):
+            self.assertEqual(connection_status(status), "ACTIVE")
+
     def test_broker_session_works_without_local_composio_key(self):
         response = MagicMock(status_code=200)
         response.json.return_value = {

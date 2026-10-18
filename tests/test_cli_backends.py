@@ -77,3 +77,29 @@ class CLIBackendRegistryTests(TestCase):
         self.assertEqual(payload["auth_status"], "missing")
         self.assertIn("install_url", payload)
         which.assert_called_with("codex", path=mock.ANY)
+
+    @mock.patch("utils.gateway.cli_backends.subprocess.run")
+    @mock.patch("utils.gateway.cli_backends.shutil.which")
+    def test_ollama_models_come_from_cli_list(
+        self, which: mock.Mock, run: mock.Mock
+    ) -> None:
+        which.return_value = "/usr/local/bin/ollama"
+        run.return_value = mock.Mock(
+            returncode=0,
+            stdout=(
+                "NAME ID SIZE MODIFIED\n"
+                "qwen3:8b abc 5 GB yesterday\n"
+                "llama3.3:latest def 42 GB today\n"
+            ),
+        )
+
+        payload = get_cli_backend("ollama").public_dict()
+
+        self.assertEqual(payload["models"], ["qwen3:8b", "llama3.3:latest"])
+        run.assert_called_once_with(
+            ["/usr/local/bin/ollama", "list"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )

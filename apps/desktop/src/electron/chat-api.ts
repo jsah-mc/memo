@@ -172,6 +172,7 @@ type AgentBackendPayload = {
   id: string;
   install_url: string;
   resolved_executable: string | null;
+  models: string[];
 };
 
 const NODE_RUNTIME_PACKAGES: Readonly<Record<string, string>> = {

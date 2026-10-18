@@ -10,6 +10,7 @@ import { AGENT_PRESETS, type AgentPreset } from "@/agents/agent-presets";
 import { AGENT_STYLES } from "@/agents/agent-personality";
 import { useAgents } from "@/agents/agent-provider";
 import { CLI_OPTIONS, type CLIBackendId } from "@/agents/cli-options";
+import { useRuntimeModels } from "@/agents/runtime-models";
 import { COMPOSIO_TOOLKITS } from "@/agents/composio-options";
 import { ComposioPanel } from "@/components/composio-panel";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,7 @@ export function CreateAgentDialog({
   const [composioToolkits, setComposioToolkits] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const runtimeModels = useRuntimeModels();
   const submitting = useRef(false);
 
   const choosePreset = (preset: AgentPreset) => {
@@ -301,7 +303,9 @@ export function CreateAgentDialog({
                     );
                     if (option) {
                       setCli(option.id);
-                      setModel(option.defaultModel);
+                      setModel(
+                        runtimeModels[option.id]?.[0] ?? option.defaultModel,
+                      );
                     }
                   }}
                   className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
@@ -315,12 +319,36 @@ export function CreateAgentDialog({
               </label>
               <label className="grid gap-1.5 text-xs font-medium">
                 Model
-                <Input
-                  value={model}
-                  onChange={(event) => setModel(event.target.value)}
-                  placeholder="Model name"
-                  required
-                />
+                {cli === "ollama" && runtimeModels.ollama?.length ? (
+                  <select
+                    value={model}
+                    onChange={(event) => setModel(event.target.value)}
+                    className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
+                    required
+                  >
+                    {runtimeModels.ollama.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    value={model}
+                    onChange={(event) => setModel(event.target.value)}
+                    placeholder={
+                      cli === "ollama"
+                        ? "No downloaded Ollama models found"
+                        : "Model name"
+                    }
+                    required
+                  />
+                )}
+                {cli === "ollama" && (
+                  <span className="text-[10px] text-muted-foreground">
+                    Loaded from <code>ollama list</code>.
+                  </span>
+                )}
               </label>
               <fieldset className="grid gap-2">
                 <legend className="text-xs font-medium">Computer</legend>

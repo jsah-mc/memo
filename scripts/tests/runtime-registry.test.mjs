@@ -47,3 +47,19 @@ test("runtime settings expose installation and sign-in actions", () => {
   assert.match(chatApi, /npm uninstall -g/);
   assert.match(chatApi, /tell application "Terminal"/);
 });
+
+test("Ollama models are discovered from the installed CLI", () => {
+  const models = readFileSync(
+    "apps/desktop/src/agents/runtime-models.ts",
+    "utf8",
+  );
+  const createAgent = readFileSync(
+    "apps/desktop/src/agents/create-agent-dialog.tsx",
+    "utf8",
+  );
+  assert.match(gateway, /\[executable, "list"\]/);
+  assert.match(gateway, /"models": self\.available_models/);
+  assert.match(models, /backend\.models/);
+  assert.match(createAgent, /runtimeModels\.ollama/);
+  assert.doesNotMatch(frontend, /llama3\.3|deepseek-r1/);
+});

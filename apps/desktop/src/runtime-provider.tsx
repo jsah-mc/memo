@@ -161,14 +161,25 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
     });
     const botSettings = getBotSettings(agent.id, agent.name);
     const botPrompt = botSystemPrompt(botSettings);
+    const botUsesExistingApps = botSettings.allowedComposioApps.includes("*");
+    const botComposioApps = botUsesExistingApps
+      ? agent.composioToolkits
+      : botSettings.allowedComposioApps;
     const request = {
       id: requestId,
       agent: {
         cli: agent.cli,
         model: agent.model,
-        composioEnabled: agent.composioEnabled,
+        composioEnabled: botSettings.enabled
+          ? botSettings.allowedTools.includes("integrations") &&
+            (botUsesExistingApps
+              ? agent.composioEnabled
+              : botComposioApps.length > 0)
+          : agent.composioEnabled,
         composioUserId: agent.composioUserId,
-        composioToolkits: agent.composioToolkits,
+        composioToolkits: botSettings.enabled
+          ? botComposioApps
+          : agent.composioToolkits,
         computerTarget: agent.computerTarget,
         allowedTools: botSettings.enabled
           ? botSettings.allowedTools

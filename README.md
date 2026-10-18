@@ -74,7 +74,7 @@ pnpm dev
 Run the Python gateway separately with:
 
 ```powershell
-uv run memo-legacy gateway --host 127.0.0.1 --port 4010
+uv run memo gateway --host 127.0.0.1 --port 4010
 ```
 
 ## Validation

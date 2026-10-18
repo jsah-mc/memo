@@ -31,6 +31,7 @@ def load_bots(path: Path | None = None) -> list[dict[str, Any]]:
             ],
             "permissionMode": bot.get("permissionMode", "always_ask"),
             "allowedComposioTools": bot.get("allowedComposioTools", ["*"]),
+            "allowedComposioApps": bot.get("allowedComposioApps", ["*"]),
             "allowedMcpServers": bot.get("allowedMcpServers", []),
         }
         for bot in value
@@ -80,6 +81,8 @@ def bot_prompt(bot: dict[str, Any]) -> str:
             f"Permission mode: {bot.get('permissionMode', 'always_ask')}.",
             "Allowed Composio tools: "
             + ", ".join(bot.get("allowedComposioTools", ["*"])),
+            "Allowed Composio apps: "
+            + ", ".join(bot.get("allowedComposioApps", ["*"])),
             "Allowed MCP servers: " + ", ".join(bot.get("allowedMcpServers", [])),
             instructions,
         )

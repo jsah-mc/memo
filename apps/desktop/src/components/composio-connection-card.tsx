@@ -1,6 +1,7 @@
 import { CheckCircle2Icon, ExternalLinkIcon } from "lucide-react";
 import { ComposioIcon } from "@/components/composio-icon";
 import { Button } from "@/components/ui/button";
+import { isActiveComposioStatus } from "@/agents/composio-status";
 
 export function ComposioConnectionCard({
   id,
@@ -21,7 +22,7 @@ export function ComposioConnectionCard({
   onConnect: (toolkit: string) => void;
   onDisconnect: (connectionId: string) => void;
 }>) {
-  const active = accounts.some((item) => item.status === "ACTIVE");
+  const active = accounts.some((item) => isActiveComposioStatus(item.status));
   return (
     <div className="rounded-xl bg-muted/40 p-3">
       <div className="flex items-center justify-between gap-2">
@@ -34,7 +35,9 @@ export function ComposioConnectionCard({
                 className="size-5 object-contain"
                 onError={(event) => {
                   event.currentTarget.hidden = true;
-                  event.currentTarget.nextElementSibling?.removeAttribute("hidden");
+                  event.currentTarget.nextElementSibling?.removeAttribute(
+                    "hidden",
+                  );
                 }}
               />
             ) : null}
@@ -58,7 +61,7 @@ export function ComposioConnectionCard({
           type="button"
           size="sm"
           variant="outline"
-          disabled={!configured || busy !== null}
+          disabled={(!configured && accounts.length === 0) || busy !== null}
           onClick={() => onConnect(id)}
         >
           {busy === id

@@ -1,13 +1,13 @@
 {
   "name": "memo",
-  "version": "3.1.13",
+  "version": "3.1.14",
   "private": true,
   "packageManager": "pnpm@11.20.0",
   "scripts": {
     "dev": "pnpm --filter @memo/desktop start",
     "dev:desktop": "pnpm --filter @memo/desktop start",
     "dev:vite": "pnpm --filter @memo/desktop start:vite",
-    "dev:gateway": "uv run memo-legacy gateway",
+    "dev:gateway": "uv run memo gateway",
     "build": "pnpm --filter @memo/desktop package",
     "package": "pnpm --filter @memo/desktop package",
     "make": "pnpm --filter @memo/desktop make",

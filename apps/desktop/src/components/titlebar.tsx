@@ -18,6 +18,7 @@ import {
   useThreadModels,
 } from "@/agents/thread-model-provider";
 import { CLI_OPTIONS, modelOptions } from "@/agents/cli-options";
+import { useRuntimeModels } from "@/agents/runtime-models";
 import { ThreadListItems, ThreadListNew } from "@/components/thread-list";
 
 export function LegacyModelPicker() {
@@ -28,15 +29,20 @@ export function LegacyModelPicker() {
   const [error, setError] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const selectedModel = activeAgent.model;
+  const runtimeModels = useRuntimeModels();
   const provider =
     CLI_OPTIONS.find((option) => option.id === activeAgent.cli)?.label ??
     activeAgent.cli;
   const models = useMemo(
     () =>
-      modelOptions(activeAgent.cli, selectedModel).filter((model) =>
+      modelOptions(
+        activeAgent.cli,
+        selectedModel,
+        runtimeModels[activeAgent.cli],
+      ).filter((model) =>
         model.toLowerCase().includes(search.trim().toLowerCase()),
       ),
-    [activeAgent.cli, search, selectedModel],
+    [activeAgent.cli, runtimeModels, search, selectedModel],
   );
 
   useEffect(() => {
@@ -85,7 +91,8 @@ export function LegacyModelPicker() {
           className="absolute top-11 left-1/2 z-50 w-[380px] -translate-x-1/2 rounded-2xl border border-border/70 bg-popover p-3 text-popover-foreground shadow-2xl"
         >
           <p className="px-1 pt-2 pb-3 text-[11px] text-muted-foreground">
-            Changes apply immediately to {activeAgent.name} in every conversation.
+            Changes apply immediately to {activeAgent.name} in every
+            conversation.
           </p>
           <div className="mb-3 rounded-xl border border-border/60 bg-muted/20 p-3">
             <p className="text-sm font-semibold">{provider}</p>
@@ -149,7 +156,15 @@ function ModelSidebarButton({
     if (threadId && !saved) {
       setSelection(key, { cli: activeAgent.cli, model: activeAgent.model });
     }
-  }, [activeAgent.cli, activeAgent.model, key, saved, setActiveThreadId, setSelection, threadId]);
+  }, [
+    activeAgent.cli,
+    activeAgent.model,
+    key,
+    saved,
+    setActiveThreadId,
+    setSelection,
+    threadId,
+  ]);
   return (
     <button
       type="button"
@@ -200,7 +215,9 @@ function AgentThreadPicker({ online }: Readonly<{ online: boolean }>) {
           className={`size-1.5 rounded-full ${online ? "bg-emerald-400" : "bg-amber-400"}`}
           aria-label={online ? "Gateway ready" : "Gateway connecting"}
         />
-        <ChevronDownIcon className={`size-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDownIcon
+          className={`size-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+        />
       </button>
       {open && (
         <div
@@ -209,7 +226,9 @@ function AgentThreadPicker({ online }: Readonly<{ online: boolean }>) {
           className="absolute top-11 left-1/2 z-50 grid w-[460px] -translate-x-1/2 grid-cols-[170px_1fr] overflow-hidden rounded-2xl border border-border/70 bg-popover text-popover-foreground shadow-2xl"
         >
           <div className="border-r border-border/60 bg-muted/20 p-2">
-            <p className="px-2 py-1.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">Assistants</p>
+            <p className="px-2 py-1.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+              Assistants
+            </p>
             <div className="grid gap-1">
               {agents.map((agent) => (
                 <button
@@ -218,7 +237,10 @@ function AgentThreadPicker({ online }: Readonly<{ online: boolean }>) {
                   onClick={() => selectAgent(agent.id)}
                   className={`flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs ${agent.id === activeAgent.id ? "bg-accent text-accent-foreground" : "hover:bg-muted"}`}
                 >
-                  <AgentActivityFace agentId={agent.id} className="flex w-10 shrink-0 items-center justify-center font-mono text-[8px] font-bold text-primary" />
+                  <AgentActivityFace
+                    agentId={agent.id}
+                    className="flex w-10 shrink-0 items-center justify-center font-mono text-[8px] font-bold text-primary"
+                  />
                   <span className="truncate">{agent.name}</span>
                 </button>
               ))}
@@ -226,7 +248,9 @@ function AgentThreadPicker({ online }: Readonly<{ online: boolean }>) {
           </div>
           <div className="min-w-0 p-2">
             <div className="flex items-center justify-between px-2 py-1.5">
-              <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">{activeAgent.name} threads</p>
+              <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+                {activeAgent.name} threads
+              </p>
             </div>
             <ThreadListNew className="mb-1 h-8 text-xs" />
             <ThreadListItems className="max-h-72 overflow-y-auto" />
@@ -307,7 +331,17 @@ export default function Titlebar({
           </Button>
         )}
         {onActivityToggle && (
-          <Button type="button" size="icon" variant={activityOpen ? "secondary" : "outline"} className="rounded-full bg-card/65" aria-label={activityOpen ? "Close task activity" : "Open task activity"} aria-pressed={activityOpen} onClick={onActivityToggle}>
+          <Button
+            type="button"
+            size="icon"
+            variant={activityOpen ? "secondary" : "outline"}
+            className="rounded-full bg-card/65"
+            aria-label={
+              activityOpen ? "Close task activity" : "Open task activity"
+            }
+            aria-pressed={activityOpen}
+            onClick={onActivityToggle}
+          >
             <ListChecksIcon />
           </Button>
         )}

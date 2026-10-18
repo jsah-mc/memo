@@ -8,6 +8,7 @@ export type BotSettings = Readonly<{
   allowedTools: readonly BotTool[];
   permissionMode: PermissionMode;
   allowedComposioTools: readonly string[];
+  allowedComposioApps: readonly string[];
   allowedMcpServers: readonly string[];
 }>;
 
@@ -46,6 +47,7 @@ const defaults = (agentName = "memo"): BotSettings => ({
   allowedTools: ALL_BOT_TOOLS,
   permissionMode: "always_ask",
   allowedComposioTools: ["*"],
+  allowedComposioApps: ["*"],
   allowedMcpServers: [],
 });
 
@@ -90,6 +92,9 @@ export function getBotSettings(agentId: string, agentName = "memo") {
           ? stored.allowedComposioTools.filter(
               (tool) => typeof tool === "string",
             )
+          : ["*"],
+        allowedComposioApps: Array.isArray(stored.allowedComposioApps)
+          ? stored.allowedComposioApps.filter((app) => typeof app === "string")
           : ["*"],
         allowedMcpServers: Array.isArray(stored.allowedMcpServers)
           ? stored.allowedMcpServers.filter(
@@ -144,6 +149,7 @@ export function botSystemPrompt(settings: BotSettings) {
     `Allowed tool groups: ${settings.allowedTools.length ? settings.allowedTools.join(", ") : "none"}.`,
     `Permission mode: ${settings.permissionMode}.`,
     `Allowed Composio tools: ${settings.allowedComposioTools.join(", ") || "none"}.`,
+    `Allowed Composio apps: ${settings.allowedComposioApps.join(", ") || "none"}.`,
     `Allowed MCP servers: ${settings.allowedMcpServers.join(", ") || "none"}.`,
     settings.instructions.trim(),
   ]

@@ -73,7 +73,7 @@ if [ "\${1:-}" = "desktop" ]; then
   exec node "\${MEMO_APP}/scripts/launch-desktop.mjs" "\$@"
 fi
 cd "\${MEMO_APP}"
-exec uv run memo-legacy "\$@"
+exec uv run memo "\$@"
 EOF
 chmod +x "${MEMO_BIN}/memo"
 

@@ -16,6 +16,13 @@ def as_object(value: Any) -> dict[str, Any]:
     return value.model_dump(mode="json") if hasattr(value, "model_dump") else value
 
 
+def connection_status(value: Any) -> str:
+    status = str(value or "UNKNOWN").rsplit(".", 1)[-1].upper()
+    return (
+        "ACTIVE" if status in {"ACTIVE", "CONNECTED", "ENABLED", "SUCCESS"} else status
+    )
+
+
 class BrokerSession:
     def __init__(
         self,
@@ -168,7 +175,11 @@ class ComposioTools:
     def connections(self, user_id: str) -> list[dict[str, str]]:
         self.scope(user_id, [])
         if self._broker_url and self._broker_token:
-            return self._broker_request("GET", "/api/connections")["data"]
+            return [
+                {**item, "status": connection_status(item.get("status"))}
+                for item in self._broker_request("GET", "/api/connections")["data"]
+                if isinstance(item, dict)
+            ]
         records = []
         cursor = None
         seen: set[str] = set()
@@ -189,7 +200,7 @@ class ComposioTools:
                     {
                         "id": account["id"],
                         "toolkit": toolkit.get("slug", ""),
-                        "status": account.get("status", "UNKNOWN"),
+                        "status": connection_status(account.get("status")),
                     }
                 )
             cursor = page.get("next_cursor")

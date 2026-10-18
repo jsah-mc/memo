@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CheckIcon, SearchIcon } from "lucide-react";
 import { useAgents } from "@/agents/agent-provider";
 import { CLI_OPTIONS, modelOptions } from "@/agents/cli-options";
+import { useRuntimeModels } from "@/agents/runtime-models";
 import {
   threadModelKey,
   useThreadModels,
@@ -17,6 +18,7 @@ export function ModelSidebar() {
     new Set(),
   );
   const [loadingRuntimes, setLoadingRuntimes] = useState(true);
+  const runtimeModels = useRuntimeModels();
   const key = threadModelKey(activeAgent.id, activeThreadId);
   const saved = selections[key];
   const selectedRuntime = saved?.cli ?? activeAgent.cli;
@@ -29,11 +31,21 @@ export function ModelSidebar() {
   const models = useMemo(
     () =>
       selectedRuntimeInstalled
-        ? modelOptions(selectedRuntime, selectedModel).filter((model) =>
+        ? modelOptions(
+            selectedRuntime,
+            selectedModel,
+            runtimeModels[selectedRuntime],
+          ).filter((model) =>
             model.toLowerCase().includes(search.trim().toLowerCase()),
           )
         : [],
-    [search, selectedModel, selectedRuntime, selectedRuntimeInstalled],
+    [
+      runtimeModels,
+      search,
+      selectedModel,
+      selectedRuntime,
+      selectedRuntimeInstalled,
+    ],
   );
 
   useEffect(() => {
@@ -90,8 +102,9 @@ export function ModelSidebar() {
     setUpdating(true);
     setError("");
     try {
-      await updateAgentRuntime(activeAgent.id, cli, option.defaultModel);
-      setSelection(key, { cli, model: option.defaultModel });
+      const nextModel = runtimeModels[cli]?.[0] ?? option.defaultModel;
+      await updateAgentRuntime(activeAgent.id, cli, nextModel);
+      setSelection(key, { cli, model: nextModel });
       setSearch("");
     } catch (reason) {
       setError(
@@ -112,7 +125,9 @@ export function ModelSidebar() {
           Runtime for {activeAgent.name}
           <select
             value={selectedRuntimeInstalled ? selectedRuntime : ""}
-            disabled={updating || loadingRuntimes || availableRuntimes.length === 0}
+            disabled={
+              updating || loadingRuntimes || availableRuntimes.length === 0
+            }
             onChange={(event) =>
               void selectRuntime(event.target.value as typeof activeAgent.cli)
             }

@@ -1,4 +1,5 @@
 import { BotIcon, TerminalSquareIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useAgents } from "@/agents/agent-provider";
 import {
   BOT_TOOL_OPTIONS,
@@ -8,10 +9,13 @@ import {
   type BotTool,
 } from "@/agents/bot-settings";
 import { Input } from "@/components/ui/input";
+import { isActiveComposioStatus } from "@/agents/composio-status";
 
 export function BotSettingsPanel() {
   const { agents, activeAgent, selectAgent } = useAgents();
   const settings = useBotSettings(activeAgent.id, activeAgent.name);
+  const [connectedApps, setConnectedApps] = useState<string[]>([]);
+  const [connectionError, setConnectionError] = useState("");
   const profiles = [activeAgent, ...agents].filter(
     (agent, index, values) =>
       values.findIndex((item) => item.id === agent.id) === index,
@@ -24,6 +28,47 @@ export function BotSettingsPanel() {
         ? [...settings.allowedTools, tool]
         : settings.allowedTools.filter((item) => item !== tool),
     });
+  const selectedApps = settings.allowedComposioApps.includes("*")
+    ? connectedApps
+    : [...settings.allowedComposioApps];
+  const toggleApp = (app: string, enabled: boolean) =>
+    update({
+      allowedComposioApps: enabled
+        ? Array.from(new Set([...selectedApps, app]))
+        : selectedApps.filter((item) => item !== app),
+    });
+
+  useEffect(() => {
+    let active = true;
+    void window.desktopApi
+      .getComposioConnections()
+      .then(({ data }) => {
+        if (!active) return;
+        setConnectedApps(
+          Array.from(
+            new Set(
+              data
+                .filter((connection) =>
+                  isActiveComposioStatus(connection.status),
+                )
+                .map((connection) => connection.toolkit),
+            ),
+          ).sort(),
+        );
+        setConnectionError("");
+      })
+      .catch((reason: unknown) => {
+        if (active)
+          setConnectionError(
+            reason instanceof Error
+              ? reason.message
+              : "Could not load connected apps.",
+          );
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <section className="grid gap-4">
@@ -184,6 +229,35 @@ export function BotSettingsPanel() {
           connected apps.
         </span>
       </label>
+
+      <fieldset className="grid gap-2 border border-border p-3">
+        <legend className="px-1 font-mono text-[10px] tracking-wider text-muted-foreground">
+          // AUTHENTICATED COMPOSIO APPS
+        </legend>
+        {connectedApps.map((app) => (
+          <label key={app} className="flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={selectedApps.includes(app)}
+              onChange={(event) => toggleApp(app, event.target.checked)}
+              className="size-4 accent-primary"
+            />
+            <span className="font-mono text-xs capitalize">
+              {app.replaceAll("_", " ")}
+            </span>
+          </label>
+        ))}
+        {!connectedApps.length && !connectionError && (
+          <p className="text-xs text-muted-foreground">
+            No authenticated Composio apps are available.
+          </p>
+        )}
+        {connectionError && (
+          <p role="alert" className="text-xs text-destructive">
+            {connectionError}
+          </p>
+        )}
+      </fieldset>
 
       <label className="grid gap-1.5 text-xs font-medium">
         <span className="text-muted-foreground">Allowed MCP servers</span>

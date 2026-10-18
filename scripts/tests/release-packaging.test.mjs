@@ -7,6 +7,7 @@ const windows = readFileSync("scripts/install.ps1", "utf8");
 const posix = readFileSync("scripts/install.sh", "utf8");
 const desktop = readFileSync("scripts/launch-desktop.mjs", "utf8");
 const uninstaller = readFileSync("scripts/uninstall.ps1", "utf8");
+const pyproject = readFileSync("pyproject.toml", "utf8");
 
 test("repository keeps source bootstrap installers without release publishing", () => {
   assert.match(workflow, /scripts\/install\.ps1/);
@@ -38,6 +39,8 @@ test("installers clone Memo into the managed app directory", () => {
   assert.match(posix, /MEMO_BIN}\/memo/);
   assert.match(posix, /\.memo\/bin/);
   assert.doesNotMatch(posix, /memo-desktop/);
+  assert.match(pyproject, /^memo = "utils\.cli:main"$/m);
+  assert.doesNotMatch(`${windows}\n${posix}\n${pyproject}`, /memo-legacy/);
 });
 
 test("Windows registers Memo as an installed app with safe removal", () => {

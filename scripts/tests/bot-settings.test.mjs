@@ -23,6 +23,7 @@ test("enabled bot settings reach the agent system prompt", () => {
     allowedTools: ["browser", "computer"],
     permissionMode: "approve_for_me",
     allowedComposioTools: ["GITHUB_CREATE_ISSUE"],
+    allowedComposioApps: ["github"],
     allowedMcpServers: ["github"],
   });
   assert.match(prompt, /\/builder/);
@@ -44,6 +45,7 @@ test("disabled bot settings leave the normal agent prompt unchanged", () => {
       allowedTools: [],
       permissionMode: "always_ask",
       allowedComposioTools: [],
+      allowedComposioApps: [],
       allowedMcpServers: [],
     }),
     "",
@@ -59,6 +61,8 @@ test("bot settings manage names and mirror bots for the CLI", () => {
   assert.match(panel, /TOOL ACCESS/);
   assert.match(panel, /PERMISSIONS/);
   assert.match(panel, /Allowed Composio tools/);
+  assert.match(panel, /AUTHENTICATED COMPOSIO APPS/);
+  assert.match(panel, /getComposioConnections/);
   assert.match(panel, /Allowed MCP servers/);
   assert.match(chatApi, /memo_sign_in_url/);
   assert.match(chatApi, /shell\.openExternal/);

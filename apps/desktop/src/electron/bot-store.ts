@@ -13,6 +13,7 @@ type StoredBot = {
   allowedTools: string[];
   permissionMode: string;
   allowedComposioTools: string[];
+  allowedComposioApps: string[];
   allowedMcpServers: string[];
 };
 const storePath = () => path.join(os.homedir(), ".memo", "bots.json");
@@ -45,6 +46,8 @@ function validBot(value: unknown): value is StoredBot {
     ) &&
     Array.isArray(bot.allowedComposioTools) &&
     bot.allowedComposioTools.every((tool) => typeof tool === "string") &&
+    Array.isArray(bot.allowedComposioApps) &&
+    bot.allowedComposioApps.every((app) => typeof app === "string") &&
     Array.isArray(bot.allowedMcpServers) &&
     bot.allowedMcpServers.every((server) => typeof server === "string")
   );

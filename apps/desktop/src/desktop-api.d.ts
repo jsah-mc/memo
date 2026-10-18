@@ -79,6 +79,7 @@ declare global {
           allowedTools: readonly string[];
           permissionMode: "full_access" | "approve_for_me" | "always_ask";
           allowedComposioTools: readonly string[];
+          allowedComposioApps: readonly string[];
           allowedMcpServers: readonly string[];
         }) => Promise<{ saved: true }>;
       };
@@ -250,6 +251,7 @@ declare global {
     install_command: string;
     auth_status: "ready" | "expired" | "missing" | "invalid" | "unknown";
     auth_message: string;
+    models: string[];
   };
 
   type PermissionRequest = {

@@ -4,13 +4,16 @@ import { COMPOSIO_TOOLKITS } from "@/agents/composio-options";
 import { ComposioConnectionCard } from "@/components/composio-connection-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { isActiveComposioStatus } from "@/agents/composio-status";
 
 export function ComposioPanel() {
   const [configured, setConfigured] = useState(false);
   const [connections, setConnections] = useState<ComposioConnection[]>([]);
   const [search, setSearch] = useState("");
   const [catalog, setCatalog] =
-    useState<readonly { id: string; label: string; icon?: string }[]>(COMPOSIO_TOOLKITS);
+    useState<readonly { id: string; label: string; icon?: string }[]>(
+      COMPOSIO_TOOLKITS,
+    );
   const [catalogError, setCatalogError] = useState("");
   const [catalogRevision, setCatalogRevision] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
@@ -35,7 +38,7 @@ export function ComposioPanel() {
         result.data.some(
           (item) =>
             item.toolkit === pendingToolkit.current &&
-            item.status === "ACTIVE" &&
+            isActiveComposioStatus(item.status) &&
             !previousAccounts.current.has(item.id),
         )
       ) {
@@ -111,7 +114,7 @@ export function ComposioPanel() {
     try {
       previousAccounts.current = new Set(
         connections
-          .filter((item) => item.status === "ACTIVE")
+          .filter((item) => isActiveComposioStatus(item.status))
           .map((item) => item.id),
       );
       await window.desktopApi.authorizeComposio(toolkit);

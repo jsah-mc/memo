@@ -88,11 +88,37 @@ class CLIBackend:
             "resolved_executable": resolved,
             "auth_status": "unknown",
             "auth_message": "",
+            "models": self.available_models(resolved),
         }
         if self.id == "codex" and resolved:
             auth = CodexAuth().status()
             result.update(auth_status=auth["status"], auth_message=auth["message"])
         return result
+
+    def available_models(self, resolved: str | None = None) -> list[str]:
+        """Return models installed in a local runtime when its CLI supports it."""
+
+        executable = resolved if resolved is not None else self.resolved_executable
+        if self.id != "ollama" or not executable:
+            return []
+        try:
+            completed = subprocess.run(
+                [executable, "list"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return []
+        if completed.returncode != 0:
+            return []
+        lines = completed.stdout.splitlines()
+        return list(
+            dict.fromkeys(
+                line.split()[0] for line in lines[1:] if line.strip() and line.split()
+            )
+        )
 
 
 CLI_BACKENDS: tuple[CLIBackend, ...] = (

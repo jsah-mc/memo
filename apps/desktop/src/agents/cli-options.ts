@@ -28,7 +28,7 @@ const MODEL_OPTIONS: Readonly<Record<CLIBackendId, readonly string[]>> = {
   claude: ["sonnet", "opus", "haiku"],
   antigravity: ["gemini-2.5-pro", "gemini-2.5-flash"],
   opencode: ["default"],
-  ollama: ["qwen3", "llama3.3", "deepseek-r1"],
+  ollama: [],
   lmstudio: ["local-model"],
   "grok-build": ["grok-4.6"],
   cursor: ["auto"],
@@ -41,6 +41,10 @@ const MODEL_OPTIONS: Readonly<Record<CLIBackendId, readonly string[]>> = {
   pi: ["default"],
 };
 
-export function modelOptions(cli: CLIBackendId, current: string) {
-  return Array.from(new Set([current, ...MODEL_OPTIONS[cli]]));
+export function modelOptions(
+  cli: CLIBackendId,
+  current: string,
+  discovered: readonly string[] = [],
+) {
+  return Array.from(new Set([current, ...discovered, ...MODEL_OPTIONS[cli]]));
 }

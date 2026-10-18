@@ -86,6 +86,7 @@ contextBridge.exposeInMainWorld("desktopApi", {
       allowedTools: readonly string[];
       permissionMode: "full_access" | "approve_for_me" | "always_ask";
       allowedComposioTools: readonly string[];
+      allowedComposioApps: readonly string[];
       allowedMcpServers: readonly string[];
     }) => ipcRenderer.invoke("bots:save", bot),
   },

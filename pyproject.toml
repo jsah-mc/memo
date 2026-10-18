@@ -1,6 +1,6 @@
 [project]
 name = "memo"
-version = "3.1.13"
+version = "3.1.14"
 description = "An OpenAI-compatible agent gateway"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.scripts]
-memo-legacy = "utils.cli:main"
+memo = "utils.cli:main"
 memo-browser = "utils.browser.main:main"
 memo-stt = "utils.tools.stt:main"
 memo-tts = "utils.tools.tts:main"

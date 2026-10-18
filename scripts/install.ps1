@@ -55,7 +55,7 @@ if /I "%~1"=="uninstall" (
   exit /b
 )
 cd /d "%MEMO_APP%"
-uv run memo-legacy %*
+uv run memo %*
 "@ | Set-Content -LiteralPath $MemoCommand -Encoding ascii
 
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
