@@ -14,7 +14,10 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 
-function BotStatus({ agentId, agentName }: Readonly<{ agentId: string; agentName: string }>) {
+function BotStatus({
+  agentId,
+  agentName,
+}: Readonly<{ agentId: string; agentName: string }>) {
   const bot = useBotSettings(agentId, agentName);
   if (!bot.enabled) return null;
   return (
@@ -35,7 +38,8 @@ export function AgentSidebarSection({
       .includes(search.trim().toLowerCase()),
   );
 
-  const remove = async (id: string) => {
+  const remove = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
     setDeletingId(id);
     try {
       await deleteAgent(id);
@@ -87,7 +91,7 @@ export function AgentSidebarSection({
                   disabled={deletingId === agent.id}
                   onClick={(event) => {
                     event.stopPropagation();
-                    void remove(agent.id);
+                    void remove(agent.id, agent.name);
                   }}
                   className="opacity-55 hover:opacity-100"
                 >

@@ -207,4 +207,13 @@ def validate_agent_config(value: object) -> tuple[CLIBackend, str]:
         raise ValueError("memo_agent.cli must be a non-empty string")
     if not isinstance(model, str) or not model.strip():
         raise ValueError("memo_agent.model must be a non-empty string")
+    allowed_tools = value.get("allowedTools")
+    if allowed_tools is not None and (
+        not isinstance(allowed_tools, list)
+        or not all(
+            isinstance(tool, str) and tool in {"browser", "computer", "integrations"}
+            for tool in allowed_tools
+        )
+    ):
+        raise ValueError("memo_agent.allowedTools contains an unknown tool group")
     return get_cli_backend(backend_id), model.strip()

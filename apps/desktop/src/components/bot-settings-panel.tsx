@@ -1,16 +1,29 @@
 import { BotIcon, TerminalSquareIcon } from "lucide-react";
 import { useAgents } from "@/agents/agent-provider";
-import { getBotSettings, saveBotSettings, useBotSettings } from "@/agents/bot-settings";
+import {
+  BOT_TOOL_OPTIONS,
+  getBotSettings,
+  saveBotSettings,
+  useBotSettings,
+  type BotTool,
+} from "@/agents/bot-settings";
 import { Input } from "@/components/ui/input";
 
 export function BotSettingsPanel() {
   const { agents, activeAgent, selectAgent } = useAgents();
   const settings = useBotSettings(activeAgent.id, activeAgent.name);
   const profiles = [activeAgent, ...agents].filter(
-    (agent, index, values) => values.findIndex((item) => item.id === agent.id) === index,
+    (agent, index, values) =>
+      values.findIndex((item) => item.id === agent.id) === index,
   );
   const update = (changes: Partial<typeof settings>) =>
     saveBotSettings(activeAgent.id, { ...settings, ...changes });
+  const toggleTool = (tool: BotTool, enabled: boolean) =>
+    update({
+      allowedTools: enabled
+        ? [...settings.allowedTools, tool]
+        : settings.allowedTools.filter((item) => item !== tool),
+    });
 
   return (
     <section className="grid gap-4">
@@ -28,8 +41,14 @@ export function BotSettingsPanel() {
                 onClick={() => selectAgent(agent.id)}
                 className={`border p-2 text-left font-mono text-xs ${agent.id === activeAgent.id ? "border-primary bg-primary/10" : "border-border hover:bg-muted"}`}
               >
-                <span className="block truncate text-foreground">{bot.name}</span>
-                <span className={bot.enabled ? "text-primary" : "text-muted-foreground"}>
+                <span className="block truncate text-foreground">
+                  {bot.name}
+                </span>
+                <span
+                  className={
+                    bot.enabled ? "text-primary" : "text-muted-foreground"
+                  }
+                >
                   {bot.enabled ? "[enabled]" : "[disabled]"} /{bot.command}
                 </span>
               </button>
@@ -45,7 +64,8 @@ export function BotSettingsPanel() {
             <div>
               <h3 className="text-sm font-semibold">{activeAgent.name} bot</h3>
               <p className="text-xs text-muted-foreground">
-                Apply persistent bot behavior to every conversation with this agent.
+                Apply persistent bot behavior to every conversation with this
+                agent.
               </p>
             </div>
             <label className="flex cursor-pointer items-center gap-2 text-xs font-medium">
@@ -74,6 +94,33 @@ export function BotSettingsPanel() {
           CLI: /bot &quot;{settings.name || "name"}&quot;
         </span>
       </label>
+
+      <fieldset className="grid gap-2 border border-border p-3">
+        <legend className="px-1 font-mono text-[10px] tracking-wider text-muted-foreground">
+          // TOOL ACCESS
+        </legend>
+        {BOT_TOOL_OPTIONS.map((tool) => (
+          <label
+            key={tool.id}
+            className="flex cursor-pointer items-start gap-3"
+          >
+            <input
+              type="checkbox"
+              checked={settings.allowedTools.includes(tool.id)}
+              onChange={(event) => toggleTool(tool.id, event.target.checked)}
+              className="mt-0.5 size-4 accent-primary"
+            />
+            <span className="grid gap-0.5">
+              <span className="font-mono text-xs text-foreground">
+                {tool.label}
+              </span>
+              <span className="text-[11px] font-normal text-muted-foreground">
+                {tool.description}
+              </span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
 
       <label className="grid gap-1.5 text-xs font-medium">
         <span className="flex items-center gap-2 text-muted-foreground">

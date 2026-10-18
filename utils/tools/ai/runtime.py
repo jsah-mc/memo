@@ -48,6 +48,12 @@ class ProgramAI:
             vision_model=self.settings.vision_model,
         )
         self.history: list[dict[str, Any]] = []
+        self.allowed_tools = {"browser", "computer", "integrations"}
+
+    def set_allowed_tools(self, tools: list[str] | set[str] | tuple[str, ...]) -> None:
+        """Limit tool groups for subsequent requests from the selected bot."""
+
+        self.allowed_tools = set(tools) & {"browser", "computer", "integrations"}
 
     def _sdk(self, model: str) -> ModelSDK:
         return self.sdk_factory(
@@ -60,15 +66,21 @@ class ProgramAI:
         sdk: ModelSDK,
         payload: dict[str, Any],
     ) -> SDKResponseStream:
-        if self.settings.browser_enabled or self.settings.computer_enabled:
+        browser_enabled = (
+            self.settings.browser_enabled and "browser" in self.allowed_tools
+        )
+        computer_enabled = (
+            self.settings.computer_enabled and "computer" in self.allowed_tools
+        )
+        if browser_enabled or computer_enabled:
             return SDKResponseStream(
                 agent_tool_events(
                     sdk,
                     payload,
-                    browser_tool=(self.browser_tool if self.settings.browser_enabled else None),
+                    browser_tool=(self.browser_tool if browser_enabled else None),
                     computer_tool=(
                         self.computer_tool or ComputerSandboxTool()
-                        if self.settings.computer_enabled
+                        if computer_enabled
                         else None
                     ),
                     permission_broker=self.permission_broker,

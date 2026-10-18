@@ -183,6 +183,13 @@ class ProgramAITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tools[0]["name"], "browse_web")
         self.assertNotIn("tool_choice", FakeSDK.calls[0][1])
 
+    async def test_selected_bot_can_disable_browser_tools(self) -> None:
+        self.ai.set_allowed_tools([])
+
+        _ = [part async for part in self.ai.stream("find turtles if needed")]
+
+        self.assertNotIn("tools", FakeSDK.calls[0][1])
+
     async def test_computer_request_runs_responses_tool_loop(self) -> None:
         FakeComputerSDK.call_count = 0
         computer = FakeComputer()
@@ -248,8 +255,11 @@ class ProgramAITests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(FakeBrowserSDK.call_count, 2)
         self.assertEqual(events[0]["tool_call"]["name"], "browse_web")
-        self.assertIn("Browsed: find turtles", events[1]["tool_call"]["result"]["result"])
+        self.assertIn(
+            "Browsed: find turtles", events[1]["tool_call"]["result"]["result"]
+        )
         self.assertEqual(events[2]["delta"], "Turtles found.")
+
 
 if __name__ == "__main__":
     unittest.main()

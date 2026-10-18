@@ -33,6 +33,7 @@ type ChatRequest = {
     composioUserId: string;
     composioToolkits: readonly string[];
     computerTarget: "host" | "local_vm" | "vps";
+    allowedTools?: readonly string[];
   };
   messages: ChatMessage[];
 };
@@ -508,6 +509,11 @@ function isChatRequest(value: unknown): value is ChatRequest {
     typeof request.agent.cli === "string" &&
     typeof request.agent.model === "string" &&
     ["host", "local_vm", "vps"].includes(request.agent.computerTarget) &&
+    (request.agent.allowedTools === undefined ||
+      (Array.isArray(request.agent.allowedTools) &&
+        request.agent.allowedTools.every((tool) =>
+          ["browser", "computer", "integrations"].includes(tool),
+        ))) &&
     Array.isArray(request.messages) &&
     request.messages.every(
       (message) =>

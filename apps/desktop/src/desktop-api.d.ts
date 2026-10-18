@@ -27,6 +27,7 @@ declare global {
             composioUserId: string;
             composioToolkits: readonly string[];
             computerTarget: "host" | "local_vm" | "vps";
+            allowedTools?: readonly string[];
           };
           messages: Array<{
             role: "system" | "user" | "assistant";
@@ -72,6 +73,7 @@ declare global {
           command: string;
           instructions: string;
           enabled: boolean;
+          allowedTools: readonly string[];
         }) => Promise<{ saved: true }>;
       };
       onPermissionRequest(

@@ -3,8 +3,15 @@ import test from "node:test";
 import { botSystemPrompt } from "../../apps/desktop/src/agents/bot-settings.ts";
 import { readFileSync } from "node:fs";
 
-const panel = readFileSync("apps/desktop/src/components/bot-settings-panel.tsx", "utf8");
+const panel = readFileSync(
+  "apps/desktop/src/components/bot-settings-panel.tsx",
+  "utf8",
+);
 const store = readFileSync("apps/desktop/src/electron/bot-store.ts", "utf8");
+const settings = readFileSync(
+  "apps/desktop/src/agents/bot-settings.ts",
+  "utf8",
+);
 
 test("enabled bot settings reach the agent system prompt", () => {
   const prompt = botSystemPrompt({
@@ -12,10 +19,12 @@ test("enabled bot settings reach the agent system prompt", () => {
     name: "Builder",
     command: "builder",
     instructions: "Keep tasks moving.",
+    allowedTools: ["browser", "computer"],
   });
   assert.match(prompt, /\/builder/);
   assert.match(prompt, /Builder/);
   assert.match(prompt, /Keep tasks moving\./);
+  assert.match(prompt, /browser, computer/);
 });
 
 test("disabled bot settings leave the normal agent prompt unchanged", () => {
@@ -25,6 +34,7 @@ test("disabled bot settings leave the normal agent prompt unchanged", () => {
       name: "Builder",
       command: "builder",
       instructions: "Keep tasks moving.",
+      allowedTools: [],
     }),
     "",
   );
@@ -36,4 +46,8 @@ test("bot settings manage names and mirror bots for the CLI", () => {
   assert.match(panel, /\/\/ BOTS/);
   assert.match(store, /\.memo.*bots\.json/s);
   assert.match(store, /A bot named/);
+  assert.match(panel, /TOOL ACCESS/);
+  for (const tool of ["Browser", "Computer & shell", "Connected apps"]) {
+    assert.match(settings, new RegExp(tool));
+  }
 });

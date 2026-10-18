@@ -155,7 +155,15 @@ def create_app(
         interactive_permissions: bool,
     ):
         agent = payload.get("memo_agent", {})
-        if agent.get("composioEnabled"):
+        configured_tools = agent.get("allowedTools")
+        allowed_tools = (
+            set(configured_tools)
+            if isinstance(configured_tools, list)
+            else {"browser", "computer", "integrations"}
+        )
+        allow_browser = allow_browser and "browser" in allowed_tools
+        allow_computer = allow_computer and "computer" in allowed_tools
+        if agent.get("composioEnabled") and "integrations" in allowed_tools:
             user_id, toolkits = _composio_scope(
                 {
                     "user_id": agent.get("composioUserId"),
@@ -173,9 +181,7 @@ def create_app(
                     payload,
                     browser_tool=web_tool if allow_browser else None,
                     computer_tool=computer_for(payload) if computer_enabled else None,
-                    permission_broker=(
-                        approvals if interactive_permissions else None
-                    ),
+                    permission_broker=(approvals if interactive_permissions else None),
                 )
             )
         return await sdk.responses(payload)

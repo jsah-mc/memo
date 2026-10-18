@@ -29,7 +29,16 @@ class MemoApp(VoiceModeMixin, App):
         "./styles/messages.tcss",
     ]
     SPINNER: ClassVar[tuple[str, ...]] = (
-        "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"
+        "⠋",
+        "⠙",
+        "⠹",
+        "⠸",
+        "⠼",
+        "⠴",
+        "⠦",
+        "⠧",
+        "⠇",
+        "⠏",
     )
 
     def __init__(
@@ -72,10 +81,7 @@ class MemoApp(VoiceModeMixin, App):
         self.query_one("#messageinput", Input).focus()
         self.set_interval(0.08, self._advance_spinner)
         self._render_activity()
-        if (
-            self._preload_voice
-            and os.environ.get("MEMO_SPEECH_PRELOAD", "0") == "1"
-        ):
+        if self._preload_voice and os.environ.get("MEMO_SPEECH_PRELOAD", "0") == "1":
             self.run_voice_warmup()
 
     @work(thread=False, exclusive=True, group="voice-warmup")
@@ -122,9 +128,12 @@ class MemoApp(VoiceModeMixin, App):
         name = parse_bot_command(command)
         bots = load_bots()
         if name is None:
-            available = ", ".join(
-                f'"{bot["name"]}"' for bot in bots if bot.get("enabled") is True
-            ) or "none"
+            available = (
+                ", ".join(
+                    f'"{bot["name"]}"' for bot in bots if bot.get("enabled") is True
+                )
+                or "none"
+            )
             self._set_activity("error", f'Use /bot "name" · available: {available}')
             return
         bot = find_bot(name, bots)
@@ -132,6 +141,11 @@ class MemoApp(VoiceModeMixin, App):
             self._set_activity("error", f'Bot "{name}" was not found or is disabled')
             return
         self.ai.system_prompt = bot_prompt(bot)
+        set_allowed_tools = getattr(self.ai, "set_allowed_tools", None)
+        if callable(set_allowed_tools):
+            set_allowed_tools(
+                bot.get("allowedTools", ["browser", "computer", "integrations"])
+            )
         self.ai.clear_history()
         self._active_bot_name = str(bot["name"]).strip()
         self._set_activity("done", f'Bot switched to "{self._active_bot_name}"')
@@ -181,9 +195,7 @@ class MemoApp(VoiceModeMixin, App):
             "done": ":)",
             "error": ":(",
         }.get(self._activity, self.SPINNER[self._spinner_index])
-        self.query_one("#status", Static).update(
-            f"{face}  {self._activity_detail}"
-        )
+        self.query_one("#status", Static).update(f"{face}  {self._activity_detail}")
 
     def _set_activity(self, activity: str, detail: str) -> None:
         self._activity = activity
@@ -324,7 +336,9 @@ class MemoApp(VoiceModeMixin, App):
     ) -> None:
         self.query_one("#messageinput", Input).disabled = busy
         self.query_one("#sendbutton", Button).disabled = busy
-        self.query_one("#voicebutton", Button).disabled = busy and not keep_voice_enabled
+        self.query_one("#voicebutton", Button).disabled = (
+            busy and not keep_voice_enabled
+        )
         if busy:
             self._set_activity("loading", status)
         elif self._activity not in {"done", "error"}:

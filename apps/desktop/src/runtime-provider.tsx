@@ -144,10 +144,23 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
     setAgentActivity(agent.id, "loading");
     const requestId = crypto.randomUUID();
     const activity = useTaskActivity.getState();
-    const lastUserMessage = [...messages].reverse().find((message) => message.role === "user");
-    const titlePart = lastUserMessage?.content.find((part) => part.type === "text");
-    activity.start({ id: requestId, agentId: agent.id, title: titlePart?.type === "text" ? titlePart.text.slice(0, 80) : "Agent task", status: "running", startedAt: Date.now(), tools: [] });
-    const botPrompt = botSystemPrompt(getBotSettings(agent.id, agent.name));
+    const lastUserMessage = [...messages]
+      .reverse()
+      .find((message) => message.role === "user");
+    const titlePart = lastUserMessage?.content.find(
+      (part) => part.type === "text",
+    );
+    activity.start({
+      id: requestId,
+      agentId: agent.id,
+      title:
+        titlePart?.type === "text" ? titlePart.text.slice(0, 80) : "Agent task",
+      status: "running",
+      startedAt: Date.now(),
+      tools: [],
+    });
+    const botSettings = getBotSettings(agent.id, agent.name);
+    const botPrompt = botSystemPrompt(botSettings);
     const request = {
       id: requestId,
       agent: {
@@ -157,6 +170,9 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
         composioUserId: agent.composioUserId,
         composioToolkits: agent.composioToolkits,
         computerTarget: agent.computerTarget,
+        allowedTools: botSettings.enabled
+          ? botSettings.allowedTools
+          : undefined,
       },
       messages: [
         {
@@ -263,7 +279,15 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
               : {}),
           };
           const index = toolPartIndexes.get(toolCall.id);
-          activity.tool(requestId, { id: toolCall.id, name: toolCall.name, status: toolCall.isError ? "error" : "result" in toolCall ? "done" : "running" });
+          activity.tool(requestId, {
+            id: toolCall.id,
+            name: toolCall.name,
+            status: toolCall.isError
+              ? "error"
+              : "result" in toolCall
+                ? "done"
+                : "running",
+          });
           if (index === undefined) {
             toolPartIndexes.set(toolCall.id, content.length);
             content.push(part);
@@ -289,7 +313,11 @@ const createModelAdapter = (agent: AgentProfile): ChatModelAdapter => ({
       activity.finish(requestId, abortSignal.aborted ? "cancelled" : "done");
     } catch (error) {
       setAgentActivity(agent.id, abortSignal.aborted ? "idle" : "error");
-      activity.finish(requestId, abortSignal.aborted ? "cancelled" : "error", error instanceof Error ? error.message : String(error));
+      activity.finish(
+        requestId,
+        abortSignal.aborted ? "cancelled" : "error",
+        error instanceof Error ? error.message : String(error),
+      );
       throw error;
     } finally {
       streamClosed = true;

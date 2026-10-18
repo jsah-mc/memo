@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld("desktopApi", {
         composioEnabled: boolean;
         composioUserId: string;
         composioToolkits: readonly string[];
+        allowedTools?: readonly string[];
       };
       messages: Array<{
         role: "system" | "user" | "assistant";
@@ -79,6 +80,7 @@ contextBridge.exposeInMainWorld("desktopApi", {
       command: string;
       instructions: string;
       enabled: boolean;
+      allowedTools: readonly string[];
     }) => ipcRenderer.invoke("bots:save", bot),
   },
   onPermissionRequest: (onRequest: (request: unknown) => void) => {

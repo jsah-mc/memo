@@ -7,6 +7,8 @@ import shlex
 from pathlib import Path
 from typing import Any
 
+BOT_TOOL_IDS = {"browser", "computer", "integrations"}
+
 
 def bot_store_path() -> Path:
     return Path.home() / ".memo" / "bots.json"
@@ -20,7 +22,14 @@ def load_bots(path: Path | None = None) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
     return [
-        bot
+        {
+            **bot,
+            "allowedTools": [
+                tool
+                for tool in bot.get("allowedTools", sorted(BOT_TOOL_IDS))
+                if isinstance(tool, str) and tool in BOT_TOOL_IDS
+            ],
+        }
         for bot in value
         if isinstance(bot, dict)
         and isinstance(bot.get("name"), str)
@@ -63,6 +72,8 @@ def bot_prompt(bot: dict[str, Any]) -> str:
             "Memo bot mode is enabled.",
             f"Your bot name is {name}.",
             f"Your command name is /{command}.",
+            "Allowed tool groups: "
+            + ", ".join(bot.get("allowedTools", sorted(BOT_TOOL_IDS))),
             instructions,
         )
         if part
