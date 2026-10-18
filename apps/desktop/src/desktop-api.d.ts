@@ -48,6 +48,8 @@ declare global {
       agents: {
         list(): Promise<AgentProfileData[]>;
         backends(): Promise<AgentBackendData[]>;
+        openInstallGuide(backendId: string): Promise<{ opened: true }>;
+        signIn(backendId: string): Promise<{ launched: true }>;
         create(agent: NewAgentData): Promise<AgentProfileData>;
         delete(agentId: string): Promise<void>;
         update(
@@ -60,7 +62,13 @@ declare global {
         ): Promise<AgentProfileData>;
       };
       bots: {
-        save: (bot: { agentId: string; name: string; command: string; instructions: string; enabled: boolean }) => Promise<{ saved: true }>;
+        save: (bot: {
+          agentId: string;
+          name: string;
+          command: string;
+          instructions: string;
+          enabled: boolean;
+        }) => Promise<{ saved: true }>;
       };
       onPermissionRequest(
         onRequest: (request: PermissionRequest) => void,
@@ -123,9 +131,7 @@ declare global {
       getComposioStatus(): Promise<{ configured: boolean }>;
       getComposioKeyStatus(): Promise<{ hasKey: boolean }>;
       setComposioKey(key: string): Promise<{ saved: true }>;
-      getComposioToolkits(
-        search?: string,
-      ): Promise<{
+      getComposioToolkits(search?: string): Promise<{
         data: Array<{ id: string; label: string; icon?: string }>;
       }>;
       getComposioConnections(): Promise<{ data: ComposioConnection[] }>;
@@ -227,6 +233,11 @@ declare global {
     model_flag: string | null;
     native_tools_policy: string;
     installed: boolean;
+    resolved_executable: string | null;
+    install_url: string;
+    install_command: string;
+    auth_status: "ready" | "expired" | "missing" | "invalid" | "unknown";
+    auth_message: string;
   };
 
   type PermissionRequest = {

@@ -26,8 +26,21 @@ test("frontend and gateway expose every supported agent runtime", () => {
     );
     assert.match(
       gateway,
-      new RegExp(`CLIBackend\\(["']${id}["']`),
+      new RegExp(`CLIBackend\\(\\s*["']${id}["']`),
       `${id} missing in gateway`,
     );
   }
+});
+
+test("runtime settings expose installation and sign-in actions", () => {
+  const panel = readFileSync(
+    "apps/desktop/src/components/ai-agents-panel.tsx",
+    "utf8",
+  );
+  const chatApi = readFileSync("apps/desktop/src/electron/chat-api.ts", "utf8");
+  assert.match(panel, /openInstallGuide\(backend\.id\)/);
+  assert.match(panel, /agents\.signIn\(backend\.id\)/);
+  assert.match(chatApi, /agents:open-install-guide/);
+  assert.match(chatApi, /agents:sign-in/);
+  assert.match(chatApi, /tell application "Terminal"/);
 });

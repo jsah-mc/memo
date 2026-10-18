@@ -55,6 +55,10 @@ contextBridge.exposeInMainWorld("desktopApi", {
   agents: {
     list: () => ipcRenderer.invoke("agents:list"),
     backends: () => ipcRenderer.invoke("agents:backends"),
+    openInstallGuide: (backendId: string) =>
+      ipcRenderer.invoke("agents:open-install-guide", backendId),
+    signIn: (backendId: string) =>
+      ipcRenderer.invoke("agents:sign-in", backendId),
     create: (agent: unknown) => ipcRenderer.invoke("agents:create", agent),
     delete: (agentId: string) => ipcRenderer.invoke("agents:delete", agentId),
     update: (
@@ -67,8 +71,13 @@ contextBridge.exposeInMainWorld("desktopApi", {
     ) => ipcRenderer.invoke("agents:update", agentId, changes),
   },
   bots: {
-    save: (bot: { agentId: string; name: string; command: string; instructions: string; enabled: boolean }) =>
-      ipcRenderer.invoke("bots:save", bot),
+    save: (bot: {
+      agentId: string;
+      name: string;
+      command: string;
+      instructions: string;
+      enabled: boolean;
+    }) => ipcRenderer.invoke("bots:save", bot),
   },
   onPermissionRequest: (onRequest: (request: unknown) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, request: unknown) =>
@@ -85,8 +94,11 @@ contextBridge.exposeInMainWorld("desktopApi", {
   virtualDesktop: {
     get: (target: "local_vm" | "vps" = "local_vm") =>
       ipcRenderer.invoke("virtual-desktop:get", target),
-    save: (settings: { target?: "local_vm" | "vps"; endpoint: string; token?: string }) =>
-      ipcRenderer.invoke("virtual-desktop:save", settings),
+    save: (settings: {
+      target?: "local_vm" | "vps";
+      endpoint: string;
+      token?: string;
+    }) => ipcRenderer.invoke("virtual-desktop:save", settings),
     start: () => ipcRenderer.invoke("virtual-desktop:start"),
     stop: () => ipcRenderer.invoke("virtual-desktop:stop"),
     open: (target: "local_vm" | "vps" = "local_vm") =>
@@ -103,7 +115,8 @@ contextBridge.exposeInMainWorld("desktopApi", {
   workspace: {
     get: () => ipcRenderer.invoke("workspace:get"),
     choose: () => ipcRenderer.invoke("workspace:choose"),
-    checkpoint: (label: string) => ipcRenderer.invoke("workspace:checkpoint", label),
+    checkpoint: (label: string) =>
+      ipcRenderer.invoke("workspace:checkpoint", label),
   },
   resources: {
     get: () => ipcRenderer.invoke("resources:get"),

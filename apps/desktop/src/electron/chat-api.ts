@@ -1,4 +1,5 @@
 import { app, ipcMain, shell, type IpcMainEvent } from "electron";
+import { execFile, spawn } from "node:child_process";
 import { appendFileSync, statSync, truncateSync } from "node:fs";
 import path from "node:path";
 import {
@@ -163,6 +164,52 @@ async function gatewayPayload(response: Response): Promise<unknown> {
   }
 }
 
+type AgentBackendPayload = {
+  id: string;
+  install_url: string;
+  resolved_executable: string | null;
+};
+
+async function agentBackends(): Promise<AgentBackendPayload[]> {
+  await ensureGatewayRunning();
+  const response = await fetch(`${GATEWAY_BASE_URL}/v1/cli-backends`);
+  const payload = (await response.json()) as { data?: unknown };
+  if (!response.ok || !Array.isArray(payload.data)) {
+    throw new Error(gatewayError(payload, "Could not load AI agent runtimes."));
+  }
+  return payload.data as AgentBackendPayload[];
+}
+
+async function launchCodexLogin(executable: string) {
+  if (process.platform === "darwin") {
+    const script = `on run argv
+set executablePath to item 1 of argv
+tell application "Terminal"
+  activate
+  do script (quoted form of executablePath & " login")
+end tell
+end run`;
+    await new Promise<void>((resolve, reject) => {
+      execFile("/usr/bin/osascript", ["-e", script, executable], (error) =>
+        error ? reject(error) : resolve(),
+      );
+    });
+    return;
+  }
+  const child =
+    process.platform === "win32"
+      ? spawn("cmd.exe", ["/d", "/k", `"${executable}" login`], {
+          detached: true,
+          stdio: "ignore",
+          windowsHide: false,
+        })
+      : spawn("x-terminal-emulator", ["-e", executable, "login"], {
+          detached: true,
+          stdio: "ignore",
+        });
+  child.unref();
+}
+
 function sendChatEvent(event: IpcMainEvent, payload: ChatStreamEvent) {
   if (!event.sender.isDestroyed()) {
     event.sender.send("chat:event", payload);
@@ -230,7 +277,9 @@ async function resolveShellPermission(
   }
   if (allowed && permission.kind === "shell_command") {
     try {
-      await createWorkspaceCheckpoint(`Before ${permission.command.slice(0, 36)}`);
+      await createWorkspaceCheckpoint(
+        `Before ${permission.command.slice(0, 36)}`,
+      );
     } catch {
       // Non-Git workspaces still receive the normal explicit permission gate.
     }
@@ -500,15 +549,36 @@ export function registerChatApi() {
   });
 
   ipcMain.handle("agents:backends", async () => {
-    await ensureGatewayRunning();
-    const response = await fetch(`${GATEWAY_BASE_URL}/v1/cli-backends`);
-    const payload = (await response.json()) as { data?: unknown };
-    if (!response.ok || !Array.isArray(payload.data)) {
-      throw new Error(
-        gatewayError(payload, "Could not load AI agent runtimes."),
+    return agentBackends();
+  });
+
+  ipcMain.handle(
+    "agents:open-install-guide",
+    async (_event, backendId: unknown) => {
+      if (typeof backendId !== "string") throw new Error("Invalid runtime.");
+      const backend = (await agentBackends()).find(
+        (item) => item.id === backendId,
       );
+      if (!backend) throw new Error("Unknown runtime.");
+      const url = new URL(backend.install_url);
+      if (url.protocol !== "https:")
+        throw new Error("Invalid installation guide.");
+      await shell.openExternal(url.toString());
+      return { opened: true };
+    },
+  );
+
+  ipcMain.handle("agents:sign-in", async (_event, backendId: unknown) => {
+    if (backendId !== "codex")
+      throw new Error("This runtime has no sign-in action.");
+    const backend = (await agentBackends()).find(
+      (item) => item.id === backendId,
+    );
+    if (!backend?.resolved_executable) {
+      throw new Error("Install Codex CLI before signing in.");
     }
-    return payload.data;
+    await launchCodexLogin(backend.resolved_executable);
+    return { launched: true };
   });
 
   ipcMain.handle("composio:status", async () => {

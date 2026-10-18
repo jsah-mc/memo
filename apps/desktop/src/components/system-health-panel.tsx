@@ -3,6 +3,7 @@ import {
   CheckCircle2Icon,
   CircleAlertIcon,
   ExternalLinkIcon,
+  LogInIcon,
   RefreshCwIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ export function SystemHealthPanel() {
   const [health, setHealth] = useState<Health | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [signingIn, setSigningIn] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -52,6 +54,19 @@ export function SystemHealthPanel() {
   }, [refresh]);
 
   const providerReady = health?.provider.status === "ready";
+  const signIn = async () => {
+    setSigningIn(true);
+    setError("");
+    try {
+      await window.desktopApi.agents.signIn("codex");
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Could not open sign-in.",
+      );
+    } finally {
+      setSigningIn(false);
+    }
+  };
   return (
     <section
       className="grid gap-3 rounded-xl bg-muted/35 p-3"
@@ -104,9 +119,18 @@ export function SystemHealthPanel() {
                 type="button"
                 size="sm"
                 variant="outline"
+                disabled={signingIn}
+                onClick={() => void signIn()}
+              >
+                Sign in with Codex <LogInIcon className="size-3" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
                 onClick={() => void window.desktopApi.openCodexHelp()}
               >
-                Open sign-in help <ExternalLinkIcon className="size-3" />
+                Sign-in instructions <ExternalLinkIcon className="size-3" />
               </Button>
             </div>
           )}
