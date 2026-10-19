@@ -9,7 +9,6 @@ import { RuntimeProvider } from "@/runtime-provider";
 import { AgentSetupGate } from "@/agents/agent-setup-gate";
 import { AgentProvider, useAgents } from "@/agents/agent-provider";
 import { ModelSidebar } from "@/agents/model-sidebar";
-import { ThreadModelProvider } from "@/agents/thread-model-provider";
 import { GatewayStartup } from "@/components/gateway-startup";
 import { WorkspaceShortcuts } from "@/components/workspace-shortcuts";
 import { TaskActivitySidebar } from "@/agents/task-activity-sidebar";
@@ -17,13 +16,13 @@ import "./index.css";
 import { initializeTheme } from "./theme";
 import { AgentGroupProvider } from "@/agents/agent-groups";
 
-function WorkspaceShell() {
+function WorkspaceSession() {
   const { activeAgent } = useAgents();
   const [rightPanel, setRightPanel] = useState<"desktop" | "models" | "activity" | null>(
     null,
   );
   return (
-    <SidebarProvider className="h-dvh min-h-0 overflow-hidden">
+    <>
       <Titlebar
         desktopOpen={rightPanel === "desktop"}
         modelOpen={rightPanel === "models"}
@@ -36,13 +35,24 @@ function WorkspaceShell() {
         activityOpen={rightPanel === "activity"}
         onActivityToggle={() => setRightPanel((value) => value === "activity" ? null : "activity")}
       />
-      <AppSidebar />
       <div className="ml-72 min-w-0 flex-1">
         <App />
       </div>
       {rightPanel === "desktop" && <AgentDesktopPanel agent={activeAgent} />}
       {rightPanel === "models" && <ModelSidebar />}
       {rightPanel === "activity" && <TaskActivitySidebar />}
+    </>
+  );
+}
+
+function WorkspaceShell() {
+  return (
+    <SidebarProvider className="h-dvh min-h-0 overflow-hidden">
+      <AppSidebar />
+      <RuntimeProvider>
+        <WorkspaceShortcuts />
+        <WorkspaceSession />
+      </RuntimeProvider>
     </SidebarProvider>
   );
 }
@@ -60,14 +70,9 @@ createRoot(rootElement).render(
     <GatewayStartup>
       <AgentProvider>
         <AgentGroupProvider>
-          <ThreadModelProvider>
-            <AgentSetupGate>
-              <RuntimeProvider>
-                <WorkspaceShortcuts />
-                <WorkspaceShell />
-              </RuntimeProvider>
-            </AgentSetupGate>
-          </ThreadModelProvider>
+          <AgentSetupGate>
+            <WorkspaceShell />
+          </AgentSetupGate>
         </AgentGroupProvider>
       </AgentProvider>
     </GatewayStartup>

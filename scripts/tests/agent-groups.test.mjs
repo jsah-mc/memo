@@ -10,8 +10,15 @@ const color = readFileSync("apps/desktop/src/agents/agent-color.ts", "utf8");
 test("agents and groups own separate thread namespaces", () => {
   assert.match(runtime, /group\.\$\{activeGroup\.id\}/);
   assert.match(runtime, /agent\.\$\{activeAgent\.id\}/);
-  assert.match(runtime, /key=\{scope\}/);
+  assert.match(runtime, /key=\{target\.scope\}/);
   assert.match(runtime, /memo\\\.agent\\\.memo/);
+});
+
+test("running conversations stay mounted while switching workspaces", () => {
+  assert.match(runtime, /targets\.map\(\(target\) =>/);
+  assert.match(runtime, /target\.scope === activeScope \? "contents" : "hidden"/);
+  assert.match(runtime, /<RuntimeSession \{\.\.\.target\}>\{children\}<\/RuntimeSession>/);
+  assert.doesNotMatch(runtime, /<RuntimeSession\s+key=\{scope\}/);
 });
 
 test("group members collaborate in sequence", () => {

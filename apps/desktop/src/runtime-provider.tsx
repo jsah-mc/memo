@@ -25,6 +25,7 @@ import type { AgentProfile } from "@/agents/agent-provider";
 import { setAgentActivity } from "@/agents/agent-activity";
 import { useTaskActivity } from "@/agents/task-activity";
 import {
+  ThreadModelProvider,
   threadModelKey,
   useThreadModels,
 } from "@/agents/thread-model-provider";
@@ -423,24 +424,25 @@ const createGroupModelAdapter = (
   },
 });
 
-function RuntimeSession({
+function RuntimeSessionContent({
   children,
   scope,
   members,
+  primaryAgent,
   groupName,
 }: Readonly<{
   children: ReactNode;
   scope: string;
   members: readonly AgentProfile[];
+  primaryAgent: AgentProfile;
   groupName?: string;
 }>) {
-  const { activeAgent } = useAgents();
   const { activeThreadId, selections } = useThreadModels();
-  const saved = selections[threadModelKey(activeAgent.id, activeThreadId)];
+  const saved = selections[threadModelKey(primaryAgent.id, activeThreadId)];
   const effectiveAgent = {
-    ...activeAgent,
-    cli: saved?.cli ?? activeAgent.cli,
-    model: saved?.model ?? activeAgent.model,
+    ...primaryAgent,
+    cli: saved?.cli ?? primaryAgent.cli,
+    model: saved?.model ?? primaryAgent.model,
   };
   const effectiveMembers = groupName ? members : [effectiveAgent];
   const membersRef = useRef(effectiveMembers);
@@ -473,24 +475,70 @@ function RuntimeSession({
   return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
 }
 
+function RuntimeSession(props: Readonly<{
+  children: ReactNode;
+  scope: string;
+  members: readonly AgentProfile[];
+  primaryAgent: AgentProfile;
+  groupName?: string;
+}>) {
+  return (
+    <ThreadModelProvider>
+      <RuntimeSessionContent {...props} />
+    </ThreadModelProvider>
+  );
+}
+
+type RuntimeTarget = Readonly<{
+  scope: string;
+  primaryAgent: AgentProfile;
+  members: readonly AgentProfile[];
+  groupName?: string;
+}>;
+
 export function RuntimeProvider({
   children,
 }: Readonly<{ children: ReactNode }>) {
-  const { agents, activeAgent } = useAgents();
-  const { activeGroup } = useAgentGroups();
-  const members = activeGroup
-    ? activeGroup.memberIds.flatMap((id) => agents.filter((agent) => agent.id === id))
-    : [activeAgent];
-  const scope = activeGroup ? `group.${activeGroup.id}` : `agent.${activeAgent.id}`;
+  const { agents, activeAgent, builtInAgent } = useAgents();
+  const { groups, activeGroup } = useAgentGroups();
+  const allAgents = [builtInAgent, ...agents].filter(
+    (agent, index, values) => values.findIndex((item) => item.id === agent.id) === index,
+  );
+  const targets: RuntimeTarget[] = [
+    ...allAgents.map((agent) => ({
+      scope: `agent.${agent.id}`,
+      primaryAgent: agent,
+      members: [agent] as readonly AgentProfile[],
+    })),
+    ...groups.flatMap((group) => {
+      const members = group.memberIds.flatMap((id) =>
+        allAgents.filter((agent) => agent.id === id),
+      );
+      return members.length
+        ? [{
+            scope: `group.${group.id}`,
+            primaryAgent: members[0],
+            members,
+            groupName: group.name,
+          }]
+        : [];
+    }),
+  ];
+  const activeScope = activeGroup
+    ? `group.${activeGroup.id}`
+    : `agent.${activeAgent.id}`;
 
   return (
-    <RuntimeSession
-      key={scope}
-      scope={scope}
-      members={members}
-      groupName={activeGroup?.name}
-    >
-      {children}
-    </RuntimeSession>
+    <>
+      {targets.map((target) => (
+        <div
+          key={target.scope}
+          className={target.scope === activeScope ? "contents" : "hidden"}
+          aria-hidden={target.scope === activeScope ? undefined : true}
+        >
+          <RuntimeSession {...target}>{children}</RuntimeSession>
+        </div>
+      ))}
+    </>
   );
 }

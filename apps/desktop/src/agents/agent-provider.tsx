@@ -31,6 +31,7 @@ type NewAgent = Readonly<Omit<AgentProfile, "id" | "builtIn">>;
 
 type AgentContextValue = Readonly<{
   agents: readonly AgentProfile[];
+  builtInAgent: AgentProfile;
   loaded: boolean;
   loadError: string;
   reload: () => void;
@@ -336,6 +337,7 @@ export function AgentProvider({ children }: Readonly<{ children: ReactNode }>) {
   const value = useMemo(
     () => ({
       agents,
+      builtInAgent,
       activeAgent,
       loaded,
       loadError,
@@ -349,6 +351,7 @@ export function AgentProvider({ children }: Readonly<{ children: ReactNode }>) {
     }),
     [
       agents,
+      builtInAgent,
       activeAgent,
       loaded,
       loadError,
