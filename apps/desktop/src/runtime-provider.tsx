@@ -1,4 +1,4 @@
-import { useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import {
   AssistantRuntimeProvider,
   type AttachmentAdapter,
@@ -31,6 +31,7 @@ import {
 } from "@/agents/thread-model-provider";
 import { botSystemPrompt, getBotSettings } from "@/agents/bot-settings";
 import { useAgentGroups } from "@/agents/agent-groups";
+import { useWorkspaceStatus, type WorkspaceRunResult } from "@/agents/workspace-status";
 
 const fileToDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -160,6 +161,8 @@ const appendModelPart = (
 const createModelAdapter = (
   agent: AgentProfile,
   collaborationContext = "",
+  workspace?: Readonly<{ scope: string; label: string }>,
+  onFinish?: (result: WorkspaceRunResult) => void,
 ): ChatModelAdapter => ({
   async *run({ messages, abortSignal }) {
     setAgentActivity(agent.id, "loading");
@@ -180,6 +183,7 @@ const createModelAdapter = (
       startedAt: Date.now(),
       tools: [],
     });
+    if (workspace) useWorkspaceStatus.getState().start(workspace.scope);
     const botSettings = getBotSettings(agent.id, agent.name);
     const botPrompt = botSystemPrompt(botSettings);
     const botUsesExistingApps = botSettings.allowedComposioApps.includes("*");
@@ -351,15 +355,23 @@ const createModelAdapter = (
           break;
         }
       }
-      setAgentActivity(agent.id, abortSignal.aborted ? "idle" : "done");
-      activity.finish(requestId, abortSignal.aborted ? "cancelled" : "done");
+      const externallyCancelled = useTaskActivity.getState().items.find((item) => item.id === requestId)?.status === "cancelled";
+      const result: WorkspaceRunResult = abortSignal.aborted || externallyCancelled ? "cancelled" : "done";
+      setAgentActivity(agent.id, result === "cancelled" ? "idle" : "done");
+      activity.finish(requestId, result);
+      if (workspace) useWorkspaceStatus.getState().finish(workspace.scope, workspace.label, result);
+      onFinish?.(result);
     } catch (error) {
-      setAgentActivity(agent.id, abortSignal.aborted ? "idle" : "error");
+      const externallyCancelled = useTaskActivity.getState().items.find((item) => item.id === requestId)?.status === "cancelled";
+      const result: WorkspaceRunResult = abortSignal.aborted || externallyCancelled ? "cancelled" : "error";
+      setAgentActivity(agent.id, result === "cancelled" ? "idle" : "error");
       activity.finish(
         requestId,
-        abortSignal.aborted ? "cancelled" : "error",
+        result,
         error instanceof Error ? error.message : String(error),
       );
+      if (workspace) useWorkspaceStatus.getState().finish(workspace.scope, workspace.label, result);
+      onFinish?.(result);
       throw error;
     } finally {
       streamClosed = true;
@@ -385,41 +397,57 @@ async function* iterateModelRun(
 const createGroupModelAdapter = (
   groupName: string,
   members: readonly AgentProfile[],
+  scope: string,
 ): ChatModelAdapter => ({
   async *run(options) {
+    useWorkspaceStatus.getState().start(scope);
     let combined: ThreadAssistantMessagePart[] = [];
     let transcript = "";
-    for (const member of members) {
-      if (options.abortSignal.aborted) break;
-      const context = [
-        `You are collaborating in the agent group "${groupName}". Respond as ${member.name}, from your own role and expertise. Address useful points from the other agents and do not impersonate them.`,
-        transcript ? `Earlier agent replies in this turn:\n${transcript}` : "You are the first agent to respond this turn.",
-      ].join("\n\n");
-      let latest: ThreadAssistantMessagePart[] = [];
-      for await (const update of iterateModelRun(
-        createModelAdapter(member, context),
-        options,
-      )) {
-        latest = [...update.content];
-        yield {
-          ...update,
-          content: [
-            ...combined,
-            { type: "text" as const, text: `// ${member.name}\n` },
-            ...latest,
-          ],
-        };
+    let groupResult: WorkspaceRunResult = "done";
+    try {
+      for (const member of members) {
+        if (options.abortSignal.aborted) break;
+        const context = [
+          `You are collaborating in the agent group "${groupName}". Respond as ${member.name}, from your own role and expertise. Address useful points from the other agents and do not impersonate them.`,
+          transcript ? `Earlier agent replies in this turn:\n${transcript}` : "You are the first agent to respond this turn.",
+        ].join("\n\n");
+        let latest: ThreadAssistantMessagePart[] = [];
+        const memberResult: { current: WorkspaceRunResult } = { current: "done" };
+        for await (const update of iterateModelRun(
+          createModelAdapter(member, context, undefined, (result) => {
+            memberResult.current = result;
+          }),
+          options,
+        )) {
+          latest = [...update.content];
+          yield {
+            ...update,
+            content: [
+              ...combined,
+              { type: "text" as const, text: `// ${member.name}\n` },
+              ...latest,
+            ],
+          };
+        }
+        if (memberResult.current === "cancelled") {
+          groupResult = "cancelled";
+          break;
+        }
+        combined = [
+          ...combined,
+          { type: "text" as const, text: `// ${member.name}\n` },
+          ...latest,
+        ];
+        const reply = latest
+          .filter((part): part is Extract<ThreadAssistantMessagePart, { type: "text" }> => part.type === "text")
+          .map((part) => part.text)
+          .join("\n");
+        if (reply) transcript += `${member.name}: ${reply}\n\n`;
       }
-      combined = [
-        ...combined,
-        { type: "text" as const, text: `// ${member.name}\n` },
-        ...latest,
-      ];
-      const reply = latest
-        .filter((part): part is Extract<ThreadAssistantMessagePart, { type: "text" }> => part.type === "text")
-        .map((part) => part.text)
-        .join("\n");
-      if (reply) transcript += `${member.name}: ${reply}\n\n`;
+      useWorkspaceStatus.getState().finish(scope, groupName, options.abortSignal.aborted ? "cancelled" : groupResult);
+    } catch (error) {
+      useWorkspaceStatus.getState().finish(scope, groupName, options.abortSignal.aborted ? "cancelled" : "error");
+      throw error;
     }
   },
 });
@@ -451,10 +479,10 @@ function RuntimeSessionContent({
     () => ({
       run: (options) =>
         groupName
-          ? createGroupModelAdapter(groupName, membersRef.current).run(options)
-          : createModelAdapter(membersRef.current[0]).run(options),
+          ? createGroupModelAdapter(groupName, membersRef.current, scope).run(options)
+          : createModelAdapter(membersRef.current[0], "", { scope, label: membersRef.current[0].name }).run(options),
     }),
-    [groupName],
+    [groupName, scope],
   );
   const adapter = useMemo(
     () => createThreadListAdapter(scope, scope === "agent.memo"),
@@ -527,6 +555,9 @@ export function RuntimeProvider({
   const activeScope = activeGroup
     ? `group.${activeGroup.id}`
     : `agent.${activeAgent.id}`;
+  useEffect(() => {
+    useWorkspaceStatus.getState().setActiveScope(activeScope);
+  }, [activeScope]);
 
   return (
     <>

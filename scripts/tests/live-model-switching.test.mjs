@@ -18,7 +18,7 @@ test("each chat run reads the latest agent runtime and model", () => {
   assert.match(runtimeProvider, /membersRef\.current = effectiveMembers/);
   assert.match(
     runtimeProvider,
-    /createModelAdapter\(membersRef\.current\[0\]\)\.run\(options\)/,
+    /createModelAdapter\(membersRef\.current\[0\], "", \{ scope, label: membersRef\.current\[0\]\.name \}\)\.run\(options\)/,
   );
 });
 

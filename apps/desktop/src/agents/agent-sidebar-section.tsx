@@ -5,8 +5,10 @@ import { useAgents } from "@/agents/agent-provider";
 import { AgentActivityFace } from "@/agents/agent-activity";
 import { moderatedAgentColor } from "@/agents/agent-color";
 import { CreateAgentGroupDialog } from "@/agents/create-agent-group-dialog";
+import { EditAgentGroupDialog } from "@/agents/edit-agent-group-dialog";
 import { useAgentGroups } from "@/agents/agent-groups";
 import { useBotSettings } from "@/agents/bot-settings";
+import { useWorkspaceStatus } from "@/agents/workspace-status";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -28,6 +30,15 @@ function BotStatus({
       BOT /{bot.command}
     </span>
   );
+}
+
+function WorkspaceStatusBadge({ scope }: Readonly<{ scope: string }>) {
+  const status = useWorkspaceStatus((state) => state.statuses[scope]);
+  if (!status || (status.running === 0 && status.unread === 0)) return null;
+  if (status.running > 0) {
+    return <span className="ml-auto flex items-center gap-1 font-mono text-[10px] text-primary"><LoaderCircleIcon className="size-3 animate-spin" />{status.running}</span>;
+  }
+  return <span className={`ml-auto min-w-4 rounded-full px-1 text-center font-mono text-[9px] text-primary-foreground ${status.lastResult === "error" ? "bg-destructive" : "bg-primary"}`}>{status.unread}</span>;
 }
 
 export function AgentSidebarSection({
@@ -94,6 +105,7 @@ export function AgentSidebarSection({
                     {agent.role}
                   </span>
                 </span>
+                <WorkspaceStatusBadge scope={`agent.${agent.id}`} />
               </SidebarMenuButton>
               {!agent.builtIn && (
                 <SidebarMenuAction
@@ -135,8 +147,9 @@ export function AgentSidebarSection({
               >
                 <UsersIcon className="size-4 text-primary" />
                 <span className="min-w-0 flex-1 truncate">{group.name}</span>
-                <span className="font-mono text-[10px] text-muted-foreground">{group.memberIds.length}</span>
+                <WorkspaceStatusBadge scope={`group.${group.id}`} />
               </SidebarMenuButton>
+              <EditAgentGroupDialog group={group} />
               <SidebarMenuAction
                 aria-label={`Delete ${group.name}`}
                 onClick={(event) => {

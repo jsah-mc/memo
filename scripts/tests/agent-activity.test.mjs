@@ -23,7 +23,7 @@ test("desktop agent faces reflect the real stream lifecycle", () => {
   assert.match(activity, /const SPINNER/);
   assert.doesNotMatch(activity, /[\u2800-\u28ff]/u);
   assert.match(runtime, /setAgentActivity\(agent\.id, "loading"\)/);
-  assert.match(runtime, /setAgentActivity\(agent\.id, abortSignal\.aborted/);
+  assert.match(runtime, /setAgentActivity\(agent\.id, result === "cancelled"/);
 });
 
 test("agent faces replace profile initials in the titlebar and sidebar", () => {

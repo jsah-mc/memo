@@ -18,6 +18,7 @@ type AgentGroupContextValue = Readonly<{
   groups: readonly AgentGroup[];
   activeGroup: AgentGroup | null;
   createGroup: (name: string, memberIds: readonly string[]) => void;
+  updateGroup: (id: string, name: string, memberIds: readonly string[]) => void;
   deleteGroup: (id: string) => void;
   selectGroup: (id: string) => void;
   clearActiveGroup: () => void;
@@ -95,6 +96,19 @@ export function AgentGroupProvider({ children }: Readonly<{ children: ReactNode 
     [activeGroupId, groups, persist],
   );
 
+  const updateGroup = useCallback(
+    (id: string, name: string, memberIds: readonly string[]) => {
+      const members = [...new Set(memberIds)].filter((memberId) => validAgentIds.has(memberId));
+      if (members.length < 2) throw new Error("Choose at least two agents.");
+      persist(groups.map((group) => group.id === id ? {
+        ...group,
+        name: name.trim() || "Agent group",
+        memberIds: members,
+      } : group));
+    },
+    [groups, persist, validAgentIds],
+  );
+
   const selectGroup = useCallback(
     (id: string) => {
       const group = groups.find((item) => item.id === id);
@@ -113,8 +127,8 @@ export function AgentGroupProvider({ children }: Readonly<{ children: ReactNode 
   }, []);
 
   const value = useMemo(
-    () => ({ groups, activeGroup, createGroup, deleteGroup, selectGroup, clearActiveGroup }),
-    [activeGroup, clearActiveGroup, createGroup, deleteGroup, groups, selectGroup],
+    () => ({ groups, activeGroup, createGroup, updateGroup, deleteGroup, selectGroup, clearActiveGroup }),
+    [activeGroup, clearActiveGroup, createGroup, deleteGroup, groups, selectGroup, updateGroup],
   );
 
   return <AgentGroupContext.Provider value={value}>{children}</AgentGroupContext.Provider>;
