@@ -1,7 +1,14 @@
 import { app, ipcMain } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, copyFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
+
+// Load .env for API keys if present
+try {
+  require("dotenv").config({ path: path.join(findMemoRoot(), ".env") });
+} catch {
+  // dotenv not installed — ignore
+}
 import {
   getComposioKey,
   getComposioUserId,
@@ -12,6 +19,24 @@ import {
 
 const DESKTOP_GATEWAY_PORT = process.env.MEMO_DESKTOP_GATEWAY_PORT ?? "4010";
 export const GATEWAY_BASE_URL = `http://127.0.0.1:${DESKTOP_GATEWAY_PORT}`;
+
+function sharedAgentStorePath() {
+  return path.join(app.getPath("home"), ".memo", "agents.json");
+}
+
+function migrateAgentStore() {
+  const shared = sharedAgentStorePath();
+  if (existsSync(shared)) return shared;
+  const legacy = path.join(app.getPath("userData"), "agents.json");
+  if (!existsSync(legacy)) return shared;
+  try {
+    mkdirSync(path.dirname(shared), { recursive: true });
+    copyFileSync(legacy, shared);
+  } catch {
+    // A failed migration only means the shared store starts empty.
+  }
+  return shared;
+}
 const GATEWAY_URL = `${GATEWAY_BASE_URL}/health/liveliness`;
 const STARTUP_TIMEOUT_MS = 90_000;
 const RESTART_BACKOFF_MS = 5_000;
@@ -242,13 +267,14 @@ async function startGateway() {
       // The speech endpoints already initialize their models on first use.
       MEMO_SPEECH_PRELOAD: process.env.MEMO_SPEECH_PRELOAD ?? "0",
       MEMO_STT_PRELOAD: process.env.MEMO_STT_PRELOAD ?? "0",
-      MEMO_AGENT_STORE: path.join(app.getPath("userData"), "agents.json"),
+      MEMO_AGENT_STORE: migrateAgentStore(),
       COMPOSIO_API_KEY: getComposioKey() || process.env.COMPOSIO_API_KEY,
       MEMO_COMPOSIO_USER_ID: getComposioUserId(),
       MEMO_CUA_ENDPOINT: getComputerSettings("local_vm").endpoint,
       MEMO_CUA_TOKEN: getComputerSettings("local_vm").token,
       MEMO_VPS_CUA_ENDPOINT: getComputerSettings("vps").endpoint,
       MEMO_VPS_CUA_TOKEN: getComputerSettings("vps").token,
+      GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
     },
     windowsHide: true,
     stdio: ["ignore", "ignore", "pipe"],

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LoaderCircleIcon, Trash2Icon, UsersIcon } from "lucide-react";
 import { CreateAgentDialog } from "@/agents/create-agent-dialog";
+import { BotOnboardingDialog } from "@/agents/bot-onboarding-dialog";
 import { useAgents } from "@/agents/agent-provider";
 import { AgentActivityFace } from "@/agents/agent-activity";
 import { moderatedAgentColor } from "@/agents/agent-color";
@@ -18,6 +19,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
+
+type StoredBot = Readonly<{ name: string; enabled: boolean }>;
 
 function BotStatus({
   agentId,
@@ -47,6 +51,27 @@ export function AgentSidebarSection({
   const { agents, activeAgent, selectAgent, deleteAgent } = useAgents();
   const { groups, activeGroup, selectGroup, clearActiveGroup, deleteGroup } = useAgentGroups();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [bots, setBots] = useState<readonly StoredBot[] | null>(null);
+  const [botSetupOpen, setBotSetupOpen] = useState(false);
+
+  useEffect(() => {
+    const list = window.desktopApi?.bots?.list;
+    if (!list) {
+      setBots(null);
+      return;
+    }
+    let active = true;
+    void list()
+      .then((value) => {
+        if (active) setBots(value);
+      })
+      .catch(() => {
+        if (active) setBots([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [botSetupOpen]);
   const visibleAgents = agents.filter((agent) =>
     `${agent.name} ${agent.role}`
       .toLowerCase()
@@ -132,6 +157,28 @@ export function AgentSidebarSection({
             </li>
           )}
         </SidebarMenu>
+        {bots !== null && !bots.some((bot) => bot.enabled) && (
+          <div className="mt-3 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3">
+            <p className="font-mono text-[10px] tracking-wider text-primary">
+              // FIRST BOT
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              No bots yet. Turn an agent into a persistent task bot — it will
+              also be available in the Memo terminal.
+            </p>
+            <Button
+              size="sm"
+              className="mt-2 h-8 w-full"
+              onClick={() => setBotSetupOpen(true)}
+            >
+              Set up your first bot
+            </Button>
+          </div>
+        )}
+        <BotOnboardingDialog
+          open={botSetupOpen}
+          onOpenChange={setBotSetupOpen}
+        />
         <div className="mt-4 flex items-center justify-between px-2 text-xs font-medium text-muted-foreground">
           <span>// GROUPS</span>
         </div>

@@ -16,6 +16,8 @@ from utils.codex_auth import CodexAuth
 PROVIDERS = {
     "anthropic": ("https://api.anthropic.com/v1", "ANTHROPIC_API_KEY"),
     "openai": ("https://api.openai.com/v1", "OPENAI_API_KEY"),
+    "vercel": ("https://gateway.ai.vercel.sh/v1", "VERCEL_GATEWAY_API_KEY"),
+    "google": ("https://generativelanguage.googleapis.com/v1beta", "GOOGLE_API_KEY"),
     "ollama": ("http://127.0.0.1:11434/v1", None),
     "lmstudio": ("http://127.0.0.1:1234/v1", None),
     "minimax": ("https://api.minimax.io/v1", "MINIMAX_API_KEY"),
@@ -67,9 +69,14 @@ class ProviderTransport:
     async def _headers(self) -> dict[str, str]:
         if self.provider == "chatgpt":
             return await asyncio.to_thread(CodexAuth().credentials)
+        if self.provider == "google":
+            key = os.environ.get("GOOGLE_API_KEY")
+            if not key:
+                raise RuntimeError("GOOGLE_API_KEY is required to use google provider.")
+            return {"x-goog-api-key": key}
         if self.provider not in PROVIDERS:
             raise ValueError(
-                f"Unsupported direct provider: {self.provider}. Use chatgpt, anthropic, openai, ollama, lmstudio, minimax, xai, groq, or openrouter."
+                f"Unsupported direct provider: {self.provider}. Use chatgpt, anthropic, openai, vercel, google, ollama, lmstudio, minimax, xai, groq, or openrouter."
             )
         key_name = PROVIDERS[self.provider][1]
         key = os.environ.get(key_name, "") if key_name else ""
@@ -102,14 +109,43 @@ class ProviderTransport:
         url = base.rstrip("/") + (
             "/messages"
             if self.provider == "anthropic"
-            else "/responses" if responses else "/chat/completions"
+            else "/responses" if responses
+            else f"/v1beta/models/{self.model}:streamGenerateContent" if self.provider == "google" and stream
+            else f"/v1beta/models/{self.model}:generateContent" if self.provider == "google"
+            else "/chat/completions"
         )
         body = {
             key: value
             for key, value in body.items()
             if key not in {"timeout", "api_base"}
         }
-        body.update(model=self.model, stream=stream)
+        if self.provider == "google":
+            # Basic mapping for Google API
+            # Google uses "contents" with "role" and "parts"
+            messages = body.get("messages", [])
+            google_contents = []
+            for msg in messages:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if isinstance(content, str):
+                    google_contents.append({"role": role, "parts": [{"text": content}]})
+                elif isinstance(content, list):
+                    parts = []
+                    for part in content:
+                        if isinstance(part, dict) and "text" in part:
+                            parts.append({"text": part["text"]})
+                    google_contents.append({"role": role, "parts": parts})
+            
+            body = {
+                "contents": google_contents,
+                "generationConfig": {
+                    "temperature": body.get("temperature"),
+                    "topP": body.get("top_p"),
+                    "maxOutputTokens": body.get("max_tokens"),
+                },
+            }
+        else:
+            body.update(model=self.model, stream=stream)
         client = httpx.AsyncClient(timeout=httpx.Timeout(90, connect=30))
         try:
             response = await client.send(
@@ -138,6 +174,14 @@ class ProviderTransport:
                     from utils.anthropic_transport import completion
 
                     result = completion(result)
+                elif self.provider == "google":
+                    # Convert Google format to OpenAI-compatible
+                    if "candidates" in result and result["candidates"]:
+                        candidate = result["candidates"][0]
+                        if "content" in candidate and "parts" in candidate["content"]:
+                            parts = candidate["content"]["parts"]
+                            text = " ".join(p.get("text", "") for p in parts if "text" in p)
+                            result = {"choices": [{"message": {"content": text}}]}
                 await response.aclose()
                 await client.aclose()
                 return result
@@ -152,8 +196,19 @@ class ProviderTransport:
                     from utils.anthropic_transport import chat_chunks
 
                     source = chat_chunks(source)
-                async for event in source:
-                    yield event
+                elif self.provider == "google":
+                    # Google's streaming returns server-sent events with candidates
+                    async for event in source:
+                        if "candidates" in event and event["candidates"]:
+                            candidate = event["candidates"][0]
+                            if "content" in candidate and "parts" in candidate["content"]:
+                                parts = candidate["content"]["parts"]
+                                text = " ".join(p.get("text", "") for p in parts if "text" in p)
+                                if text:
+                                    yield {"choices": [{"delta": {"content": text}}]}
+                else:
+                    async for event in source:
+                        yield event
             finally:
                 await response.aclose()
                 await client.aclose()

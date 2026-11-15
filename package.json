@@ -16,6 +16,7 @@
     "version:sync": "node scripts/sync-version.mjs"
   },
   "devDependencies": {
-    "lodash": "4.17.21"
+    "lodash": "4.17.21",
+    "react": "19.3.1"
   }
 }

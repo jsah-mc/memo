@@ -64,45 +64,89 @@ const readAll = (): Record<string, BotSettings> => {
   }
 };
 
+const normalizeBotSettings = (
+  stored: Partial<BotSettings> & { name?: string },
+  agentName: string,
+): BotSettings => ({
+  ...defaults(agentName),
+  ...stored,
+  name:
+    typeof stored.name === "string" && stored.name.trim()
+      ? stored.name
+      : agentName,
+  allowedTools: Array.isArray(stored.allowedTools)
+    ? stored.allowedTools.filter((tool): tool is BotTool =>
+        ALL_BOT_TOOLS.includes(tool as BotTool),
+      )
+    : ALL_BOT_TOOLS,
+  permissionMode: [
+    "full_access",
+    "approve_for_me",
+    "always_ask",
+  ].includes(stored.permissionMode ?? "")
+    ? (stored.permissionMode as PermissionMode)
+    : "always_ask",
+  allowedComposioTools: Array.isArray(stored.allowedComposioTools)
+    ? stored.allowedComposioTools.filter(
+        (tool) => typeof tool === "string",
+      )
+    : ["*"],
+  allowedComposioApps: Array.isArray(stored.allowedComposioApps)
+    ? stored.allowedComposioApps.filter((app) => typeof app === "string")
+    : ["*"],
+  allowedMcpServers: Array.isArray(stored.allowedMcpServers)
+    ? stored.allowedMcpServers.filter(
+        (server) => typeof server === "string",
+      )
+    : [],
+});
+
 export function getBotSettings(agentId: string, agentName = "memo") {
   const stored = readAll()[agentId];
   return stored &&
     typeof stored.enabled === "boolean" &&
     typeof stored.command === "string" &&
     typeof stored.instructions === "string"
-    ? {
-        ...stored,
-        name:
-          typeof stored.name === "string" && stored.name.trim()
-            ? stored.name
-            : agentName,
-        allowedTools: Array.isArray(stored.allowedTools)
-          ? stored.allowedTools.filter((tool): tool is BotTool =>
-              ALL_BOT_TOOLS.includes(tool as BotTool),
-            )
-          : ALL_BOT_TOOLS,
-        permissionMode: [
-          "full_access",
-          "approve_for_me",
-          "always_ask",
-        ].includes(stored.permissionMode)
-          ? stored.permissionMode
-          : "always_ask",
-        allowedComposioTools: Array.isArray(stored.allowedComposioTools)
-          ? stored.allowedComposioTools.filter(
-              (tool) => typeof tool === "string",
-            )
-          : ["*"],
-        allowedComposioApps: Array.isArray(stored.allowedComposioApps)
-          ? stored.allowedComposioApps.filter((app) => typeof app === "string")
-          : ["*"],
-        allowedMcpServers: Array.isArray(stored.allowedMcpServers)
-          ? stored.allowedMcpServers.filter(
-              (server) => typeof server === "string",
-            )
-          : [],
-      }
+    ? normalizeBotSettings(stored, agentName)
     : defaults(agentName);
+}
+
+/**
+ * Pull bot settings written by other Memo clients (TUI, CLI, gateway API)
+ * out of ~/.memo/bots.json into localStorage so the desktop remembers them.
+ */
+export async function syncBotSettingsFromStore() {
+  const list = window.desktopApi?.bots?.list;
+  if (!list) return;
+  let bots: Awaited<ReturnType<typeof list>>;
+  try {
+    bots = await list();
+  } catch {
+    return;
+  }
+  const all = readAll();
+  let changed = false;
+  for (const bot of bots) {
+    if (
+      !bot.agentId ||
+      typeof bot.name !== "string" ||
+      !bot.name.trim() ||
+      typeof bot.enabled !== "boolean"
+    ) {
+      continue;
+    }
+    const settings = normalizeBotSettings(
+      bot as Partial<BotSettings>,
+      "memo",
+    );
+    if (JSON.stringify(all[bot.agentId]) !== JSON.stringify(settings)) {
+      all[bot.agentId] = settings;
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  window.dispatchEvent(new CustomEvent(EVENT_NAME));
 }
 
 export function saveBotSettings(agentId: string, settings: BotSettings) {

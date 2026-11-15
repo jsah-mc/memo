@@ -37,6 +37,12 @@ Push-Location $MemoApp
 try {
   uv sync --locked
   pnpm install --frozen-lockfile
+  # Build TUI and sandbox dependencies
+  cd apps\tui
+  pnpm install --frozen-lockfile
+  cd ..\sandbox
+  pnpm install --frozen-lockfile
+  cd ..
 } finally {
   Pop-Location
 }

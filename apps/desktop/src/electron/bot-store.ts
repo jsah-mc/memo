@@ -15,6 +15,7 @@ type StoredBot = {
   allowedComposioTools: string[];
   allowedComposioApps: string[];
   allowedMcpServers: string[];
+  model?: string;
 };
 const storePath = () => path.join(os.homedir(), ".memo", "bots.json");
 
@@ -54,6 +55,7 @@ function validBot(value: unknown): value is StoredBot {
 }
 
 export function registerBotStore() {
+  ipcMain.handle("bots:list", () => readBots());
   ipcMain.handle("bots:save", (_event, value: unknown) => {
     if (!validBot(value)) throw new Error("Invalid bot settings.");
     const bots = readBots();

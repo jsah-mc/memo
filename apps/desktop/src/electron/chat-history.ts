@@ -1,5 +1,10 @@
 import { app, ipcMain } from "electron";
-import { existsSync, readFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+} from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -39,9 +44,31 @@ function findProjectRoot() {
 
 export function chatDatabasePath() {
   const configured = process.env.MEMO_CHAT_DATABASE;
-  return configured
-    ? path.resolve(configured)
-    : path.join(app.isPackaged ? app.getPath("userData") : findProjectRoot(), "data.sqlite");
+  if (configured) return path.resolve(configured);
+
+  const shared = path.join(app.getPath("home"), ".memo", "chat-history.sqlite");
+  if (existsSync(shared)) return shared;
+
+  const legacyCandidates = app.isPackaged
+    ? [path.join(app.getPath("userData"), "data.sqlite")]
+    : (() => {
+        try {
+          return [path.join(findProjectRoot(), "data.sqlite")];
+        } catch {
+          return [];
+        }
+      })();
+  for (const legacy of legacyCandidates) {
+    if (!existsSync(legacy)) continue;
+    try {
+      mkdirSync(path.dirname(shared), { recursive: true });
+      copyFileSync(legacy, shared);
+    } catch {
+      // A failed migration just means history starts fresh.
+    }
+    break;
+  }
+  return shared;
 }
 
 function getDatabase() {

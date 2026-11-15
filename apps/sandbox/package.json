@@ -1,0 +1,24 @@
+{
+  "name": "@memo/sandbox",
+  "version": "1.0.0",
+  "description": "The Sandbox To Gaurdrail against Memo to do dangerous things",
+  "main": "src/main.ts",
+  "scripts": {
+    "dev": "tsx src/main.ts",
+    "build": "tsc",
+    "start": "node dist/main.js"
+  },
+  "keywords": [],
+  "author": "jsah-mc",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3"
+  },
+  "dependencies": {
+    "@microsoft/mxc-sdk": "^1.0.1"
+  }
+}

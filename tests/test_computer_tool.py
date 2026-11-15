@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
-from utils.program.sdk import SDKResponseStream
+from utils.gateway.sdk import SDKResponseStream
 from utils.tools.computer import (
     ComputerSandboxTool,
     detect_app_request,

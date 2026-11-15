@@ -64,6 +64,12 @@ fi
 cd "${MEMO_APP}"
 uv sync --locked
 pnpm install --frozen-lockfile
+# Build TUI and sandbox dependencies
+cd apps/tui
+pnpm install --frozen-lockfile
+cd ../sandbox
+pnpm install --frozen-lockfile
+cd ../..
 
 cat > "${MEMO_BIN}/memo" <<EOF
 #!/bin/sh

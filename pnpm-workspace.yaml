@@ -10,7 +10,9 @@ allowBuilds:
   electron-winstaller: true
   esbuild: true
   fs-xattr: true
+  koffi: true
   macos-alias: true
+  node-pty: true
   onnxruntime-node: true
   protobufjs: true
   sharp: true

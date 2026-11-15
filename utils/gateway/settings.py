@@ -4,9 +4,24 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+# Load .env from repo root if available
+if load_dotenv is not None:
+    repo_root = Path(__file__).parent.parent.parent
+    load_dotenv(repo_root / ".env")
+
+def _has_ollama() -> bool:
+    import shutil
+    return shutil.which("ollama") is not None
 
 MODEL_ALIAS = "codex"
-DEFAULT_UPSTREAM_MODEL = "chatgpt/gpt-5.6-luna"
+DEFAULT_UPSTREAM_MODEL = "openai/gpt-5"
 DEFAULT_LIGHT_MODEL = DEFAULT_UPSTREAM_MODEL
 DEFAULT_HEAVY_MODEL = DEFAULT_UPSTREAM_MODEL
 DEFAULT_VISION_MODEL = DEFAULT_UPSTREAM_MODEL
@@ -24,12 +39,23 @@ class GatewaySettings:
 
     @classmethod
     def from_environment(cls) -> GatewaySettings:
-        configured_model = os.environ.get("CODEX_MODEL", DEFAULT_UPSTREAM_MODEL)
-        upstream_model = (
-            configured_model
-            if "/" in configured_model
-            else f"chatgpt/{configured_model}"
-        )
+        configured_model = os.environ.get("CODEX_MODEL")
+        if configured_model:
+            upstream_model = (
+                configured_model
+                if "/" in configured_model
+                else f"chatgpt/{configured_model}"
+            )
+        else:
+            # Default to google if key is set, otherwise vercel, ollama, or openai
+            if os.environ.get("GOOGLE_API_KEY"):
+                upstream_model = "google/gemini-2.0-flash-exp"
+            elif os.environ.get("VERCEL_GATEWAY_API_KEY"):
+                upstream_model = "vercel/gpt-live-1"
+            elif _has_ollama():
+                upstream_model = "ollama/llama3.2"
+            else:
+                upstream_model = "openai/gpt-5"
         return cls(
             upstream_model=upstream_model,
             light_model=upstream_model,

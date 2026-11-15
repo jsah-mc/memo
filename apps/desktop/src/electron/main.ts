@@ -58,6 +58,11 @@ ipcMain.on("window:close", (event) =>
   BrowserWindow.fromWebContents(event.sender)?.hide(),
 );
 
+// Register env:get handler before window creation
+ipcMain.handle("env:get", (event, name: string) => {
+  return process.env[name] || null;
+});
+
 const createWindow = () => {
   // Create the browser window.
   const win = new BrowserWindow({

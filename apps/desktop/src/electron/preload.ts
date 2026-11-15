@@ -77,6 +77,7 @@ contextBridge.exposeInMainWorld("desktopApi", {
     ) => ipcRenderer.invoke("agents:update", agentId, changes),
   },
   bots: {
+    list: () => ipcRenderer.invoke("bots:list"),
     save: (bot: {
       agentId: string;
       name: string;
@@ -171,6 +172,8 @@ contextBridge.exposeInMainWorld("desktopApi", {
   },
   cancelSpeech: (requestId: string) =>
     ipcRenderer.send("speech:cancel", requestId),
+  getEnvVar: (name: string) =>
+    ipcRenderer.invoke("env:get", name),
   chatHistory: {
     getItem: (key: string) => ipcRenderer.invoke("chat-history:get", key),
     setItem: (key: string, value: string) =>

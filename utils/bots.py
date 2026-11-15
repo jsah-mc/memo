@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,11 @@ def load_bots(path: Path | None = None) -> list[dict[str, Any]]:
         and isinstance(bot.get("instructions"), str)
         and isinstance(bot.get("enabled"), bool)
     ]
+
+
+def bot_slug(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
+    return slug or "bot"
 
 
 def parse_bot_command(value: str) -> str | None:

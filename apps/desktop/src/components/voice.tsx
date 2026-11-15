@@ -4,6 +4,7 @@ import { TooltipIconButton } from "@/components/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { speechMeter } from "@/lib/native-speech-dictation";
+import { GeminiLiveConnection } from "@/lib/gemini-live";
 import {
   AuiIf,
   useAssistantRuntime,
@@ -27,7 +28,7 @@ import {
 import { createPortal } from "react-dom";
 
 export type VoiceOrbState =
-  "idle" | "connecting" | "listening" | "speaking" | "muted";
+  "idle" | "connecting" | "listening" | "speaking" | "muted" | "error";
 
 export type VoiceOrbVariant = "default" | "blue" | "violet" | "emerald";
 
@@ -103,6 +104,14 @@ const STATE_PARAMS: Record<VoiceOrbState, OrbParams> = {
     brightness: 0.35,
     pulse: 0.0,
     saturation: 0.2,
+  },
+  error: {
+    speed: 0.3,
+    amplitude: 0.05,
+    glow: 0.2,
+    brightness: 0.5,
+    pulse: 0.5,
+    saturation: 0.5,
   },
 };
 
@@ -506,6 +515,11 @@ type VoiceModeOverlayProps = {
 };
 
 const VoiceModeOverlay: FC<VoiceModeOverlayProps> = ({ onClose }) => {
+  const [useGeminiLive, setUseGeminiLive] = useState(false);
+  const [geminiState, setGeminiState] = useState<VoiceOrbState>("idle");
+  const [geminiError, setGeminiError] = useState<string | null>(null);
+  const geminiConnectionRef = useRef<GeminiLiveConnection | null>(null);
+
   const composer = useComposerRuntime();
   const assistant = useAssistantRuntime();
   const dictation = useComposer((state) => state.dictation);
@@ -548,8 +562,57 @@ const VoiceModeOverlay: FC<VoiceModeOverlayProps> = ({ onClose }) => {
     if (assistant.thread.getState().speech) {
       assistant.thread.stopSpeaking();
     }
+    if (useGeminiLive) {
+      geminiConnectionRef.current?.disconnect();
+      setUseGeminiLive(false);
+    }
     onClose();
-  }, [assistant.thread, composer, onClose]);
+  }, [assistant.thread, composer, onClose, useGeminiLive]);
+
+  // Gemini Live connection logic
+  useEffect(() => {
+    if (!useGeminiLive) return;
+
+    window.desktopApi?.getEnvVar("GOOGLE_API_KEY").then((apiKey: string | null) => {
+      if (!apiKey) {
+        setGeminiError("GOOGLE_API_KEY not set");
+        setGeminiState("error");
+        return;
+      }
+
+      const connection = new GeminiLiveConnection({ apiKey });
+
+      connection.on("stateChange", () => {
+        const connectionState = connection.getState();
+        const mappedState: VoiceOrbState = 
+          connectionState === "idle" ? "idle" :
+          connectionState === "connecting" ? "connecting" :
+          connectionState === "listening" ? "listening" :
+          connectionState === "speaking" ? "speaking" :
+          connectionState === "error" ? "error" : "idle";
+        setGeminiState(mappedState);
+        
+        if (connectionState === "error") {
+          setGeminiError("Connection failed");
+        } else {
+          setGeminiError(null);
+        }
+      });
+
+      geminiConnectionRef.current = connection;
+
+      connection.connect().then(() => {
+        connection.startAudioInput();
+      }).catch((err) => {
+        console.error("Failed to connect:", err);
+        setGeminiError("Failed to connect");
+      });
+    });
+
+    return () => {
+      geminiConnectionRef.current?.disconnect();
+    };
+  }, [useGeminiLive]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -666,11 +729,80 @@ const VoiceModeOverlay: FC<VoiceModeOverlayProps> = ({ onClose }) => {
       aria-modal="true"
       aria-label="Voice mode"
     >
-      <div className="drag flex h-12 shrink-0 items-center justify-center">
-        <span className="text-sm font-medium">Voice mode</span>
+      <div className="drag flex h-12 shrink-0 items-center justify-between px-4">
+        <span className="text-sm font-medium">
+          {useGeminiLive ? "Gemini Live" : "Voice mode"}
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setUseGeminiLive(!useGeminiLive)}
+        >
+          {useGeminiLive ? "Use STT/TTS" : "Use Gemini Live"}
+        </Button>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 pb-12">
+      {useGeminiLive ? (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 pb-12">
+          {geminiError ? (
+            <div className="text-center">
+              <div className="text-red-500 text-6xl font-bold mb-4">ERROR</div>
+              <div className="text-white text-xl mb-8">{geminiError}</div>
+              <Button onClick={() => setUseGeminiLive(false)} variant="default">
+                Switch to STT/TTS
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="relative flex size-64 items-center justify-center">
+                <div
+                  className={cn(
+                    "absolute size-44 rounded-full bg-primary/20 blur-3xl transition-transform duration-100",
+                    geminiState === "speaking" && "scale-125",
+                    geminiState === "listening" && "scale-110",
+                  )}
+                />
+                <VoiceOrb
+                  state={geminiState}
+                  variant="violet"
+                  className="size-64"
+                />
+              </div>
+
+              <p className="mt-2 min-h-6 text-sm font-medium">
+                {geminiState === "connecting" && "Connecting..."}
+                {geminiState === "listening" && "Listening"}
+                {geminiState === "speaking" && "Speaking"}
+                {geminiState === "error" && "Error"}
+              </p>
+              <p className="mt-2 min-h-12 max-w-xl text-center text-base text-muted-foreground">
+                {geminiState === "listening" && "Speak now to talk with Gemini"}
+                {geminiState === "speaking" && "Gemini is responding"}
+              </p>
+
+              <div className="mt-10 flex items-center gap-4">
+                <button
+                  type="button"
+                  className="flex size-12 items-center justify-center rounded-full bg-muted text-foreground transition-transform hover:scale-105"
+                  onClick={() => geminiConnectionRef.current?.stopAudioInput()}
+                  aria-label="Mute"
+                >
+                  <MicOffIcon className="size-5" />
+                </button>
+                <button
+                  type="button"
+                  className="flex size-14 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-transform hover:scale-105"
+                  onClick={endVoiceMode}
+                  aria-label="End voice mode"
+                >
+                  <PhoneOffIcon className="size-6" />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 pb-12">
         <div className="relative flex size-64 items-center justify-center">
           <div
             className={cn(
@@ -725,6 +857,7 @@ const VoiceModeOverlay: FC<VoiceModeOverlayProps> = ({ onClose }) => {
           Pause briefly to send · Esc to close
         </p>
       </div>
+      )}
     </div>,
     document.body,
   );

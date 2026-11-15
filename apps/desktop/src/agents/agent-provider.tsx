@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import type { CLIBackendId } from "@/agents/cli-options";
+import { syncBotSettingsFromStore } from "@/agents/bot-settings";
 
 export type AgentProfile = Readonly<{
   id: string;
@@ -236,6 +237,7 @@ export function AgentProvider({ children }: Readonly<{ children: ReactNode }>) {
         ];
         persist(combined);
         window.localStorage.setItem(MIGRATED_KEY, "1");
+        void syncBotSettingsFromStore();
         setLoadError("");
         setLoaded(true);
       })

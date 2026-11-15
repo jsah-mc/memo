@@ -63,24 +63,12 @@ function packageDesktop() {
     "Building Memo desktop for the first launch or updated source...",
   );
   const environment = { ...process.env, CI: "true" };
-  if (process.platform === "win32") {
-    run("powershell.exe", [
-      "-NoProfile",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-File",
-      path.join(root, "scripts", "build_windows_sandbox.ps1"),
-    ]);
-    run(
-      process.env.ComSpec || "cmd.exe",
-      ["/d", "/s", "/c", "pnpm --filter @memo/desktop package"],
-      { env: environment },
-    );
-  } else {
-    run("pnpm", ["--filter", "@memo/desktop", "package"], {
-      env: environment,
-    });
-  }
+  // Skip old sandbox build - the new sandbox is in apps/sandbox and doesn't need pre-compilation
+  run(
+    process.env.ComSpec || "cmd.exe",
+    ["/d", "/s", "/c", "pnpm --filter @memo/desktop package"],
+    { env: environment },
+  );
   if (!existsSync(executable)) {
     throw new Error(`Desktop build did not create ${executable}`);
   }

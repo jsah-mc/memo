@@ -14,19 +14,24 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.concurrency import iterate_in_threadpool
 
 from utils.codex_auth import CodexAuth
+from utils.bots import (
+    bot_prompt as store_bot_prompt,
+    bot_slug as store_bot_slug,
+    load_bots as load_store_bots,
+)
+from utils.gateway.realtime import proxy_realtime_websocket
 from utils.tools.browser import BrowserUseTool
 from utils.tools.computer import ComputerSandboxTool
 from utils.tools.computer_turn import agent_tool_events
 from utils.tools.permissions import PermissionBroker
-from utils.tools.stt import STT
-from utils.tools.tts import TTS
+from utils.tools.openai_speech import OpenAI_STT, OpenAI_TTS
 
 from .access_log import QuietPathAccessLogFilter
 from .agents import AgentStore
@@ -63,8 +68,8 @@ def create_app(
     browser_tool: BrowserUseTool | None = None,
     computer_tool: ComputerSandboxTool | None = None,
     permission_broker: PermissionBroker | None = None,
-    stt_tool: STT | None = None,
-    tts_tool: TTS | None = None,
+    stt_tool: OpenAI_STT | None = None,
+    tts_tool: OpenAI_TTS | None = None,
     agent_store: AgentStore | None = None,
     composio_tools: ComposioTools | None = None,
 ) -> FastAPI:
@@ -89,7 +94,7 @@ def create_app(
     agents = agent_store or AgentStore(
         Path(os.environ["MEMO_AGENT_STORE"])
         if os.environ.get("MEMO_AGENT_STORE")
-        else None
+        else Path.home() / ".memo" / "agents.json"
     )
     composio = composio_tools or ComposioTools()
     computer_tools: dict[str, ComputerSandboxTool] = {}
@@ -207,10 +212,23 @@ def create_app(
         if route.reasoning_effort and "reasoning" not in routed_payload:
             routed_payload["reasoning"] = {"effort": route.reasoning_effort}
 
+        agent = payload.get("memo_agent")
+        primary_model = route.model
+        if isinstance(agent, dict):
+            requested = agent.get("model")
+            if isinstance(requested, str) and requested.strip():
+                requested = requested.strip()
+                if "/" in requested:
+                    primary_model = requested
+                elif agent.get("cli", "codex") == "codex":
+                    primary_model = f"chatgpt/{requested}"
+                else:
+                    primary_model = requested
+
         assert route.model is not None
         try:
             return await dispatch_response(
-                ModelSDK(route.model, api_base=settings.upstream_api_base),
+                ModelSDK(primary_model, api_base=settings.upstream_api_base),
                 routed_payload,
                 allow_browser=allow_browser,
                 allow_computer=allow_computer,
@@ -246,9 +264,9 @@ def create_app(
             nonlocal speech_to_text, text_to_speech
             try:
                 if speech_to_text is None:
-                    speech_to_text = STT()
+                    speech_to_text = OpenAI_STT()
                 if text_to_speech is None:
-                    text_to_speech = TTS(muted=True)
+                    text_to_speech = OpenAI_TTS(muted=True)
                 for engine in (speech_to_text, text_to_speech):
                     prepare = getattr(engine, "prepare", None)
                     if callable(prepare):
@@ -526,14 +544,19 @@ def create_app(
     ) -> dict[str, Any]:
         nonlocal speech_to_text
         cancel_speech_release()
+        
+        # Map legacy model names to OpenAI Whisper
+        model_mapping = {
+            "ink-whisper": "whisper-1",
+            "faster-whisper": "whisper-1",
+            "small.en": "whisper-1",
+            "whisper-small": "whisper-1",
+            "small": "whisper-1",
+        }
+        model = model_mapping.get(model, model)
+        
         if model not in {
-            "realtimestt",
-            "faster-whisper",
-            "small.en",
             "whisper-1",
-            "whisper-small",
-            "small",
-            "ink-whisper",
         }:
             raise HTTPException(status_code=400, detail="Unsupported STT model.")
 
@@ -555,7 +578,7 @@ def create_app(
                 raise HTTPException(status_code=400, detail="Audio file is empty.")
 
             if speech_to_text is None:
-                speech_to_text = STT()
+                speech_to_text = OpenAI_STT(model=model)
             result = await run_in_threadpool(speech_to_text.transcribe, path)
             return {
                 "text": result["transcript"],
@@ -578,7 +601,7 @@ def create_app(
         nonlocal speech_to_text
         cancel_speech_release()
         if speech_to_text is None:
-            speech_to_text = STT()
+            speech_to_text = OpenAI_STT(model="whisper-1")
         prepare = getattr(speech_to_text, "prepare", None)
         if not callable(prepare):
             return {"ready": True}
@@ -608,67 +631,51 @@ def create_app(
                 status_code=400,
                 detail="The input field must contain text.",
             )
-        requested_format = payload.get("response_format")
-        if requested_format is not None and requested_format not in {"mp3", "wav"}:
-            raise HTTPException(
-                status_code=400,
-                detail="Only mp3 and wav response formats are supported.",
-            )
+        voice = payload.get("voice", "alloy")
+        model = payload.get("model", "tts-1")
 
         try:
             if text_to_speech is None:
-                text_to_speech = TTS(muted=True)
+                text_to_speech = OpenAI_TTS(voice=voice, model=model)
+            else:
+                # Update voice/model if different
+                if isinstance(text_to_speech, OpenAI_TTS):
+                    text_to_speech = OpenAI_TTS(voice=voice, model=model)
         except Exception as exc:
             raise HTTPException(
                 status_code=502,
                 detail=f"Speech synthesis failed: {exc}",
             ) from exc
-        actual_format = getattr(
-            text_to_speech,
-            "response_format",
-            requested_format or "mp3",
-        )
-        response_format = requested_format or actual_format
-        if actual_format != response_format:
+
+        try:
+            audio_data = await run_in_threadpool(text_to_speech.synthesize, text)
+        except Exception as exc:
             raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"The configured TTS engine outputs {actual_format}; "
-                    f"request response_format={actual_format}."
-                ),
-            )
+                status_code=502,
+                detail=f"Speech synthesis failed: {exc}",
+            ) from exc
+        finally:
+            schedule_speech_release()
 
-        async def audio_stream() -> AsyncIterator[bytes]:
-            iterator = text_to_speech.stream(text)
-            try:
-                async for chunk in iterate_in_threadpool(iterator):
-                    if await request.is_disconnected():
-                        break
-                    yield chunk
-            finally:
-                close = getattr(iterator, "close", None)
-                if callable(close):
-                    await run_in_threadpool(close)
-                schedule_speech_release()
-
-        return StreamingResponse(
-            audio_stream(),
-            media_type=("audio/wav" if response_format == "wav" else "audio/mpeg"),
+        return Response(
+            content=audio_data,
+            media_type="audio/mpeg",
             headers={
                 "Cache-Control": "no-store",
                 "X-Accel-Buffering": "no",
             },
         )
 
-    @app.post("/v1/responses")
-    async def responses(request: Request):
+    async def _read_payload(request: Request) -> dict[str, Any]:
         try:
             payload = await request.json()
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise HTTPException(status_code=400, detail="Invalid JSON body.") from exc
-
         if not isinstance(payload, dict):
             raise HTTPException(status_code=400, detail="JSON body must be an object.")
+        return payload
+
+    def _check_payload(payload: dict[str, Any]) -> None:
         if payload.get("model", settings.model_alias) != settings.model_alias:
             raise HTTPException(status_code=404, detail="Unknown model.")
         if "memo_agent" in payload:
@@ -677,6 +684,15 @@ def create_app(
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.post("/v1/responses")
+    async def responses(request: Request):
+        payload = await _read_payload(request)
+        _check_payload(payload)
+        return await _responses_reply(payload, request)
+
+    async def _responses_reply(
+        payload: dict[str, Any], request: Request
+    ) -> Response:
         wants_stream = payload.get("stream") is True
         try:
             sdk_stream = await start_response(
@@ -720,21 +736,13 @@ def create_app(
 
     @app.post("/v1/chat/completions")
     async def chat_completions(request: Request):
-        try:
-            payload = await request.json()
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise HTTPException(status_code=400, detail="Invalid JSON body.") from exc
+        payload = await _read_payload(request)
+        _check_payload(payload)
+        return await _chat_reply(payload, request)
 
-        if not isinstance(payload, dict):
-            raise HTTPException(status_code=400, detail="JSON body must be an object.")
-        if payload.get("model", settings.model_alias) != settings.model_alias:
-            raise HTTPException(status_code=404, detail="Unknown model.")
-        if "memo_agent" in payload:
-            try:
-                validate_agent_config(payload["memo_agent"])
-            except ValueError as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
-
+    async def _chat_reply(
+        payload: dict[str, Any], request: Request
+    ) -> Response:
         wants_stream = payload.get("stream") is True
         responses_payload = chat_to_responses(payload)
         try:
@@ -840,5 +848,89 @@ def create_app(
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    def _api_bot(command: str) -> dict[str, Any] | None:
+        slug = store_bot_slug(command)
+        for bot in load_store_bots():
+            if bot.get("enabled") is not True:
+                continue
+            candidates = {store_bot_slug(str(bot.get("name") or ""))}
+            if bot.get("command"):
+                candidates.add(store_bot_slug(str(bot.get("command"))))
+            if slug in candidates:
+                return bot
+        return None
+
+    def _require_api_bot(command: str) -> dict[str, Any]:
+        bot = _api_bot(command)
+        if bot is None:
+            raise HTTPException(status_code=404, detail="Unknown bot.")
+        return bot
+
+    def _bot_agent(bot: dict[str, Any]) -> dict[str, Any]:
+        model = str(bot.get("model") or "").strip()
+        return {
+            "cli": "codex",
+            "model": model or settings.upstream_model,
+            "allowedTools": bot.get("allowedTools")
+            or ["browser", "computer", "integrations"],
+            "permissionMode": bot.get("permissionMode") or "always_ask",
+            "allowedComposioTools": bot.get("allowedComposioTools") or ["*"],
+            "allowedMcpServers": bot.get("allowedMcpServers") or [],
+        }
+
+    @app.get("/bot/{command}/v1/models")
+    async def bot_models(command: str):
+        bot = _require_api_bot(command)
+        model = str(bot.get("model") or "").strip() or settings.upstream_model
+        return {
+            "object": "list",
+            "data": [
+                {
+                    "id": model,
+                    "object": "model",
+                    "created": int(time.time()),
+                    "owned_by": "memo",
+                    "bot": str(bot.get("name", "")).strip(),
+                }
+            ],
+        }
+
+    @app.post("/bot/{command}/v1/responses")
+    async def bot_responses(command: str, request: Request):
+        bot = _require_api_bot(command)
+        payload = await _read_payload(request)
+        payload["model"] = settings.model_alias
+        payload["instructions"] = store_bot_prompt(bot)
+        payload["memo_agent"] = _bot_agent(bot)
+        _check_payload(payload)
+        return await _responses_reply(payload, request)
+
+    @app.post("/bot/{command}/v1/chat/completions")
+    async def bot_chat_completions(command: str, request: Request):
+        bot = _require_api_bot(command)
+        payload = await _read_payload(request)
+        payload["model"] = settings.model_alias
+        payload["memo_agent"] = _bot_agent(bot)
+        messages = payload.get("messages")
+        if isinstance(messages, list):
+            payload["messages"] = [
+                {"role": "system", "content": store_bot_prompt(bot)},
+                *messages,
+            ]
+        _check_payload(payload)
+        return await _chat_reply(payload, request)
+
+    @app.websocket("/v1/realtime")
+    async def realtime_websocket(websocket: WebSocket) -> None:
+        """OpenAI Realtime API (GPT Live) WebSocket proxy via Vercel AI Gateway."""
+        await websocket.accept()
+        try:
+            await proxy_realtime_websocket(websocket)
+        except WebSocketDisconnect:
+            pass
+        except Exception as exc:
+            logging.getLogger("memo.realtime").error(f"Realtime WebSocket error: {exc}")
+            await websocket.close(4000, f"Server error: {exc}")
 
     return app

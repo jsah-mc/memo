@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { CheckIcon, LaptopIcon, MoonIcon, SunIcon } from "lucide-react";
+import {
+  CheckIcon,
+  LaptopIcon,
+  MoonIcon,
+  PaletteIcon,
+  SunIcon,
+} from "lucide-react";
 import {
   getThemePreference,
   setThemePreference,
@@ -10,6 +16,9 @@ const choices = [
   { id: "system" as const, label: "System", description: "Match your computer", icon: LaptopIcon },
   { id: "light" as const, label: "Light", description: "Use the light terminal theme", icon: SunIcon },
   { id: "dark" as const, label: "Dark", description: "Use the dark terminal theme", icon: MoonIcon },
+  { id: "latte" as const, label: "Catppuccin Latte", description: "Soft light palette", icon: PaletteIcon },
+  { id: "frappe" as const, label: "Catppuccin Frappé", description: "Muted dark palette", icon: PaletteIcon },
+  { id: "macchiato" as const, label: "Catppuccin Macchiato", description: "Deeper dark palette", icon: PaletteIcon },
 ];
 
 export function AppearancePanel() {

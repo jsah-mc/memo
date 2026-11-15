@@ -5,15 +5,25 @@ import { ComposioConnectionCard } from "@/components/composio-connection-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { isActiveComposioStatus } from "@/agents/composio-status";
+import {
+  appCategoryLabel,
+  catalogSections,
+  rankCategories,
+} from "@/agents/app-catalog";
 
 export function ComposioPanel() {
   const [configured, setConfigured] = useState(false);
   const [connections, setConnections] = useState<ComposioConnection[]>([]);
   const [search, setSearch] = useState("");
   const [catalog, setCatalog] =
-    useState<readonly { id: string; label: string; icon?: string }[]>(
-      COMPOSIO_TOOLKITS,
-    );
+    useState<
+      readonly {
+        id: string;
+        label: string;
+        icon?: string;
+        categories?: string[];
+      }[]
+    >(COMPOSIO_TOOLKITS);
   const [catalogError, setCatalogError] = useState("");
   const [catalogRevision, setCatalogRevision] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
@@ -151,12 +161,29 @@ export function ComposioPanel() {
     icon:
       catalog.find((toolkit) => toolkit.id === item.toolkit)?.icon ??
       `https://logos.composio.dev/api/${encodeURIComponent(item.toolkit)}`,
+    categories: [] as string[],
   }));
   const allApps = Array.from(
     new Map([...connected, ...catalog].map((item) => [item.id, item])).values(),
   );
-  const visible = allApps.filter((toolkit) =>
-    toolkit.label.toLowerCase().includes(search.toLowerCase()),
+  const query = search.toLowerCase();
+  const visible = allApps.filter(
+    (toolkit) =>
+      toolkit.label.toLowerCase().includes(query) ||
+      (toolkit.categories ?? []).some((category) =>
+        category.toLowerCase().includes(query),
+      ),
+  );
+  const cards = visible.map((toolkit) => ({
+    ...toolkit,
+    slug: toolkit.id,
+  }));
+  const connectedIds = new Set(connected.map((item) => item.id));
+  const ranked = rankCategories(cards);
+  const sections = catalogSections(
+    cards,
+    (slug) => connectedIds.has(slug),
+    [...ranked.inline, ...ranked.more],
   );
   return (
     <div className="grid gap-4">
@@ -190,25 +217,42 @@ export function ComposioPanel() {
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
-        <div className="grid max-h-80 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
-          {visible.map((toolkit) => {
-            const accounts = connections.filter(
-              (item) => item.toolkit === toolkit.id,
-            );
-            return (
-              <ComposioConnectionCard
-                key={toolkit.id}
-                id={toolkit.id}
-                label={toolkit.label}
-                icon={toolkit.icon}
-                accounts={accounts}
-                configured={configured}
-                busy={busy}
-                onConnect={(id) => void connect(id)}
-                onDisconnect={(id) => void disconnect(id)}
-              />
-            );
-          })}
+        <div className="grid max-h-80 grid-cols-1 gap-4 overflow-y-auto sm:grid-cols-2">
+          {sections.map((section) => (
+            <div key={section.kind === "category" ? section.category : section.kind} className="contents">
+              {(section.kind === "connected" ||
+                section.kind === "category") && (
+                <p className="col-span-full text-xs font-medium text-muted-foreground">
+                  {section.kind === "connected"
+                    ? "// connected"
+                    : `// ${appCategoryLabel(section.category)}`}
+                </p>
+              )}
+              {section.cards.map((toolkit) => {
+                const accounts = connections.filter(
+                  (item) => item.toolkit === toolkit.id,
+                );
+                return (
+                  <ComposioConnectionCard
+                    key={toolkit.id}
+                    id={toolkit.id}
+                    label={toolkit.label}
+                    icon={toolkit.icon}
+                    accounts={accounts}
+                    configured={configured}
+                    busy={busy}
+                    onConnect={(id) => void connect(id)}
+                    onDisconnect={(id) => void disconnect(id)}
+                  />
+                );
+              })}
+              {section.kind === "category" && section.more && (
+                <p className="col-span-full text-xs text-muted-foreground">
+                  more in {appCategoryLabel(section.category)}…
+                </p>
+              )}
+            </div>
+          ))}
           {!visible.length && (
             <p className="text-xs text-muted-foreground">No matching apps.</p>
           )}

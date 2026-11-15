@@ -70,6 +70,21 @@ declare global {
         ): Promise<AgentProfileData>;
       };
       bots: {
+        list(): Promise<
+          Array<{
+            agentId?: string;
+            name: string;
+            command: string;
+            instructions: string;
+            enabled: boolean;
+            allowedTools: string[];
+            permissionMode: string;
+            allowedComposioTools: string[];
+            allowedComposioApps: string[];
+            allowedMcpServers: string[];
+            model?: string;
+          }>
+        >;
         save: (bot: {
           agentId: string;
           name: string;
@@ -81,6 +96,7 @@ declare global {
           allowedComposioTools: readonly string[];
           allowedComposioApps: readonly string[];
           allowedMcpServers: readonly string[];
+          model?: string;
         }) => Promise<{ saved: true }>;
       };
       onPermissionRequest(
@@ -162,6 +178,7 @@ declare global {
         onEvent: (event: SpeechStreamEvent) => void,
       ): () => void;
       cancelSpeech(requestId: string): void;
+      getEnvVar(name: string): Promise<string | null>;
       chatHistory: {
         getItem(key: string): Promise<string | null>;
         setItem(key: string, value: string): Promise<void>;
