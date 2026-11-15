@@ -14,11 +14,12 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const desktopRoot = path.join(root, "apps", "desktop");
+// Electron Forge outputs to "out" by default
 const outRoot = path.join(desktopRoot, "out");
-const bundleRoot = path.join(
-  outRoot,
-  `Memo-${process.platform}-${process.arch}`,
-);
+// Check for the platform-specific directory
+const platformDir = process.platform === "win32" ? "win32" : process.platform === "darwin" ? "darwin" : "linux";
+const archDir = process.arch === "x64" ? "x64" : process.arch === "arm64" ? "arm64" : process.arch;
+const bundleRoot = path.join(outRoot, `Memo-${platformDir}-${archDir}`);
 const executable =
   process.platform === "win32"
     ? path.join(bundleRoot, "Memo.exe")

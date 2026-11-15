@@ -217,17 +217,18 @@ def main() -> None:
     elif args.command == "desktop":
         import subprocess
 
+        # Run desktop in dev mode instead of packaging
         pnpm = find_pnpm()
         if pnpm:
             if pnpm.endswith(".js") or pnpm.endswith(".cjs"):
-                subprocess.run(["node", pnpm, "exec", "node", "scripts/launch-desktop.mjs"], cwd=PROJECT_ROOT)
+                subprocess.run(["node", pnpm, "exec", "pnpm", "--filter", "@memo/desktop", "start"], cwd=PROJECT_ROOT)
             else:
-                subprocess.run([pnpm, "exec", "node", "scripts/launch-desktop.mjs"], cwd=PROJECT_ROOT)
+                subprocess.run([pnpm, "exec", "pnpm", "--filter", "@memo/desktop", "start"], cwd=PROJECT_ROOT)
         else:
             # Fallback to npx
             npx = find_npx()
             if npx:
-                subprocess.run([npx, "node", "scripts/launch-desktop.mjs"], cwd=PROJECT_ROOT)
+                subprocess.run([npx, "pnpm", "--filter", "@memo/desktop", "start"], cwd=PROJECT_ROOT)
             else:
                 print("Error: Neither pnpm nor npx found. Please install pnpm or Node.js.")
                 sys.exit(1)
