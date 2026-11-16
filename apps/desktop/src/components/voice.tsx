@@ -693,7 +693,9 @@ const VoiceModeOverlay: FC<VoiceModeOverlayProps> = ({ onClose }) => {
     if (composer.getState().dictation) composer.stopDictation();
   };
 
-  const orbState: VoiceOrbState = muted
+  const orbState: VoiceOrbState = meter.phase === "error"
+    ? "error"
+    : muted
     ? "muted"
     : threadSpeech
       ? "speaking"
@@ -825,7 +827,10 @@ const VoiceModeOverlay: FC<VoiceModeOverlayProps> = ({ onClose }) => {
 
         <p className="mt-2 min-h-6 text-sm font-medium">{statusLabel}</p>
         <p className="mt-2 min-h-12 max-w-xl text-center text-base text-muted-foreground">
-          {composerText.trim() || "Go ahead, I’m listening."}
+          {composerText.trim() ||
+            (meter.phase === "error"
+              ? "Check that a microphone is connected and allowed, then try again."
+              : "Go ahead, I’m listening.")}
         </p>
 
         <div className="mt-10 flex items-center gap-4">
