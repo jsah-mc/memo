@@ -145,7 +145,7 @@ app.on("ready", () => {
       responseHeaders: {
         ...details.responseHeaders,
         "Content-Security-Policy": [
-          `default-src 'self'; ${scriptPolicy}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; ${connectPolicy}; font-src 'self' data:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'`,
+          `default-src 'self'; ${scriptPolicy}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://logos.composio.dev; media-src 'self' data: blob:; ${connectPolicy}; font-src 'self' data:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'`,
         ],
       },
     });
