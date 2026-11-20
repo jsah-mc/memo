@@ -224,8 +224,8 @@ export function ComposioPanel() {
                 section.kind === "category") && (
                 <p className="col-span-full text-xs font-medium text-muted-foreground">
                   {section.kind === "connected"
-                    ? "// connected"
-                    : `// ${appCategoryLabel(section.category)}`}
+                    ? "Connected"
+                    : appCategoryLabel(section.category)}
                 </p>
               )}
               {section.cards.map((toolkit) => {

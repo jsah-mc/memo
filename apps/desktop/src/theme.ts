@@ -1,33 +1,44 @@
 export type ThemePreference =
   | "system"
+  | "catppuccin"
+  | "tokyonight"
   | "light"
   | "dark"
   | "latte"
-  | "frappe"
-  | "macchiato";
+  | "mocha"
+  | "tokyonight-day"
+  | "tokyonight-night";
 
-export type ResolvedTheme = Exclude<ThemePreference, "system">;
+export type ResolvedTheme = Exclude<
+  ThemePreference,
+  "system" | "catppuccin" | "tokyonight"
+>;
 
 export const THEME_STORAGE_KEY = "memo.theme";
 
-const THEME_CLASSES = ["theme-latte", "theme-frappe", "theme-macchiato"];
-const DARK_THEMES: readonly ResolvedTheme[] = ["dark", "frappe", "macchiato"];
+const THEME_CLASSES = ["theme-latte", "theme-mocha", "theme-tokyonight-day", "theme-tokyonight-night"];
+const DARK_THEMES: readonly ResolvedTheme[] = ["dark", "mocha", "tokyonight-night"];
 
 export function resolveTheme(
   preference: ThemePreference,
   prefersDark: boolean,
 ): ResolvedTheme {
+  if (preference === "catppuccin") return prefersDark ? "mocha" : "latte";
+  if (preference === "tokyonight") return prefersDark ? "tokyonight-night" : "tokyonight-day";
   if (preference !== "system") return preference;
   return prefersDark ? "dark" : "light";
 }
 
 export function getThemePreference(): ThemePreference {
   const stored = localStorage.getItem(THEME_STORAGE_KEY);
-  return stored === "light" ||
+  return stored === "catppuccin" ||
+    stored === "tokyonight" ||
+    stored === "light" ||
     stored === "dark" ||
     stored === "latte" ||
-    stored === "frappe" ||
-    stored === "macchiato"
+    stored === "mocha" ||
+    stored === "tokyonight-day" ||
+    stored === "tokyonight-night"
     ? stored
     : "system";
 }

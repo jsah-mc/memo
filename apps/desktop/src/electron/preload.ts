@@ -56,6 +56,9 @@ contextBridge.exposeInMainWorld("desktopApi", {
     return () => ipcRenderer.removeListener("chat:event", listener);
   },
   cancelChat: (requestId: string) => ipcRenderer.send("chat:cancel", requestId),
+  models: {
+    catalog: () => ipcRenderer.invoke("models:catalog"),
+  },
   agents: {
     list: () => ipcRenderer.invoke("agents:list"),
     backends: () => ipcRenderer.invoke("agents:backends"),

@@ -55,18 +55,19 @@ test("disabled bot settings leave the normal agent prompt unchanged", () => {
 test("bot settings manage names and mirror bots for the CLI", () => {
   assert.match(panel, /aria-label="Bot name"/);
   assert.match(panel, /\/bot &quot;/);
-  assert.match(panel, /\/\/ BOTS/);
+  assert.match(panel, /Bots/);
   assert.match(store, /\.memo.*bots\.json/s);
   assert.match(store, /A bot named/);
-  assert.match(panel, /TOOL ACCESS/);
-  assert.match(panel, /PERMISSIONS/);
+  assert.match(panel, /Tool access/);
+  assert.match(panel, /Permissions/);
   assert.match(panel, /Allowed Composio tools/);
-  assert.match(panel, /AUTHENTICATED COMPOSIO APPS/);
+  assert.match(panel, /Connected apps/);
   assert.match(panel, /getComposioConnections/);
   assert.match(panel, /Allowed MCP servers/);
   assert.match(chatApi, /memo_sign_in_url/);
   assert.match(chatApi, /shell\.openExternal/);
-  for (const tool of ["Browser", "Computer & shell", "Connected apps"]) {
+  for (const tool of ["Browser", "Computer control", "Connected apps"]) {
     assert.match(settings, new RegExp(tool));
   }
+  assert.match(settings, /CUA Driver/);
 });

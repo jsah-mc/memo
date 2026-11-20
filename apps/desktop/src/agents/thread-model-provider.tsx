@@ -10,9 +10,15 @@ import type { CLIBackendId } from "@/agents/cli-options";
 
 const STORAGE_KEY = "memo.thread-agent-models.v2";
 
+export type PermissionMode =
+  | "full_access"
+  | "approve_for_me"
+  | "always_ask";
+
 export type ThreadModelSelection = Readonly<{
   cli: CLIBackendId;
   model: string;
+  permissionMode?: PermissionMode;
 }>;
 
 function loadSelections(): Record<string, ThreadModelSelection> {
@@ -29,7 +35,13 @@ function loadSelections(): Record<string, ThreadModelSelection> {
             "cli" in selection &&
             typeof selection.cli === "string" &&
             "model" in selection &&
-            typeof selection.model === "string"
+            typeof selection.model === "string" &&
+            (
+              selection.permissionMode === undefined ||
+              selection.permissionMode === "full_access" ||
+              selection.permissionMode === "approve_for_me" ||
+              selection.permissionMode === "always_ask"
+            )
           );
         },
       ),

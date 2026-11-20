@@ -1,13 +1,14 @@
 import { app, ipcMain } from "electron";
+import { config as loadEnv } from "dotenv";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync, copyFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
 // Load .env for API keys if present
 try {
-  require("dotenv").config({ path: path.join(findMemoRoot(), ".env") });
+  loadEnv({ path: path.join(findMemoRoot(), ".env") });
 } catch {
-  // dotenv not installed — ignore
+  // .env not found — ignore
 }
 import {
   getComposioKey,

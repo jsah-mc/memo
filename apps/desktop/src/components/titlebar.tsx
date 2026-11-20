@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAgents } from "@/agents/agent-provider";
-import { AgentActivityFace } from "@/agents/agent-activity";
+import { AgentActivityDot } from "@/agents/agent-activity";
 import { useAuiState } from "@assistant-ui/react";
 import {
   threadModelKey,
@@ -76,7 +76,7 @@ export function LegacyModelPicker() {
     <div ref={rootRef} className="relative">
       <button
         type="button"
-        className="flex h-9 w-44 items-center gap-2 rounded-full border border-border/60 bg-card/65 px-3 text-xs shadow-sm outline-none hover:bg-card focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+        className="flex h-9 w-44 items-center gap-2 rounded-md border border-border/60 bg-card/65 px-3 text-xs shadow-sm outline-none hover:bg-card focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
@@ -90,7 +90,7 @@ export function LegacyModelPicker() {
         <div
           role="dialog"
           aria-label="Select model"
-          className="absolute top-11 left-1/2 z-50 w-[380px] -translate-x-1/2 rounded-2xl border border-border/70 bg-popover p-3 text-popover-foreground shadow-2xl"
+          className="absolute top-11 left-1/2 z-50 w-[380px] max-w-[calc(100vw-20rem)] -translate-x-1/2 rounded-2xl border border-border/70 bg-popover p-3 text-popover-foreground shadow-2xl"
         >
           <p className="px-1 pt-2 pb-3 text-[11px] text-muted-foreground">
             Changes apply immediately to {activeAgent.name} in every
@@ -156,7 +156,10 @@ function ModelSidebarButton({
   useEffect(() => {
     setActiveThreadId(threadId);
     if (threadId && !saved) {
-      setSelection(key, { cli: activeAgent.cli, model: activeAgent.model });
+      setSelection(key, {
+        cli: activeAgent.cli,
+        model: activeAgent.model,
+      });
     }
   }, [
     activeAgent.cli,
@@ -170,12 +173,12 @@ function ModelSidebarButton({
   return (
     <button
       type="button"
-      className={`flex h-9 w-44 items-center gap-2 rounded-full border px-3 text-xs shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 ${open ? "border-primary bg-primary/10" : "border-border/60 bg-card/65 hover:bg-card"}`}
+      className={`flex h-9 w-44 items-center gap-2 rounded-md border px-3 text-xs shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 ${open ? "border-primary bg-primary/10" : "border-border/60 bg-card/65 hover:bg-card"}`}
       aria-label={open ? "Close model sidebar" : "Open model sidebar"}
       aria-pressed={open}
       onClick={onToggle}
     >
-      <span className="min-w-0 flex-1 truncate text-left">model://{model}</span>
+      <span className="min-w-0 flex-1 truncate text-left">{model}</span>
       <ChevronDownIcon
         className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
       />
@@ -205,11 +208,11 @@ function AgentThreadPicker({ online }: Readonly<{ online: boolean }>) {
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="agent-title-pill flex h-9 w-44 min-w-0 items-center gap-2 rounded-full border border-border/60 bg-card/65 pr-2 pl-1.5 shadow-sm hover:bg-card"
+        className="agent-title-pill flex h-9 w-44 min-w-0 items-center gap-2 rounded-md border border-border/60 bg-card/65 pr-2 pl-1.5 shadow-sm hover:bg-card"
       >
-        <AgentActivityFace
+        <AgentActivityDot
           agentId={activeAgent.id}
-          className="flex w-11 shrink-0 items-center justify-center font-mono text-[9px] font-bold"
+          className="mx-1"
           color={moderatedAgentColor(activeAgent.color)}
         />
         <span className="min-w-0 flex-1 truncate text-left text-xs font-semibold">
@@ -244,9 +247,9 @@ function AgentThreadPicker({ online }: Readonly<{ online: boolean }>) {
                   }}
                   className={`flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs ${agent.id === activeAgent.id ? "bg-accent text-accent-foreground" : "hover:bg-muted"}`}
                 >
-                  <AgentActivityFace
+                  <AgentActivityDot
                     agentId={agent.id}
-                    className="flex w-10 shrink-0 items-center justify-center font-mono text-[8px] font-bold"
+                    className="mx-0.5"
                     color={moderatedAgentColor(agent.color)}
                   />
                   <span className="truncate">{agent.name}</span>
@@ -313,13 +316,13 @@ export default function Titlebar({
   }, []);
 
   return (
-    <header className="liquid-titlebar drag fixed top-0 right-0 left-72 z-50 flex h-14 items-center justify-center px-36 text-foreground">
+    <header className="liquid-titlebar drag fixed top-0 right-0 left-72 z-50 flex h-14 items-center justify-center px-20 text-foreground xl:px-36">
       <div className="no-drag flex items-center gap-2">
         <AgentThreadPicker online={online} />
         {onModelToggle ? (
           <ModelSidebarButton open={modelOpen} onToggle={onModelToggle} />
         ) : (
-          <span className="flex h-9 w-44 items-center truncate rounded-full border border-border/60 bg-card/65 px-3 text-xs text-muted-foreground shadow-sm">
+          <span className="flex h-9 w-44 items-center truncate rounded-md border border-border/60 bg-card/65 px-3 text-xs text-muted-foreground shadow-sm">
             {activeAgent.model}
           </span>
         )}
@@ -328,7 +331,7 @@ export default function Titlebar({
             type="button"
             size="icon"
             variant={desktopOpen ? "secondary" : "outline"}
-            className="rounded-full bg-card/65"
+            className="rounded-md bg-card/65"
             aria-label={
               desktopOpen ? "Close desktop panel" : "Open desktop panel"
             }
@@ -343,7 +346,7 @@ export default function Titlebar({
             type="button"
             size="icon"
             variant={activityOpen ? "secondary" : "outline"}
-            className="rounded-full bg-card/65"
+            className="rounded-md bg-card/65"
             aria-label={
               activityOpen ? "Close task activity" : "Open task activity"
             }

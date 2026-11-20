@@ -252,7 +252,7 @@ export function CreateAgentDialog({
                   />
                   <span
                     aria-label="Profile color preview"
-                    className="size-8 rounded-full ring-1 ring-border"
+                    className="size-8 rounded-md ring-1 ring-border"
                     style={{ backgroundColor: moderatedAgentColor(color) }}
                   />
                   <span className="text-xs text-muted-foreground">

@@ -479,7 +479,7 @@ export const ComposerVoiceButton: FC = () => {
         type="button"
         variant={isActive ? "secondary" : "ghost"}
         size="icon"
-        className="aui-composer-voice size-7 rounded-full"
+        className="aui-composer-voice size-7 rounded-md"
         aria-label={hasError ? "Retry voice input" : "Open voice mode"}
         aria-pressed={isVoiceModeOpen}
         onClick={openVoiceMode}
@@ -748,8 +748,12 @@ const VoiceModeOverlay: FC<VoiceModeOverlayProps> = ({ onClose }) => {
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 pb-12">
           {geminiError ? (
             <div className="text-center">
-              <div className="text-red-500 text-6xl font-bold mb-4">ERROR</div>
-              <div className="text-white text-xl mb-8">{geminiError}</div>
+              <div className="mb-4 text-2xl font-semibold text-destructive">
+                Voice unavailable
+              </div>
+              <div className="mb-8 max-w-xl text-center text-base text-muted-foreground">
+                {geminiError}
+              </div>
               <Button onClick={() => setUseGeminiLive(false)} variant="default">
                 Switch to STT/TTS
               </Button>
@@ -785,7 +789,7 @@ const VoiceModeOverlay: FC<VoiceModeOverlayProps> = ({ onClose }) => {
               <div className="mt-10 flex items-center gap-4">
                 <button
                   type="button"
-                  className="flex size-12 items-center justify-center rounded-full bg-muted text-foreground transition-transform hover:scale-105"
+                  className="flex size-12 items-center justify-center rounded-md bg-muted text-foreground transition-transform hover:scale-105"
                   onClick={() => geminiConnectionRef.current?.stopAudioInput()}
                   aria-label="Mute"
                 >
@@ -793,7 +797,7 @@ const VoiceModeOverlay: FC<VoiceModeOverlayProps> = ({ onClose }) => {
                 </button>
                 <button
                   type="button"
-                  className="flex size-14 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-transform hover:scale-105"
+                  className="flex size-14 items-center justify-center rounded-md bg-destructive text-destructive-foreground transition-transform hover:scale-105"
                   onClick={endVoiceMode}
                   aria-label="End voice mode"
                 >
@@ -837,7 +841,7 @@ const VoiceModeOverlay: FC<VoiceModeOverlayProps> = ({ onClose }) => {
           <button
             type="button"
             className={cn(
-              "flex size-12 items-center justify-center rounded-full bg-muted text-foreground transition-transform hover:scale-105",
+              "flex size-12 items-center justify-center rounded-md bg-muted text-foreground transition-transform hover:scale-105",
               muted && "bg-destructive text-destructive-foreground",
             )}
             onClick={toggleMute}
@@ -851,7 +855,7 @@ const VoiceModeOverlay: FC<VoiceModeOverlayProps> = ({ onClose }) => {
           </button>
           <button
             type="button"
-            className="flex size-14 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-transform hover:scale-105"
+            className="flex size-14 items-center justify-center rounded-md bg-destructive text-destructive-foreground transition-transform hover:scale-105"
             onClick={endVoiceMode}
             aria-label="End voice mode"
           >

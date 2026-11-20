@@ -16,19 +16,19 @@ const sidebar = readFileSync(
   "utf8",
 );
 
-test("desktop agent faces reflect the real stream lifecycle", () => {
-  for (const face of ["[o_o]", "[^_^]", "[x_x]", "[.  ]", "[   ]"]) {
-    assert.ok(activity.includes(face));
+test("desktop agent indicators reflect the real stream lifecycle", () => {
+  assert.match(activity, /AgentActivityDot/);
+  assert.match(activity, /animate-pulse/);
+  for (const face of ["[o_o]", "[^_^]", "[x_x]", "[.  ]"]) {
+    assert.ok(!activity.includes(face));
   }
-  assert.match(activity, /const SPINNER/);
-  assert.doesNotMatch(activity, /[\u2800-\u28ff]/u);
   assert.match(runtime, /setAgentActivity\(agent\.id, "loading"\)/);
   assert.match(runtime, /setAgentActivity\(agent\.id, result === "cancelled"/);
 });
 
-test("agent faces replace profile initials in the titlebar and sidebar", () => {
-  assert.match(titlebar, /AgentActivityFace/);
-  assert.match(sidebar, /AgentActivityFace/);
+test("activity dots replace profile initials in the titlebar and sidebar", () => {
+  assert.match(titlebar, /AgentActivityDot/);
+  assert.match(sidebar, /AgentActivityDot/);
   assert.doesNotMatch(titlebar, /activeAgent\.name\.slice/);
   assert.doesNotMatch(sidebar, /agent\.name\.slice/);
 });

@@ -24,7 +24,7 @@ export function AgentWizardProgress({ step }: Readonly<{ step: number }>) {
       {AGENT_WIZARD_STEPS.map((label, index) => (
         <div key={label} className="flex min-w-0 flex-1 items-center gap-1">
           <span
-            className={`flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${index <= step ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+            className={`flex size-5 shrink-0 items-center justify-center rounded-md text-[10px] font-semibold ${index <= step ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
           >
             {index < step ? <CheckIcon className="size-3" /> : index + 1}
           </span>

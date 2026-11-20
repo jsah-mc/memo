@@ -28,6 +28,7 @@ import {
   ThreadModelProvider,
   threadModelKey,
   useThreadModels,
+  type PermissionMode,
 } from "@/agents/thread-model-provider";
 import { botSystemPrompt, getBotSettings } from "@/agents/bot-settings";
 import { useAgentGroups } from "@/agents/agent-groups";
@@ -163,6 +164,7 @@ const createModelAdapter = (
   collaborationContext = "",
   workspace?: Readonly<{ scope: string; label: string }>,
   onFinish?: (result: WorkspaceRunResult) => void,
+  permissionModeOverride?: PermissionMode,
 ): ChatModelAdapter => ({
   async *run({ messages, abortSignal }) {
     setAgentActivity(agent.id, "loading");
@@ -209,9 +211,9 @@ const createModelAdapter = (
         allowedTools: botSettings.enabled
           ? botSettings.allowedTools
           : undefined,
-        permissionMode: botSettings.enabled
-          ? botSettings.permissionMode
-          : "always_ask",
+        permissionMode:
+          permissionModeOverride ??
+          (botSettings.enabled ? botSettings.permissionMode : "always_ask"),
         allowedComposioTools: botSettings.enabled
           ? botSettings.allowedComposioTools
           : ["*"],
@@ -398,6 +400,7 @@ const createGroupModelAdapter = (
   groupName: string,
   members: readonly AgentProfile[],
   scope: string,
+  permissionModeOverride?: PermissionMode,
 ): ChatModelAdapter => ({
   async *run(options) {
     useWorkspaceStatus.getState().start(scope);
@@ -416,7 +419,7 @@ const createGroupModelAdapter = (
         for await (const update of iterateModelRun(
           createModelAdapter(member, context, undefined, (result) => {
             memberResult.current = result;
-          }),
+          }, permissionModeOverride),
           options,
         )) {
           latest = [...update.content];
@@ -472,6 +475,7 @@ function RuntimeSessionContent({
     cli: saved?.cli ?? primaryAgent.cli,
     model: saved?.model ?? primaryAgent.model,
   };
+  const permissionModeOverride = saved?.permissionMode;
   const effectiveMembers = groupName ? members : [effectiveAgent];
   const membersRef = useRef(effectiveMembers);
   membersRef.current = effectiveMembers;
@@ -479,10 +483,10 @@ function RuntimeSessionContent({
     () => ({
       run: (options) =>
         groupName
-          ? createGroupModelAdapter(groupName, membersRef.current, scope).run(options)
-          : createModelAdapter(membersRef.current[0], "", { scope, label: membersRef.current[0].name }).run(options),
+          ? createGroupModelAdapter(groupName, membersRef.current, scope, permissionModeOverride).run(options)
+          : createModelAdapter(membersRef.current[0], "", { scope, label: membersRef.current[0].name }, undefined, permissionModeOverride).run(options),
     }),
-    [groupName, scope],
+    [groupName, scope, permissionModeOverride],
   );
   const adapter = useMemo(
     () => createThreadListAdapter(scope, scope === "agent.memo"),

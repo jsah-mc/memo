@@ -24,7 +24,13 @@ import {
 import { TooltipIconButton } from "@/components/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { ComposerVoiceButton } from "@/components/voice";
-import { AsciiAgent } from "@/components/ascii-agent";
+import { useAgents } from "@/agents/agent-provider";
+import { getBotSettings } from "@/agents/bot-settings";
+import {
+  threadModelKey,
+  useThreadModels,
+  type PermissionMode,
+} from "@/agents/thread-model-provider";
 import { cn } from "@/lib/utils";
 import {
   ActionBarMorePrimitive,
@@ -53,12 +59,18 @@ import {
   MoreHorizontalIcon,
   PencilIcon,
   RefreshCwIcon,
+  ShieldAlertIcon,
+  ShieldCheckIcon,
+  ShieldQuestionIcon,
   SquareIcon,
   StopCircleIcon,
 } from "lucide-react";
 import {
   createContext,
   useContext,
+  useEffect,
+  useRef,
+  useState,
   type ComponentType,
   type FC,
   type PropsWithChildren,
@@ -181,7 +193,7 @@ const ThreadScrollToBottom: FC = () => {
         <TooltipIconButton
           tooltip="Scroll to bottom"
           variant="outline"
-          className="aui-thread-scroll-to-bottom dark:border-border dark:bg-background dark:hover:bg-accent absolute -top-12 z-10 self-center rounded-full p-4 disabled:invisible"
+          className="aui-thread-scroll-to-bottom dark:border-border dark:bg-background dark:hover:bg-accent absolute -top-12 z-10 self-center rounded-md p-4 disabled:invisible"
         />
       }
     >
@@ -228,22 +240,32 @@ function fillComposer(prompt: string) {
 const ThreadWelcome: FC = () => {
   return (
     <section className="memo-welcome mx-auto mb-6 flex w-full max-w-xl flex-col items-center text-center">
-      <AsciiAgent />
-      <h1 className="mt-4 text-balance font-mono text-lg font-semibold tracking-wide text-foreground">
-        // READY FOR INPUT
+      <div className="flex items-center gap-2">
+        <span
+          aria-hidden="true"
+          className="flex size-6 items-center justify-center rounded-md bg-brand font-sans text-[10px] leading-none font-bold tracking-tight text-brand-foreground select-none"
+        >
+          :P
+        </span>
+        <span className="text-[11px] font-semibold tracking-[0.22em] text-muted-foreground uppercase">
+          Memo
+        </span>
+      </div>
+      <h1 className="mt-3 font-display text-3xl text-balance font-medium tracking-tight text-foreground">
+        What are we working on?
       </h1>
-      <p className="mt-2 font-mono text-xs text-muted-foreground">
-        $ ask a question, attach a file, or select a task
+      <p className="mt-2 text-sm text-muted-foreground">
+        Ask a question, bring a file, or start with a prompt.
       </p>
       <div className="memo-starters mt-5 flex w-full flex-wrap justify-center gap-2">
         {STARTERS.map((starter) => (
           <button
             key={starter.title}
             type="button"
-            className="memo-starter rounded-full border border-border/70 bg-card/35 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/30"
+            className="memo-starter rounded-md border border-border/70 bg-card/70 px-3 py-1.5 text-xs text-muted-foreground hover:border-brand/45 hover:bg-card hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand/30"
             onClick={() => fillComposer(starter.prompt)}
           >
-            &gt; {starter.title}
+            {starter.title}
           </button>
         ))}
       </div>
@@ -269,7 +291,7 @@ const ThreadSuggestionItem: FC = () => {
         render={
           <Button
             variant="ghost"
-            className="aui-thread-welcome-suggestion text-foreground hover:bg-muted border-border/60 h-auto gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-normal whitespace-nowrap transition-colors"
+            className="aui-thread-welcome-suggestion text-foreground hover:bg-muted border-border/60 h-auto gap-1.5 rounded-md border px-3.5 py-1.5 text-sm font-normal whitespace-nowrap transition-colors"
           />
         }
       >
@@ -295,7 +317,7 @@ const Composer: FC = () => {
         <div className="flex items-end gap-1">
           <ComposerAddAttachment />
           <ComposerPrimitive.Input
-            placeholder="$ type a command or message..."
+            placeholder="Ask Memo anything…"
             className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 min-h-8 min-w-0 flex-1 resize-none bg-transparent px-2 py-1 text-base outline-none"
             rows={1}
             autoFocus
@@ -309,9 +331,140 @@ const Composer: FC = () => {
   );
 };
 
+const PERMISSION_MODES: ReadonlyArray<{
+  id: PermissionMode;
+  label: string;
+  description: string;
+  icon: typeof ShieldQuestionIcon;
+}> = [
+  {
+    id: "always_ask",
+    label: "Always ask",
+    description: "Ask before desktop control.",
+    icon: ShieldQuestionIcon,
+  },
+  {
+    id: "approve_for_me",
+    label: "Approve for me",
+    description: "Ask before desktop control.",
+    icon: ShieldAlertIcon,
+  },
+  {
+    id: "full_access",
+    label: "Full access",
+    description: "Run tools without asking.",
+    icon: ShieldCheckIcon,
+  },
+];
+
+const ComposerPermissionMode: FC = () => {
+  const { activeAgent } = useAgents();
+  const threadId = useAuiState((s) => s.threads.mainThreadId);
+  const { selections, setSelection } = useThreadModels();
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const key = threadModelKey(activeAgent.id, threadId);
+  const saved = selections[key];
+  const botSettings = getBotSettings(activeAgent.id, activeAgent.name);
+  const fallback: PermissionMode = botSettings.enabled
+    ? botSettings.permissionMode
+    : "always_ask";
+  const current = saved?.permissionMode ?? fallback;
+  const active =
+    PERMISSION_MODES.find((mode) => mode.id === current) ??
+    PERMISSION_MODES[0];
+  const ActiveIcon = active.icon;
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const choose = (permissionMode: PermissionMode) => {
+    setSelection(key, {
+      cli: saved?.cli ?? activeAgent.cli,
+      model: saved?.model ?? activeAgent.model,
+      permissionMode,
+    });
+    setOpen(false);
+  };
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className={cn(
+          "flex size-7 items-center justify-center rounded-md transition-colors",
+          open
+            ? "bg-accent text-foreground"
+            : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+        )}
+        aria-label={`Permission mode: ${active.label}`}
+        aria-expanded={open}
+        title={`Permissions: ${active.label}`}
+      >
+        <ActiveIcon className="size-4" />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="border-border/70 bg-popover absolute bottom-9 left-0 z-50 w-60 rounded-xl border p-1.5 shadow-lg"
+        >
+          <p className="text-muted-foreground px-2.5 pt-1 pb-1.5 text-[10px] font-semibold tracking-wider uppercase">
+            Permissions
+          </p>
+          {PERMISSION_MODES.map((mode) => {
+            const ModeIcon = mode.icon;
+            const selected = mode.id === current;
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={selected}
+                onClick={() => choose(mode.id)}
+                className={cn(
+                  "flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",
+                  selected ? "bg-accent" : "hover:bg-accent/60",
+                )}
+              >
+                <ModeIcon className="text-muted-foreground mt-0.5 size-4 shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5 text-xs font-medium">
+                    {mode.label}
+                    {selected && (
+                      <CheckIcon className="text-primary size-3.5" />
+                    )}
+                  </span>
+                  <span className="text-muted-foreground mt-0.5 block text-[11px] leading-snug">
+                    {mode.description}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const ComposerAction: FC = () => {
   return (
     <div className="aui-composer-action-wrapper flex shrink-0 items-center gap-1">
+      <ComposerPermissionMode />
       <AuiIf condition={(s) => s.thread.capabilities.dictation}>
         <ComposerVoiceButton />
       </AuiIf>
@@ -324,7 +477,7 @@ const ComposerAction: FC = () => {
               type="button"
               variant="default"
               size="icon"
-              className="aui-composer-send size-7 rounded-full"
+              className="aui-composer-send size-7 rounded-md bg-brand text-brand-foreground hover:bg-brand/90"
               aria-label="Send message"
             />
           }
@@ -339,7 +492,7 @@ const ComposerAction: FC = () => {
               type="button"
               variant="default"
               size="icon"
-              className="aui-composer-cancel size-7 rounded-full"
+              className="aui-composer-cancel size-7 rounded-md"
               aria-label="Stop generating"
             />
           }
@@ -544,7 +697,7 @@ const UserMessage: FC = () => {
       <UserMessageAttachments />
 
       <div className="aui-user-message-content-wrapper relative col-start-2 w-fit max-w-full justify-self-end">
-        <div className="aui-user-message-content peer rounded-lg bg-primary px-4 py-2.5 text-primary-foreground whitespace-pre-wrap wrap-break-word empty:hidden">
+        <div className="aui-user-message-content peer rounded-lg border border-brand/15 bg-brand/10 px-4 py-2.5 text-foreground whitespace-pre-wrap wrap-break-word empty:hidden">
           <MessagePrimitive.Parts />
         </div>
         <div className="aui-user-action-bar-wrapper absolute start-0 top-1/2 -translate-x-full -translate-y-1/2 pe-2 peer-empty:hidden rtl:translate-x-full">
@@ -595,14 +748,14 @@ const EditComposer: FC = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 rounded-full px-3.5"
+                className="h-8 rounded-md px-3.5"
               />
             }
           >
             Cancel
           </ComposerPrimitive.Cancel>
           <ComposerPrimitive.Send
-            render={<Button size="sm" className="h-8 rounded-full px-3.5" />}
+            render={<Button size="sm" className="h-8 rounded-md px-3.5" />}
           >
             Update
           </ComposerPrimitive.Send>

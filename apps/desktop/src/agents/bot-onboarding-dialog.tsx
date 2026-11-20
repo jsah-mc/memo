@@ -41,17 +41,17 @@ const PERMISSION_MODES: ReadonlyArray<{
   {
     id: "full_access",
     label: "Full access",
-    description: "Approve shell commands and desktop control.",
+    description: "Allow desktop control without asking.",
   },
   {
     id: "approve_for_me",
     label: "Approve for me",
-    description: "Approve shell commands; ask before desktop control.",
+    description: "Ask before desktop control.",
   },
   {
     id: "always_ask",
     label: "Always ask",
-    description: "Ask before shell commands and desktop control.",
+    description: "Ask before every desktop control session.",
   },
 ];
 
@@ -187,8 +187,8 @@ export function BotOnboardingDialog({
             </label>
           </div>
           <fieldset className="grid gap-2 border border-border p-3">
-            <legend className="px-1 font-mono text-[10px] tracking-wider text-muted-foreground">
-              // PERMISSIONS
+            <legend className="px-1 text-[11px] font-semibold tracking-wide text-muted-foreground">
+              Permissions
             </legend>
             {PERMISSION_MODES.map((mode) => (
               <label
@@ -203,7 +203,7 @@ export function BotOnboardingDialog({
                   className="mt-0.5 size-4 accent-primary"
                 />
                 <span className="grid gap-0.5">
-                  <span className="font-mono text-xs">{mode.label}</span>
+                  <span className="text-xs">{mode.label}</span>
                   <span className="text-[11px] font-normal text-muted-foreground">
                     {mode.description}
                   </span>
@@ -217,7 +217,7 @@ export function BotOnboardingDialog({
               value={instructions}
               onChange={(event) => setInstructions(event.target.value)}
               rows={5}
-              className="resize-y border border-input bg-background p-3 font-mono text-sm leading-relaxed outline-none focus:border-ring"
+              className="resize-y border border-input bg-background p-3 text-sm leading-relaxed outline-none focus:border-ring"
             />
           </label>
           {error && (

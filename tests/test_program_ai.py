@@ -45,16 +45,23 @@ class FakeBrowser:
 
 
 class FakeComputer:
-    app_name = "open_allowed_app"
+    root = ""
     responses_definitions: ClassVar[list[dict[str, Any]]] = [
         {
             "type": "function",
-            "name": "run_sandboxed_command",
-            "description": "Run a test command.",
+            "name": "inspect_computer_screen",
+            "description": "Capture the desktop.",
             "parameters": {"type": "object"},
-        }
+        },
+        {
+            "type": "function",
+            "name": "control_computer",
+            "description": "Control the desktop.",
+            "parameters": {"type": "object"},
+        },
     ]
-    names: ClassVar[set[str]] = {"run_sandboxed_command"}
+    names: ClassVar[set[str]] = {"inspect_computer_screen", "control_computer"}
+    desktop_names: ClassVar[set[str]] = {"inspect_computer_screen", "control_computer"}
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any], str]] = []
@@ -65,9 +72,10 @@ class FakeComputer:
         arguments: dict[str, Any],
         *,
         user_text: str,
+        permission_granted: bool = False,
     ) -> dict[str, Any]:
         self.calls.append((name, arguments, user_text))
-        return {"ok": True, "stdout": "hello\n"}
+        return {"ok": True, "screenshot": "desktop"}
 
 
 class FakeComputerSDK:
@@ -88,9 +96,9 @@ class FakeComputerSDK:
                         "output": [
                             {
                                 "type": "function_call",
-                                "call_id": "call_echo",
-                                "name": "run_sandboxed_command",
-                                "arguments": '{"argv":["echo","hello"]}',
+                                "call_id": "call_screen",
+                                "name": "inspect_computer_screen",
+                                "arguments": "{}",
                             }
                         ]
                     },
@@ -98,7 +106,7 @@ class FakeComputerSDK:
             else:
                 yield {
                     "type": "response.output_text.delta",
-                    "delta": "The command printed hello.",
+                    "delta": "Your desktop is visible.",
                 }
                 yield {
                     "type": "response.completed",
@@ -209,16 +217,19 @@ class ProgramAITests(unittest.IsolatedAsyncioTestCase):
             computer_tool=computer,  # type: ignore[arg-type]
             sdk_factory=FakeComputerSDK,  # type: ignore[arg-type]
         )
+        ai.set_permission_mode("full_access")
 
-        events = [event async for event in ai.events("run echo hello")]
+        events = [event async for event in ai.events("see my screen")]
 
         self.assertEqual(FakeComputerSDK.call_count, 2)
-        self.assertEqual(computer.calls[0][0], "run_sandboxed_command")
+        self.assertEqual(computer.calls[0][0], "inspect_computer_screen")
         self.assertEqual(events[0]["type"], "memo.tool_call.started")
-        self.assertEqual(events[1]["tool_call"]["result"]["stdout"], "hello\n")
-        self.assertEqual(events[2]["delta"], "The command printed hello.")
+        self.assertEqual(
+            events[1]["tool_call"]["result"]["screenshot"], "desktop"
+        )
+        self.assertEqual(events[2]["delta"], "Your desktop is visible.")
 
-    async def test_open_notepad_uses_model_discretion(self) -> None:
+    async def test_computer_uses_model_discretion_with_cua_tools(self) -> None:
         FakeComputerSDK.call_count = 0
         computer = FakeComputer()
         ai = ProgramAI(
@@ -233,13 +244,14 @@ class ProgramAITests(unittest.IsolatedAsyncioTestCase):
             computer_tool=computer,  # type: ignore[arg-type]
             sdk_factory=FakeComputerSDK,  # type: ignore[arg-type]
         )
+        ai.set_permission_mode("full_access")
 
-        events = [event async for event in ai.events("open notepad")]
+        events = [event async for event in ai.events("what is on my screen")]
 
         self.assertEqual(FakeComputerSDK.call_count, 2)
-        self.assertEqual(computer.calls[0][0], "run_sandboxed_command")
+        self.assertEqual(computer.calls[0][0], "inspect_computer_screen")
         self.assertEqual(events[0]["type"], "memo.tool_call.started")
-        self.assertEqual(events[2]["delta"], "The command printed hello.")
+        self.assertEqual(events[2]["delta"], "Your desktop is visible.")
 
     async def test_model_can_choose_browser_tool(self) -> None:
         FakeBrowserSDK.call_count = 0

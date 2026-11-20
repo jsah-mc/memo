@@ -1,9 +1,7 @@
-import { useEffect, useState } from "react";
 import { create } from "zustand";
 
 export type AgentActivity = "idle" | "loading" | "done" | "error";
 
-const SPINNER = ["[.  ]", "[.. ]", "[... ]", "[ ..]", "[  .]", "[   ]"];
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
 type ActivityStore = {
@@ -29,22 +27,23 @@ export function setAgentActivity(agentId: string, activity: AgentActivity) {
   }
 }
 
-export function AgentActivityFace({ agentId, className = "", color }: Readonly<{ agentId: string; className?: string; color?: string }>) {
+/**
+ * Small colored status dot. The agent color carries identity; the dot pulses
+ * while the agent is working so activity stays legible without ASCII art.
+ */
+export function AgentActivityDot({
+  agentId,
+  className = "",
+  color,
+}: Readonly<{ agentId: string; className?: string; color?: string }>) {
   const activity = useActivityStore((state) => state.activities[agentId] ?? "idle");
-  const [frame, setFrame] = useState(0);
-
-  useEffect(() => {
-    if (activity !== "loading") return;
-    const timer = window.setInterval(() => setFrame((value) => (value + 1) % SPINNER.length), 100);
-    return () => window.clearInterval(timer);
-  }, [activity]);
-
-  const face = activity === "loading"
-    ? SPINNER[frame]
-    : activity === "done"
-      ? "[^_^]"
-      : activity === "error"
-        ? "[x_x]"
-        : "[o_o]";
-  return <span className={className} style={color ? { color } : undefined} role="status" aria-label={`Agent ${activity}`} title={activity}>{face}</span>;
+  return (
+    <span
+      className={`inline-block size-2 shrink-0 rounded-full ${activity === "loading" ? "animate-pulse" : ""} ${className}`}
+      style={color ? { backgroundColor: color } : undefined}
+      role="status"
+      aria-label={`Agent ${activity}`}
+      title={activity}
+    />
+  );
 }

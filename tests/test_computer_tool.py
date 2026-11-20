@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import os
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 from utils.gateway.sdk import SDKResponseStream
 from utils.tools.computer import (
@@ -17,9 +16,9 @@ from utils.tools.computer import (
     known_folder_request,
 )
 from utils.tools.computer_turn import (
+    agent_tool_events,
     computer_request_text,
     computer_tool_events,
-    direct_app_events,
     has_one_time_computer_approval,
 )
 from utils.tools.desktop import detect_desktop_control_request
@@ -46,6 +45,19 @@ class SequentialSDK:
         return SDKResponseStream(events())
 
 
+def screen_result() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "image_url": "data:image/jpeg;base64,c2NyZWVu",
+        "image_width": 800,
+        "image_height": 450,
+        "screen_width": 1920,
+        "screen_height": 1080,
+        "origin_x": 0,
+        "origin_y": 0,
+    }
+
+
 class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
@@ -55,100 +67,27 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
     def tearDown(self) -> None:
         self.temporary.cleanup()
 
-    async def test_workspace_write_and_read_stay_in_root(self) -> None:
-        written = await self.tool.execute(
-            "run_sandboxed_command",
-            {"argv": ["write", "notes/hello.txt", "hello"]},
-            user_text="write hello to notes/hello.txt",
-        )
-        read = await self.tool.execute(
-            "run_sandboxed_command",
-            {"argv": ["type", "notes/hello.txt"]},
-            user_text="run type on notes/hello.txt",
-        )
+    def test_only_cua_driver_tools_are_exposed(self) -> None:
+        expected = {"inspect_computer_screen", "control_computer"}
+        definitions = self.tool.responses_definitions
+        self.assertEqual({item["name"] for item in definitions}, expected)
+        self.assertEqual(self.tool.names, expected)
+        self.assertEqual(self.tool.desktop_names, expected)
 
-        self.assertTrue(written["ok"])
-        self.assertEqual(read["stdout"], "hello")
-        self.assertEqual(read["sandbox"], "capability_policy")
-        self.assertFalse(read["os_isolated"])
-        self.assertEqual((self.root / "notes" / "hello.txt").read_text(), "hello")
-
-    async def test_path_escape_is_rejected(self) -> None:
-        with self.assertRaises(PermissionError):
-            await self.tool.execute(
-                "run_sandboxed_command",
-                {"argv": ["write", "../escape.txt", "no"]},
-                user_text="write no to ../escape.txt",
-            )
-
-    async def test_shells_and_unlisted_executables_are_rejected(self) -> None:
-        for command in ("cmd", "powershell", "python"):
-            with self.subTest(command=command), self.assertRaises(PermissionError):
+    async def test_shell_sandbox_and_app_launch_are_unavailable(self) -> None:
+        unsupported = [
+            ("run_sandboxed_command", {"argv": ["echo", "hello"]}),
+            ("run_shell_command", {"command": "echo hello"}),
+            ("open_allowed_app", {"app": "notepad"}),
+        ]
+        for name, arguments in unsupported:
+            with self.subTest(name=name), self.assertRaises(PermissionError):
                 await self.tool.execute(
-                    "run_sandboxed_command",
-                    {"argv": [command, "--version"]},
-                    user_text=f"run {command} --version",
+                    name,
+                    arguments,
+                    user_text="do it",
+                    permission_granted=True,
                 )
-
-    async def test_model_cannot_substitute_a_different_command(self) -> None:
-        with self.assertRaises(PermissionError):
-            await self.tool.execute(
-                "run_sandboxed_command",
-                {"argv": ["systeminfo"]},
-                user_text="run hostname",
-            )
-
-    async def test_model_cannot_substitute_a_different_file(self) -> None:
-        (self.root / "private.txt").write_text("secret")
-        with self.assertRaises(PermissionError):
-            await self.tool.execute(
-                "run_sandboxed_command",
-                {"argv": ["type", "private.txt"]},
-                user_text="run type public.txt",
-            )
-
-    async def test_app_requires_explicit_name_and_opening_verb(self) -> None:
-        process = Mock(pid=42)
-        with patch(
-            "utils.tools.computer.subprocess.Popen",
-            return_value=process,
-        ) as popen:
-            result = await self.tool.execute(
-                "open_allowed_app",
-                {"app": "calculator"},
-                user_text="please open calculator",
-            )
-
-        self.assertTrue(result["ok"])
-        self.assertEqual(result["policy"], "allowlisted_host_app")
-        self.assertFalse(result["os_isolated"])
-        popen.assert_called_once()
-
-        with self.assertRaises(PermissionError):
-            await self.tool.execute(
-                "open_allowed_app",
-                {"app": "notepad"},
-                user_text="open calculator",
-            )
-
-    def test_resolves_zed_from_local_programs(self) -> None:
-        local_app_data = self.root / "Local"
-        zed = local_app_data / "Programs" / "Zed" / "Zed.exe"
-        zed.parent.mkdir(parents=True)
-        zed.write_bytes(b"test executable")
-
-        with patch.dict(
-            os.environ,
-            {
-                "LOCALAPPDATA": str(local_app_data),
-                "ProgramFiles": str(self.root / "Program Files"),
-                "ProgramFiles(x86)": str(self.root / "Program Files (x86)"),
-                "PATH": "",
-            },
-        ):
-            resolved = self.tool._resolve_executable("Zed")
-
-        self.assertEqual(resolved, zed.resolve())
 
     def test_intent_detection_is_narrow(self) -> None:
         self.assertTrue(detect_computer_task("open calculator"))
@@ -232,73 +171,53 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(request, "yes")
 
-    async def test_explicit_app_request_executes_without_a_model_decision(self) -> None:
-        process = Mock(pid=42)
-        with patch(
-            "utils.tools.computer.subprocess.Popen",
-            return_value=process,
-        ):
-            events = [
-                event
-                async for event in direct_app_events(
-                    self.tool,
-                    app="notepad",
-                    user_text="open notepad",
-                )
-            ]
+    async def test_desktop_tools_reject_missing_permission(self) -> None:
+        with self.assertRaises(PermissionError):
+            await self.tool.execute(
+                "inspect_computer_screen",
+                {},
+                user_text="use the computer",
+            )
 
-        self.assertEqual(events[0]["type"], "memo.tool_call.started")
-        self.assertEqual(events[1]["type"], "memo.tool_call.completed")
-        self.assertFalse(events[1]["tool_call"]["is_error"])
-        self.assertEqual(events[2]["delta"], "Opened Notepad.")
-        self.assertEqual(events[3]["type"], "response.completed")
-
-    async def test_tool_loop_returns_events_and_tool_output_to_model(self) -> None:
+    async def test_tool_loop_returns_screen_and_tool_output_to_model(self) -> None:
         sdk = SequentialSDK(
             [
                 {
                     "output": [
                         {
                             "type": "function_call",
-                            "call_id": "call_echo",
-                            "name": "run_sandboxed_command",
-                            "arguments": '{"argv":["echo","hello"]}',
+                            "call_id": "call_screen",
+                            "name": "inspect_computer_screen",
+                            "arguments": "{}",
                         }
                     ]
                 },
-                {"output": [], "output_text": "The command printed hello."},
+                {"output": [], "output_text": "Your desktop is visible."},
             ]
         )
 
-        events = [
-            event
-            async for event in computer_tool_events(
-                sdk,
-                {
-                    "model": "chatgpt/test",
-                    "input": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "input_text",
-                                    "text": "run echo hello",
-                                }
-                            ],
-                        }
-                    ],
-                },
-                self.tool,
-            )
-        ]
+        with patch.object(
+            self.tool.desktop,
+            "capture",
+            new=AsyncMock(return_value=screen_result()),
+        ) as capture:
+            events = [
+                event
+                async for event in agent_tool_events(
+                    sdk,
+                    {"model": "chatgpt/test", "input": "see my screen"},
+                    computer_tool=self.tool,
+                    permission_mode="full_access",
+                )
+            ]
 
+        capture.assert_awaited_once_with()
         self.assertEqual(events[0]["type"], "memo.tool_call.started")
         self.assertEqual(events[1]["type"], "memo.tool_call.completed")
-        self.assertEqual(events[1]["tool_call"]["result"]["stdout"], "hello\n")
-        self.assertEqual(events[2]["delta"], "The command printed hello.")
+        self.assertEqual(events[2]["delta"], "Your desktop is visible.")
         second_input = sdk.payloads[1]["input"]
-        self.assertEqual(second_input[-1]["type"], "function_call_output")
-        self.assertIn('"stdout":"hello\\n"', second_input[-1]["output"])
+        self.assertEqual(second_input[-1]["content"][0]["type"], "input_image")
+        self.assertEqual(second_input[-2]["type"], "function_call_output")
 
     async def test_tool_loop_continues_past_the_old_round_limit(self) -> None:
         tool_rounds = [
@@ -306,9 +225,9 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
                 "output": [
                     {
                         "type": "function_call",
-                        "call_id": f"call_echo_{index}",
-                        "name": "run_sandboxed_command",
-                        "arguments": '{"argv":["echo","continue"]}',
+                        "call_id": f"call_screen_{index}",
+                        "name": "inspect_computer_screen",
+                        "arguments": "{}",
                     }
                 ]
             }
@@ -318,327 +237,46 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
             [*tool_rounds, {"output": [], "output_text": "Finished."}]
         )
 
-        events = [
-            event
-            async for event in computer_tool_events(
-                sdk,
-                {
-                    "model": "chatgpt/test",
-                    "input": "run echo continue until finished",
-                },
-                self.tool,
-            )
-        ]
+        with patch.object(
+            self.tool.desktop,
+            "capture",
+            new=AsyncMock(return_value=screen_result()),
+        ):
+            events = [
+                event
+                async for event in agent_tool_events(
+                    sdk,
+                    {
+                        "model": "chatgpt/test",
+                        "input": "keep looking at the screen until finished",
+                    },
+                    computer_tool=self.tool,
+                    permission_mode="full_access",
+                )
+            ]
 
         self.assertEqual(len(sdk.payloads), 14)
         self.assertEqual(events[-2]["delta"], "Finished.")
         self.assertEqual(events[-1]["type"], "response.completed")
 
-    async def test_shell_executor_rejects_missing_permission(self) -> None:
-        with self.assertRaises(PermissionError):
-            await self.tool.execute(
-                "run_shell_command",
-                {"command": "echo hello"},
-                user_text="run command echo hello",
-            )
+    async def test_only_desktop_tool_definitions_are_sent_to_the_model(self) -> None:
+        sdk = SequentialSDK([{"output": [], "output_text": "Nothing to do."}])
 
-    async def test_desktop_tools_reject_missing_permission(self) -> None:
-        with self.assertRaises(PermissionError):
-            await self.tool.execute(
-                "inspect_computer_screen",
-                {},
-                user_text="use the computer",
-            )
-
-    async def test_approved_shell_command_runs_in_configured_workspace(self) -> None:
-        with patch.dict(os.environ, MEMO_WINDOWS_PROCESS_SANDBOX="off"):
-            result = await self.tool.execute(
-                "run_shell_command",
-                {"command": "echo hello"},
-                user_text="run command echo hello",
-                permission_granted=True,
-            )
-
-        self.assertTrue(result["ok"])
-        self.assertIn("hello", result["stdout"])
-        # Windows temp paths may use an 8.3 alias while the tool resolves it.
-        self.assertTrue(Path(result["cwd"]).samefile(self.root))
-        self.assertEqual(result["sandbox"], "working_directory_only")
-        self.assertFalse(result["os_isolated"])
-
-    async def test_linux_translates_safe_windows_style_app_launch(self) -> None:
-        launch_result = {
-            "ok": True,
-            "resolved_name": "google-chrome-stable",
-            "resolved_path": "/usr/bin/google-chrome-stable",
-            "pid": 42,
-            "resolution": "linux_executable",
-        }
-        with (
-            patch("utils.tools.computer.os.name", "posix"),
-            patch.object(
-                self.tool,
-                "_launch_linux_app",
-                return_value=launch_result,
-            ) as launch,
-        ):
-            result = await self.tool.run_shell(
-                {"command": 'start "" "chrome"'},
-                permission_granted=True,
-            )
-
-        launch.assert_called_once_with("chrome")
-        self.assertTrue(result["ok"])
-        self.assertEqual(result["exit_code"], 0)
-        self.assertEqual(result["resolved_path"], "/usr/bin/google-chrome-stable")
-
-    async def test_shell_tool_waits_for_one_time_permission(self) -> None:
-        sdk = SequentialSDK(
-            [
-                {
-                    "output": [
-                        {
-                            "type": "function_call",
-                            "call_id": "call_shell",
-                            "name": "run_shell_command",
-                            "arguments": '{"command":"npm --version"}',
-                        }
-                    ]
-                },
-                {"output": [], "output_text": "The command completed."},
-            ]
-        )
-        broker = PermissionBroker(timeout_seconds=1)
-        shell_result = {
-            "ok": True,
-            "stdout": "10.0.0\n",
-            "stderr": "",
-            "exit_code": 0,
-        }
-
-        with patch.object(
-            self.tool,
-            "run_shell",
-            new=AsyncMock(return_value=shell_result),
-        ) as run_shell:
-            events = []
+        _ = [
+            event
             async for event in computer_tool_events(
                 sdk,
-                {
-                    "model": "chatgpt/test",
-                    "input": "run npm --version",
-                },
+                {"model": "chatgpt/test", "input": "hello"},
                 self.tool,
-                broker,
-            ):
-                events.append(event)
-                if event.get("type") == "memo.permission.requested":
-                    permission = event["permission"]
-                    self.assertEqual(permission["command"], "npm --version")
-                    self.assertFalse(permission["os_isolated"])
-                    self.assertTrue(broker.resolve(permission["id"], True))
+            )
+        ]
 
-        self.assertEqual(events[0]["type"], "memo.tool_call.started")
-        self.assertEqual(events[1]["type"], "memo.permission.requested")
-        self.assertEqual(events[2]["type"], "memo.tool_call.completed")
-        run_shell.assert_awaited_once_with(
-            {"command": "npm --version"},
-            permission_granted=True,
+        definitions = sdk.payloads[0]["tools"]
+        self.assertEqual(
+            {definition["name"] for definition in definitions},
+            {"inspect_computer_screen", "control_computer"},
         )
         self.assertNotIn("tool_choice", sdk.payloads[0])
-        shell_definition = next(
-            definition
-            for definition in sdk.payloads[0]["tools"]
-            if definition.get("name") == "run_shell_command"
-        )
-        expected_shell = "Windows cmd.exe" if os.name == "nt" else "POSIX /bin/sh"
-        self.assertIn(expected_shell, shell_definition["description"])
-        expected_launch = (
-            "Windows syntax" if os.name == "nt" else "`xdg-open`"
-        )
-        self.assertIn(expected_launch, shell_definition["description"])
-        self.assertNotIn("tool_choice", sdk.payloads[1])
-        self.assertFalse(broker.pending_ids)
-
-    async def test_arbitrary_app_launch_uses_permission_gated_shell(self) -> None:
-        sdk = SequentialSDK(
-            [
-                {
-                    "output": [
-                        {
-                            "type": "function_call",
-                            "call_id": "call_chrome",
-                            "name": "run_shell_command",
-                            "arguments": '{"command":"start \\"\\" \\"\\\\\\\\\\""}',
-                        }
-                    ]
-                },
-                {"output": [], "output_text": "Opened Chrome."},
-            ]
-        )
-        broker = PermissionBroker(timeout_seconds=1)
-        shell_result = {
-            "ok": True,
-            "stdout": "",
-            "stderr": "",
-            "exit_code": 0,
-        }
-
-        with patch.object(
-            self.tool,
-            "run_shell",
-            new=AsyncMock(return_value=shell_result),
-        ) as run_shell:
-            events = []
-            async for event in computer_tool_events(
-                sdk,
-                {"input": "open Google Chrome"},
-                self.tool,
-                broker,
-            ):
-                events.append(event)
-                if event.get("type") == "memo.permission.requested":
-                    self.assertEqual(
-                        event["permission"]["command"],
-                        'start "" "chrome"',
-                    )
-                    self.assertTrue(broker.resolve(event["permission"]["id"], True))
-
-        run_shell.assert_awaited_once_with(
-            {"command": 'start "" "chrome"'},
-            permission_granted=True,
-        )
-        self.assertNotIn("tool_choice", sdk.payloads[0])
-        self.assertEqual(events[-2]["delta"], "Opened Chrome.")
-
-    async def test_yes_grants_exactly_one_computer_action(self) -> None:
-        sdk = SequentialSDK(
-            [
-                {
-                    "output": [
-                        {
-                            "type": "function_call",
-                            "call_id": "call_spotify",
-                            "name": "run_shell_command",
-                            "arguments": (
-                                '{"command":"start \\"\\" '
-                                '\\"C:\\\\Apps\\\\Spotify.exe\\""}'
-                            ),
-                        },
-                        {
-                            "type": "function_call",
-                            "call_id": "call_calc",
-                            "name": "run_shell_command",
-                            "arguments": '{"command":"start \\"\\" \\"calc\\""}',
-                        },
-                    ]
-                },
-                {"output": [], "output_text": "Handled the approved action."},
-            ]
-        )
-        broker = PermissionBroker(timeout_seconds=0.01)
-        shell_result = {
-            "ok": True,
-            "stdout": "",
-            "stderr": "",
-            "exit_code": 0,
-        }
-        history = [
-            {"role": "user", "content": "launch Spotify"},
-            {
-                "role": "assistant",
-                "content": "Would you like me to launch it?",
-            },
-            {"role": "user", "content": "yes"},
-        ]
-
-        with patch.object(
-            self.tool,
-            "run_shell",
-            new=AsyncMock(return_value=shell_result),
-        ) as run_shell:
-            events = [
-                event
-                async for event in computer_tool_events(
-                    sdk,
-                    {"input": history},
-                    self.tool,
-                    broker,
-                )
-            ]
-
-        run_shell.assert_awaited_once_with(
-            {"command": 'start "" "spotify:"'},
-            permission_granted=True,
-        )
-        permission_events = [
-            event
-            for event in events
-            if event.get("type") == "memo.permission.requested"
-        ]
-        self.assertEqual(len(permission_events), 1)
-        denied = [
-            event
-            for event in events
-            if event.get("type") == "memo.tool_call.completed"
-            and event["tool_call"]["result"].get("permission_denied")
-        ]
-        self.assertEqual(len(denied), 1)
-
-    async def test_model_app_substitution_is_replaced_with_requested_app(self) -> None:
-        sdk = SequentialSDK(
-            [
-                {
-                    "output": [
-                        {
-                            "type": "function_call",
-                            "call_id": "call_wrong_app",
-                            "name": "run_shell_command",
-                            "arguments": '{"command":"start \\"\\" \\"calc\\""}',
-                        }
-                    ]
-                },
-                {"output": [], "output_text": "The action was not approved."},
-            ]
-        )
-        broker = PermissionBroker(timeout_seconds=0.01)
-        shell_result = {
-            "ok": True,
-            "stdout": "",
-            "stderr": "",
-            "exit_code": 0,
-        }
-        history = [
-            {"role": "user", "content": "launch Spotify"},
-            {
-                "role": "assistant",
-                "content": "Would you like me to launch it?",
-            },
-            {"role": "user", "content": "yes"},
-        ]
-
-        with patch.object(
-            self.tool,
-            "run_shell",
-            new=AsyncMock(return_value=shell_result),
-        ) as run_shell:
-            events = [
-                event
-                async for event in computer_tool_events(
-                    sdk,
-                    {"input": history},
-                    self.tool,
-                    broker,
-                )
-            ]
-
-        run_shell.assert_awaited_once_with(
-            {"command": 'start "" "spotify:"'},
-            permission_granted=True,
-        )
-        self.assertFalse(
-            any(event.get("type") == "memo.permission.requested" for event in events)
-        )
 
     async def test_desktop_session_shares_screenshots_with_model(self) -> None:
         sdk = SequentialSDK(
@@ -669,16 +307,7 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
             ]
         )
         broker = PermissionBroker(timeout_seconds=1)
-        screenshot = {
-            "ok": True,
-            "image_url": "data:image/jpeg;base64,c2NyZWVu",
-            "image_width": 800,
-            "image_height": 450,
-            "screen_width": 1920,
-            "screen_height": 1080,
-            "origin_x": 0,
-            "origin_y": 0,
-        }
+        screenshot = screen_result()
 
         with (
             patch.object(
@@ -727,33 +356,33 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
         ]
         self.assertNotIn("image_url", completed_tool_events[0]["tool_call"]["result"])
 
-    async def test_denied_shell_permission_never_executes(self) -> None:
+    async def test_denied_desktop_permission_never_captures(self) -> None:
         sdk = SequentialSDK(
             [
                 {
                     "output": [
                         {
                             "type": "function_call",
-                            "call_id": "call_shell",
-                            "name": "run_shell_command",
-                            "arguments": '{"command":"python --version"}',
+                            "call_id": "call_screen",
+                            "name": "inspect_computer_screen",
+                            "arguments": "{}",
                         }
                     ]
                 },
-                {"output": [], "output_text": "The command was denied."},
+                {"output": [], "output_text": "The screen was denied."},
             ]
         )
         broker = PermissionBroker(timeout_seconds=1)
 
         with patch.object(
-            self.tool,
-            "run_shell",
+            self.tool.desktop,
+            "capture",
             new=AsyncMock(),
-        ) as run_shell:
+        ) as capture:
             events = []
             async for event in computer_tool_events(
                 sdk,
-                {"input": "run python --version"},
+                {"input": "see my screen"},
                 self.tool,
                 broker,
             ):
@@ -761,7 +390,7 @@ class ComputerSandboxTests(unittest.IsolatedAsyncioTestCase):
                 if event.get("type") == "memo.permission.requested":
                     self.assertTrue(broker.resolve(event["permission"]["id"], False))
 
-        run_shell.assert_not_awaited()
+        capture.assert_not_awaited()
         completed = next(
             event for event in events if event.get("type") == "memo.tool_call.completed"
         )

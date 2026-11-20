@@ -7,12 +7,11 @@ SCREEN_TOOL_DEFINITION = {
     "type": "function",
     "name": "inspect_computer_screen",
     "description": (
-        "Capture the primary desktop display through CUA Driver so you can see apps and "
-        "controls. Use this before clicking and again whenever the screen may "
-        "have changed. A user approval grants screen and input access only for "
-        "the current task."
-        "If The User Says Anything Related or says something like see the screen You Can Use This Tool"
-        "To See And Give The User What You Saw"
+        "Capture the primary desktop display so you can see the user's apps, "
+        "windows, and controls. Call this whenever the user asks what is on "
+        "their screen, asks you to look at the screen, or when a task depends "
+        "on what is currently visible. Inspect first, then describe or act. "
+        "One user approval grants screen and input access for the current task."
     ),
     "parameters": {
         "type": "object",
@@ -29,8 +28,10 @@ CONTROL_TOOL_DEFINITION = {
         "Perform a short sequence of mouse and keyboard actions, then "
         "return a fresh screenshot. Coordinates use the pixel dimensions from "
         "the latest screenshot. Supported actions are click, double_click, "
-        "move, type, press, hotkey, scroll, and wait. Keep each sequence short "
-        "and inspect the resulting screen before deciding the next actions. Scroll acts at the last pointer action, or the screen center before any pointer action."
+        "move, type, press, hotkey, scroll, and wait. Call this only after "
+        "inspecting the screen, keep each sequence short, and inspect the "
+        "resulting screen before deciding the next actions. Scroll acts at the "
+        "last pointer action, or the screen center before any pointer action."
     ),
     "parameters": {
         "type": "object",

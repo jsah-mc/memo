@@ -42,7 +42,7 @@ export function UpdatePanel() {
 
   return (
     <section className="grid gap-4">
-      <div className="terminal-card grid gap-4 border border-border p-4">
+      <div className="grid gap-4 rounded-md border border-border bg-card p-4">
         <div className="flex items-start gap-3">
           {status && !status.available ? (
             <CheckCircle2Icon className="mt-0.5 size-5 text-primary" />

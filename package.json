@@ -8,15 +8,18 @@
     "dev:desktop": "pnpm --filter @memo/desktop start",
     "dev:vite": "pnpm --filter @memo/desktop start:vite",
     "dev:gateway": "uv run memo gateway",
+    "dev:tui": "pnpm --filter @memo/tui start",
     "build": "pnpm --filter @memo/desktop package",
+    "build:tui": "pnpm --filter @memo/tui typecheck",
+    "build:sandbox": "pnpm --filter @memo/sandbox typecheck",
     "package": "pnpm --filter @memo/desktop package",
     "make": "pnpm --filter @memo/desktop make",
     "lint": "pnpm --filter @memo/desktop lint",
     "typecheck": "pnpm --filter @memo/desktop typecheck",
+    "typecheck:all": "pnpm --filter @memo/desktop typecheck && pnpm --filter @memo/tui typecheck && pnpm --filter @memo/sandbox typecheck",
     "version:sync": "node scripts/sync-version.mjs"
   },
   "devDependencies": {
-    "lodash": "4.17.21",
-    "react": "19.3.1"
+    "lodash": "4.17.21"
   }
 }

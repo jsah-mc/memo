@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, session, shell, Tray } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, session, shell, Tray } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
 import { registerChatApi } from "./chat-api";
@@ -13,6 +13,7 @@ import { stopAllDesktopControlIndicators } from "./desktop-control-indicator";
 import { registerWorkspace } from "./workspace";
 import { registerSourceUpdater } from "./source-updater";
 import { registerBotStore } from "./bot-store";
+import { loadWindowBounds, saveWindowBounds, type WindowBounds } from "./settings-store";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -63,13 +64,51 @@ ipcMain.handle("env:get", (event, name: string) => {
   return process.env[name] || null;
 });
 
+const MIN_WINDOW_WIDTH = 800;
+const MIN_WINDOW_HEIGHT = 480;
+
+function restoredWindowBounds(): Partial<WindowBounds> {
+  const saved = loadWindowBounds();
+  if (!saved) return {};
+  const bounds: Partial<WindowBounds> = {
+    width: Math.max(MIN_WINDOW_WIDTH, saved.width),
+    height: Math.max(MIN_WINDOW_HEIGHT, saved.height),
+    maximized: saved.maximized === true,
+  };
+  if (typeof saved.x === "number" && typeof saved.y === "number") {
+    // Drop the saved position when its titlebar would land off every display
+    // (e.g. the monitor it lived on is gone), so the window never opens
+    // unreachable.
+    const reachable = screen.getAllDisplays().some((display) => {
+      const area = display.workArea;
+      return (
+        saved.x! >= area.x &&
+        saved.x! < area.x + area.width &&
+        saved.y! >= area.y &&
+        saved.y! < area.y + area.height
+      );
+    });
+    if (reachable) {
+      bounds.x = saved.x;
+      bounds.y = saved.y;
+    }
+  }
+  return bounds;
+}
+
 const createWindow = () => {
   // Create the browser window.
+  const restored = restoredWindowBounds();
   const win = new BrowserWindow({
     show: false,
     backgroundColor: "#101014",
-    width: 1400,
-    height: 800,
+    width: restored.width ?? 1400,
+    height: restored.height ?? 800,
+    ...(restored.x !== undefined && restored.y !== undefined
+      ? { x: restored.x, y: restored.y }
+      : {}),
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     frame: process.platform === "darwin",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
     icon: getAppIconPath(),
@@ -82,6 +121,26 @@ const createWindow = () => {
     },
   });
 
+  let persistTimer: NodeJS.Timeout | undefined;
+  const persistBounds = () => {
+    if (win.isDestroyed() || win.isMinimized()) return;
+    saveWindowBounds({
+      ...win.getNormalBounds(),
+      maximized: win.isMaximized(),
+    });
+  };
+  const queueBoundsPersist = () => {
+    clearTimeout(persistTimer);
+    persistTimer = setTimeout(persistBounds, 600);
+  };
+  win.on("resize", queueBoundsPersist);
+  win.on("move", queueBoundsPersist);
+  win.on("close", () => {
+    clearTimeout(persistTimer);
+    persistBounds();
+  });
+
+  if (restored.maximized) win.maximize();
   win.once("ready-to-show", () => win.show());
   win.on("close", (event) => {
     if (quitting) return;

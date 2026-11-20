@@ -16,7 +16,7 @@ const indicatorHtml = encodeURIComponent(`<!doctype html>
   }
   .badge {
     position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-    padding: 6px 12px; border: 1px solid rgba(255,255,255,.28); border-radius: 999px;
+    padding: 6px 12px; border: 1px solid rgba(255,255,255,.28); border-radius: 1.5rem;
     color: #fff7ed; background: rgba(120, 53, 15, .92); box-shadow: 0 4px 18px rgba(0,0,0,.35);
     font-size: 12px; font-weight: 650; letter-spacing: .01em;
   }

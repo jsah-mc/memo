@@ -160,7 +160,7 @@ try {
       );
     }
   } else {
-    console.log('Unknown OS');
+    console.log('Sorry Memo Sandbox does not support this OS yet.');
   }
 } catch (error) {
   if (MxcErrorClass && error instanceof MxcErrorClass) {

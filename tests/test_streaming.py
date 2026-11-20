@@ -1,7 +1,5 @@
 import json
-import os
 import tempfile
-from pathlib import Path
 from unittest import TestCase
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -56,9 +54,9 @@ class FakePermissionResponseStream:
             "type": "memo.permission.requested",
             "permission": {
                 "id": "perm_test",
-                "tool_call_id": "call_shell",
-                "kind": "shell_command",
-                "command": "npm --version",
+                "tool_call_id": "call_screen",
+                "kind": "computer_control",
+                "command": "View and control the Windows desktop for this task",
                 "cwd": r"C:\sandbox",
                 "os_isolated": False,
             },
@@ -168,7 +166,7 @@ class GatewayStreamingTests(TestCase):
         self.assertNotIn("result", tool_events[0])
         self.assertEqual(tool_events[1]["result"]["result"], "Found it")
 
-    def test_desktop_stream_exposes_shell_permission_event(self) -> None:
+    def test_desktop_stream_exposes_computer_permission_event(self) -> None:
         with (
             patch(
                 "utils.gateway.sdk.ModelSDK.responses",
@@ -194,7 +192,11 @@ class GatewayStreamingTests(TestCase):
         permission = next(
             item for item in data if item.get("object") == "memo.permission_request"
         )
-        self.assertEqual(permission["permission"]["command"], "npm --version")
+        self.assertEqual(
+            permission["permission"]["command"],
+            "View and control the Windows desktop for this task",
+        )
+        self.assertEqual(permission["permission"]["kind"], "computer_control")
         self.assertFalse(permission["permission"]["os_isolated"])
 
     def test_image_generation_endpoint_is_disabled_without_local_backend(self) -> None:
@@ -220,16 +222,16 @@ class GatewayStreamingTests(TestCase):
                             "output": [
                                 {
                                     "type": "function_call",
-                                    "call_id": "call_echo",
-                                    "name": "run_sandboxed_command",
-                                    "arguments": '{"argv":["echo","gateway"]}',
+                                    "call_id": "call_screen",
+                                    "name": "inspect_computer_screen",
+                                    "arguments": "{}",
                                 }
                             ]
                         }
                     ),
                     completed_stream(
                         {"output": [], "usage": {}},
-                        "The command printed gateway.",
+                        "Your screen is available.",
                     ),
                 ]
             )
@@ -245,18 +247,27 @@ class GatewayStreamingTests(TestCase):
                     headers={"X-Memo-Computer-Tools": "1"},
                     json={
                         "model": "codex",
-                        "messages": [{"role": "user", "content": "run echo gateway"}],
+                        "messages": [{"role": "user", "content": "see my screen"}],
                     },
                 )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json()["choices"][0]["message"]["content"],
-            "The command printed gateway.",
+            "Your screen is available.",
         )
         self.assertEqual(upstream.await_count, 2)
         second_input = upstream.await_args_list[1].args[-1]["input"]
         self.assertEqual(second_input[-1]["type"], "function_call_output")
+        tool_names = {
+            tool["name"] for tool in upstream.await_args_list[0].args[-1]["tools"]
+        }
+        self.assertLessEqual(
+            {"inspect_computer_screen", "control_computer"}, tool_names
+        )
+        self.assertNotIn("run_shell_command", tool_names)
+        self.assertNotIn("run_sandboxed_command", tool_names)
+        self.assertNotIn("open_allowed_app", tool_names)
 
     def test_screen_tool_is_available_without_forcing_model_choice(
         self,
@@ -343,152 +354,6 @@ class GatewayStreamingTests(TestCase):
         self.assertEqual(upstream.await_count, 1)
         tool_names = {tool["name"] for tool in upstream.await_args.args[-1]["tools"]}
         self.assertEqual(tool_names, {"browse_web"})
-
-    def test_gateway_opens_app_after_model_selects_tool(self) -> None:
-        settings = GatewaySettings(computer_enabled=True)
-        with tempfile.TemporaryDirectory() as root:
-            computer = ComputerSandboxTool(root)
-            process = Mock(pid=42)
-            with (
-                patch(
-                    "utils.gateway.sdk.ModelSDK.responses",
-                    new=AsyncMock(
-                        side_effect=[
-                            completed_stream({"output": [{"type": "function_call", "call_id": "call_app", "name": "open_allowed_app", "arguments": '{"app":"notepad"}'}]}),
-                            completed_stream({"output": [], "usage": {}}, "Opened Notepad."),
-                        ]
-                    ),
-                ),
-                patch(
-                    "utils.tools.computer.subprocess.Popen",
-                    return_value=process,
-                ),
-                TestClient(create_app(settings, computer_tool=computer)) as client,
-            ):
-                response = client.post(
-                    "/v1/chat/completions",
-                    headers={"X-Memo-Computer-Tools": "1"},
-                    json={
-                        "model": "codex",
-                        "messages": [{"role": "user", "content": "open notepad"}],
-                    },
-                )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.json()["choices"][0]["message"]["content"],
-            "Opened Notepad.",
-        )
-
-    def test_yes_allows_model_selected_named_app_launch(self) -> None:
-        settings = GatewaySettings(computer_enabled=True)
-        with tempfile.TemporaryDirectory() as root:
-            computer = ComputerSandboxTool(root)
-            launch_result = {
-                "ok": True,
-                "target": "Zed",
-                "resolved_name": "Zed",
-                "resolved_path": (r"C:\Users\Admin\AppData\Local\Programs\Zed\Zed.exe"),
-                "pid": 42,
-                "resolution": "executable",
-            }
-            with (
-                patch(
-                    "utils.gateway.sdk.ModelSDK.responses",
-                    new=AsyncMock(
-                        side_effect=[
-                            completed_stream({"output": [{"type": "function_call", "call_id": "call_zed", "name": "run_shell_command", "arguments": '{"command":"start \\\"\\\" \\\"Zed\\\""}'}]}),
-                            completed_stream({"output": [], "usage": {}}, "Opened Zed."),
-                        ]
-                    ),
-                ),
-                patch.object(
-                    computer,
-                    "_launch_windows_app" if os.name == "nt" else "_launch_linux_app",
-                    return_value=launch_result,
-                ) as launch,
-                TestClient(create_app(settings, computer_tool=computer)) as client,
-            ):
-                response = client.post(
-                    "/v1/chat/completions",
-                    headers={
-                        "X-Memo-Desktop": "1",
-                        "X-Memo-Computer-Tools": "1",
-                    },
-                    json={
-                        "model": "codex",
-                        "messages": [
-                            {"role": "user", "content": "open Zed"},
-                            {
-                                "role": "assistant",
-                                "content": "Reply yes and I'll open it.",
-                            },
-                            {"role": "user", "content": "yes"},
-                        ],
-                    },
-                )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(
-            "Opened Zed",
-            response.json()["choices"][0]["message"]["content"],
-        )
-        launch.assert_called_once_with("Zed")
-
-    def test_yes_allows_model_selected_downloads_launch(self) -> None:
-        settings = GatewaySettings(computer_enabled=True)
-        downloads = str((Path.home() / "Downloads").resolve())
-        with tempfile.TemporaryDirectory() as root:
-            computer = ComputerSandboxTool(root)
-            with (
-                patch(
-                    "utils.gateway.sdk.ModelSDK.responses",
-                    new=AsyncMock(
-                        side_effect=[
-                            completed_stream({"output": [{"type": "function_call", "call_id": "call_downloads", "name": "run_shell_command", "arguments": '{"command":"open downloads"}'}]}),
-                            completed_stream({"output": [], "usage": {}}, "Opened Downloads."),
-                        ]
-                    ),
-                ),
-                patch.object(
-                    computer,
-                    "_launch_windows_app" if os.name == "nt" else "_launch_linux_app",
-                    return_value={
-                        "ok": True,
-                        "target": downloads,
-                        "resolution": "windows_shell",
-                    },
-                ) as launch,
-                TestClient(create_app(settings, computer_tool=computer)) as client,
-            ):
-                response = client.post(
-                    "/v1/chat/completions",
-                    headers={
-                        "X-Memo-Desktop": "1",
-                        "X-Memo-Computer-Tools": "1",
-                    },
-                    json={
-                        "model": "codex",
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": "now open the downloads Folder",
-                            },
-                            {
-                                "role": "assistant",
-                                "content": "Reply yes and I'll open it.",
-                            },
-                            {"role": "user", "content": "yes"},
-                        ],
-                    },
-                )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(
-            "Opened Downloads",
-            response.json()["choices"][0]["message"]["content"],
-        )
-        launch.assert_called_once_with(downloads)
 
     def test_gateway_permission_resolution_requires_desktop_headers(self) -> None:
         broker = Mock(spec=PermissionBroker)

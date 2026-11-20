@@ -24,7 +24,7 @@ export function TaskActivitySidebar() {
   };
 
   return (
-    <aside className="h-full w-[380px] shrink-0 overflow-y-auto border-l border-border/60 bg-background/95 pt-14 backdrop-blur-xl">
+    <aside className="h-full w-[320px] shrink-0 overflow-y-auto border-l border-border/60 bg-background/95 pt-14 backdrop-blur-xl xl:w-[380px]">
       <div className="flex items-center justify-between border-b border-border/60 p-4">
         <div>
           <h2 className="text-sm font-semibold">Task activity</h2>

@@ -214,21 +214,29 @@ def create_app(
 
         agent = payload.get("memo_agent")
         primary_model = route.model
+        cli_backend: str | None = None
         if isinstance(agent, dict):
             requested = agent.get("model")
+            cli_backend = agent.get("cli") if isinstance(agent.get("cli"), str) else None
             if isinstance(requested, str) and requested.strip():
                 requested = requested.strip()
                 if "/" in requested:
                     primary_model = requested
-                elif agent.get("cli", "codex") == "codex":
+                elif cli_backend == "codex":
                     primary_model = f"chatgpt/{requested}"
                 else:
                     primary_model = requested
 
         assert route.model is not None
         try:
+            from .cli_runner import RUNNER_BACKENDS, CLISDK
+
+            if cli_backend in RUNNER_BACKENDS:
+                sdk = CLISDK(cli_backend, primary_model, agent=agent)
+            else:
+                sdk = ModelSDK(primary_model, api_base=settings.upstream_api_base)
             return await dispatch_response(
-                ModelSDK(primary_model, api_base=settings.upstream_api_base),
+                sdk,
                 routed_payload,
                 allow_browser=allow_browser,
                 allow_computer=allow_computer,
@@ -333,17 +341,26 @@ def create_app(
 
     @app.get("/v1/models")
     async def models() -> dict[str, Any]:
-        return {
-            "object": "list",
-            "data": [
-                {
-                    "id": settings.model_alias,
-                    "object": "model",
-                    "created": int(time.time()),
-                    "owned_by": "memo",
-                }
-            ],
-        }
+        from utils.gateway.model_catalog import catalog_model_ids
+
+        data = [
+            {
+                "id": settings.model_alias,
+                "object": "model",
+                "created": int(time.time()),
+                "owned_by": "memo",
+            }
+        ]
+        data.extend(
+            {
+                "id": model_id,
+                "object": "model",
+                "created": int(time.time()),
+                "owned_by": model_id.split("/", 1)[0],
+            }
+            for model_id in catalog_model_ids()
+        )
+        return {"object": "list", "data": data}
 
     @app.get("/v1/cli-backends")
     async def cli_backends() -> dict[str, Any]:

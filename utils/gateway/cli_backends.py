@@ -96,29 +96,154 @@ class CLIBackend:
         return result
 
     def available_models(self, resolved: str | None = None) -> list[str]:
-        """Return models installed in a local runtime when its CLI supports it."""
+        """Return models the CLI itself reports, when it exposes a listing."""
 
         executable = resolved if resolved is not None else self.resolved_executable
-        if self.id != "ollama" or not executable:
+        if not executable:
             return []
-        try:
-            completed = subprocess.run(
-                [executable, "list"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=False,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return []
-        if completed.returncode != 0:
-            return []
-        lines = completed.stdout.splitlines()
-        return list(
-            dict.fromkeys(
-                line.split()[0] for line in lines[1:] if line.strip() and line.split()
-            )
+        if self.id == "ollama":
+            return _ollama_models(executable)
+        if self.id == "lmstudio":
+            return _lmstudio_models()
+        if self.id == "opencode":
+            return _opencode_models(executable)
+        if self.id == "hermes":
+            return _hermes_models()
+        return []
+
+
+def _run_cli(executable: str, *args: str, timeout: int = 5) -> str:
+    try:
+        completed = subprocess.run(
+            [executable, *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
         )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return completed.stdout if completed.returncode == 0 else ""
+
+
+def _ollama_models(executable: str) -> list[str]:
+    output = _run_cli(executable, "list")
+    if not output:
+        return []
+    lines = output.splitlines()
+    return list(
+        dict.fromkeys(
+            line.split()[0] for line in lines[1:] if line.strip() and line.split()
+        )
+    )
+
+
+def _lmstudio_models() -> list[str]:
+    """LM Studio serves an OpenAI-compatible model list on its local server."""
+    import json
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(
+            "http://127.0.0.1:1234/v1/models", timeout=3
+        ) as response:
+            payload = json.loads(response.read(1024 * 1024))
+    except Exception:
+        return []
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        return []
+    return list(
+        dict.fromkeys(
+            item["id"]
+            for item in data
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+        )
+    )
+
+
+def _opencode_models(executable: str) -> list[str]:
+    """`opencode models` prints one provider/model id per line."""
+    output = _run_cli(executable, "models")
+    return list(
+        dict.fromkeys(
+            line.strip()
+            for line in output.splitlines()
+            if "/" in line.strip() and not line.strip().startswith(("-", "#"))
+        )
+    )
+
+
+HERMES_CATALOG_URL = "https://hermes-agent.nousresearch.com/docs/api/model-catalog.json"
+
+
+def _hermes_home() -> Path:
+    """Mirror Hermes' own data-home resolution (hermes_constants.py)."""
+    override = os.environ.get("HERMES_HOME", "").strip()
+    if override:
+        return Path(os.path.expandvars(os.path.expanduser(override)))
+    suffix = os.environ.get("HERMES_DATA_DIR_SUFFIX", "")
+    if sys.platform == "win32":
+        local_appdata = os.environ.get("LOCALAPPDATA", "").strip()
+        base = Path(local_appdata) if local_appdata else Path.home() / "AppData" / "Local"
+        return base / f"hermes{suffix}"
+    return Path.home() / f".hermes{suffix}"
+
+
+def _hermes_catalog_ids(payload: Any) -> list[str]:
+    """Model ids from a Hermes model-catalog manifest, as `<provider>:<model>`.
+
+    That qualified form is what Hermes' own `/model` command and `--model` flag
+    accept, so a selected id routes back into the CLI unchanged.
+    """
+    providers = payload.get("providers") if isinstance(payload, dict) else None
+    if not isinstance(providers, dict):
+        return []
+    entries: list[str] = []
+    for provider_id, provider in providers.items():
+        if not isinstance(provider, dict):
+            continue
+        models = provider.get("models")
+        if not isinstance(models, list):
+            continue
+        prefix = str(provider_id).strip().lower()
+        if not prefix:
+            continue
+        for model in models:
+            if not isinstance(model, dict):
+                continue
+            model_id = model.get("id")
+            if not isinstance(model_id, str) or not model_id.strip():
+                continue
+            entries.append(f"{prefix}:{model_id.strip()}")
+    return list(dict.fromkeys(entries))
+
+
+def _hermes_models() -> list[str]:
+    """Hermes' curated model list: its disk cache, else the live manifest.
+
+    Hermes' `/model` picker reads `<hermes home>/cache/model_catalog.json`
+    (same data it publishes at HERMES_CATALOG_URL); the manifest never breaks
+    the picker, so a missing or stale cache is safe to ignore here too.
+    """
+    import json
+    import urllib.request
+
+    catalog_path = _hermes_home() / "cache" / "model_catalog.json"
+    try:
+        payload = json.loads(catalog_path.read_text(encoding="utf-8"))
+        ids = _hermes_catalog_ids(payload)
+        if ids:
+            return ids
+    except (OSError, ValueError):
+        pass
+
+    try:
+        with urllib.request.urlopen(HERMES_CATALOG_URL, timeout=5) as response:
+            payload = json.loads(response.read(1024 * 1024))
+    except Exception:
+        return []
+    return _hermes_catalog_ids(payload)
 
 
 CLI_BACKENDS: tuple[CLIBackend, ...] = (

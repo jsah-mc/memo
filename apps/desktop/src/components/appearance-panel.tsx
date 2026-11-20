@@ -14,11 +14,10 @@ import {
 
 const choices = [
   { id: "system" as const, label: "System", description: "Match your computer", icon: LaptopIcon },
-  { id: "light" as const, label: "Light", description: "Use the light terminal theme", icon: SunIcon },
-  { id: "dark" as const, label: "Dark", description: "Use the dark terminal theme", icon: MoonIcon },
-  { id: "latte" as const, label: "Catppuccin Latte", description: "Soft light palette", icon: PaletteIcon },
-  { id: "frappe" as const, label: "Catppuccin Frappé", description: "Muted dark palette", icon: PaletteIcon },
-  { id: "macchiato" as const, label: "Catppuccin Macchiato", description: "Deeper dark palette", icon: PaletteIcon },
+  { id: "light" as const, label: "Light", description: "Use the light theme", icon: SunIcon },
+  { id: "dark" as const, label: "Dark", description: "Use the dark theme", icon: MoonIcon },
+  { id: "catppuccin" as const, label: "Catppuccin", description: "Mocha in dark mode · Latte in light mode", icon: PaletteIcon },
+  { id: "tokyonight" as const, label: "TokyoNight", description: "Night in dark mode · Day in light mode", icon: MoonIcon },
 ];
 
 export function AppearancePanel() {

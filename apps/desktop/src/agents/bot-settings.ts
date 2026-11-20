@@ -22,8 +22,8 @@ export const BOT_TOOL_OPTIONS = [
   },
   {
     id: "computer",
-    label: "Computer & shell",
-    description: "Use desktop controls and run local commands.",
+    label: "Computer control",
+    description: "See and control the desktop through CUA Driver.",
   },
   {
     id: "integrations",

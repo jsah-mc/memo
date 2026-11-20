@@ -18,7 +18,7 @@ test("each chat run reads the latest agent runtime and model", () => {
   assert.match(runtimeProvider, /membersRef\.current = effectiveMembers/);
   assert.match(
     runtimeProvider,
-    /createModelAdapter\(membersRef\.current\[0\], "", \{ scope, label: membersRef\.current\[0\]\.name \}\)\.run\(options\)/,
+    /createModelAdapter\(membersRef\.current\[0\], "", \{ scope, label: membersRef\.current\[0\]\.name \}[^)]*\)\.run\(options\)/,
   );
 });
 
@@ -38,7 +38,13 @@ test("model sidebar only lists installed agent CLIs", () => {
 test("threads retain their runtime and model while the agent default advances", () => {
   assert.match(threadModels, /memo\.thread-agent-models\.v2/);
   assert.match(modelSidebar, /updateAgentModel\(activeAgent\.id, model\)/);
-  assert.match(modelSidebar, /setSelection\(key, \{ cli: selectedRuntime, model \}\)/);
+  assert.match(
+    modelSidebar,
+    /setSelection\(key, \{[^}]*cli: selectedRuntime,[^}]*model,[^}]*\}\)/,
+  );
   assert.match(modelSidebar, /updateAgentRuntime\(activeAgent\.id, cli/);
-  assert.match(modelSidebar, /setSelection\(key, \{ cli, model: nextModel \}\)/);
+  assert.match(
+    modelSidebar,
+    /setSelection\(key, \{[^}]*cli,[^}]*model: nextModel,[^}]*\}\)/,
+  );
 });

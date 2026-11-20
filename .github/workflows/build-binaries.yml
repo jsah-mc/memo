@@ -1,0 +1,75 @@
+name: Build Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            ext: ""
+          - os: windows-latest
+            platform: windows
+            ext: ".exe"
+          - os: macos-latest
+            platform: macos
+            ext: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install audio build dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y portaudio19-dev
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Python dependencies
+        run: uv sync --locked
+      - name: Build Desktop
+        run: pnpm --filter @memo/desktop package
+      - name: Build Installer
+        run: pnpm --filter @memo/installer tauri build
+      - name: Build TUI
+        run: pnpm --filter @memo/tui typecheck
+      - name: Build Sandbox
+        run: pnpm --filter @memo/sandbox typecheck
+      - name: Create binaries archive
+        shell: bash
+        run: |
+          mkdir -p dist
+          # Desktop bundle
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp apps/desktop/out/make/squirrel.windows/x64/Memo-*.exe dist/ 2>/dev/null || true
+            cp apps/installer/src-tauri/target/release/bundle/nsis/Memo*Installer*setup.exe dist/ 2>/dev/null || true
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            cp -r apps/desktop/out/Memo-darwin-x64/Memo.app dist/ 2>/dev/null || true
+            cp apps/installer/src-tauri/target/release/bundle/dmg/Memo*Installer*.dmg dist/ 2>/dev/null || true
+          else
+            cp apps/desktop/out/make/debian/x64/*.deb dist/ 2>/dev/null || true
+            cp apps/installer/src-tauri/target/release/bundle/appimage/memo-installer*.AppImage dist/ 2>/dev/null || true
+          fi
+          cd dist
+          tar -czf memo-${{ matrix.platform }}-${{ github.ref_name }}.tar.gz *
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: memo-${{ matrix.platform }}-${{ github.ref_name }}
+          path: dist/memo-${{ matrix.platform }}-${{ github.ref_name }}.tar.gz

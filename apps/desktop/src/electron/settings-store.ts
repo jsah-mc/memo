@@ -16,6 +16,15 @@ type DesktopSettings = {
   vpsSshIdentityFile?: string;
   resourceMode?: ResourceMode;
   workspacePath?: string;
+  windowBounds?: WindowBounds;
+};
+
+export type WindowBounds = {
+  width: number;
+  height: number;
+  x?: number;
+  y?: number;
+  maximized?: boolean;
 };
 
 export type ResourceMode = "low" | "balanced" | "performance";
@@ -36,6 +45,30 @@ function readSettings(): DesktopSettings {
 
 function writeSettings(settings: DesktopSettings) {
   writeFileSync(settingsPath(), JSON.stringify(settings, null, 2), "utf8");
+}
+
+export function loadWindowBounds(): WindowBounds | undefined {
+  const bounds = readSettings().windowBounds;
+  if (
+    !bounds ||
+    typeof bounds.width !== "number" ||
+    typeof bounds.height !== "number" ||
+    bounds.width < 1 ||
+    bounds.height < 1
+  ) {
+    return undefined;
+  }
+  return bounds;
+}
+
+export function saveWindowBounds(bounds: WindowBounds) {
+  try {
+    const settings = readSettings();
+    settings.windowBounds = bounds;
+    writeSettings(settings);
+  } catch {
+    // Losing a bounds save only means the window reopens at its default size.
+  }
 }
 
 export function getComposioKey() {

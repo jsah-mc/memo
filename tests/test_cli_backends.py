@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
 import os
+import tempfile
 from pathlib import Path
 from unittest import TestCase, mock
 
 from utils.gateway.cli_backends import (
     CLI_BACKENDS,
+    _hermes_catalog_ids,
+    _hermes_models,
     executable_search_path,
     get_cli_backend,
     validate_agent_config,
@@ -103,3 +107,84 @@ class CLIBackendRegistryTests(TestCase):
             timeout=5,
             check=False,
         )
+
+
+class HermesModelDiscoveryTests(TestCase):
+    manifest = {
+        "version": 1,
+        "providers": {
+            "openrouter": {
+                "models": [
+                    {"id": "z-ai/glm-5.3", "default": True},
+                    {"id": "openai/gpt-5.4"},
+                ]
+            },
+            "nous": {"models": [{"id": "z-ai/glm-5.3"}]},
+        },
+    }
+
+    def test_ids_are_qualified_with_their_provider_and_deduplicated(self) -> None:
+        self.assertEqual(
+            _hermes_catalog_ids(self.manifest),
+            [
+                "openrouter:z-ai/glm-5.3",
+                "openrouter:openai/gpt-5.4",
+                "nous:z-ai/glm-5.3",
+            ],
+        )
+
+    def test_malformed_manifests_yield_nothing(self) -> None:
+        self.assertEqual(_hermes_catalog_ids({}), [])
+        self.assertEqual(_hermes_catalog_ids({"providers": {"nous": None}}), [])
+        self.assertEqual(
+            _hermes_catalog_ids({"providers": {"nous": {"models": [{"id": 5}]}}}),
+            [],
+        )
+
+    @mock.patch("utils.gateway.cli_backends._hermes_home")
+    def test_models_are_read_from_hermes_disk_cache(self, home: mock.Mock) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home.return_value = Path(tmp)
+            cache = Path(tmp) / "cache"
+            cache.mkdir()
+            (cache / "model_catalog.json").write_text(
+                json.dumps(self.manifest), encoding="utf-8"
+            )
+            self.assertEqual(
+                _hermes_models(),
+                [
+                    "openrouter:z-ai/glm-5.3",
+                    "openrouter:openai/gpt-5.4",
+                    "nous:z-ai/glm-5.3",
+                ],
+            )
+
+    @mock.patch("urllib.request.urlopen")
+    @mock.patch("utils.gateway.cli_backends._hermes_home")
+    def test_missing_cache_falls_back_to_the_live_manifest(
+        self, home: mock.Mock, urlopen: mock.Mock
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home.return_value = Path(tmp)  # no cache file
+            urlopen.return_value.__enter__.return_value.read.return_value = (
+                json.dumps(self.manifest).encode("utf-8")
+            )
+            self.assertEqual(
+                _hermes_models(),
+                [
+                    "openrouter:z-ai/glm-5.3",
+                    "openrouter:openai/gpt-5.4",
+                    "nous:z-ai/glm-5.3",
+                ],
+            )
+            urlopen.assert_called_once()
+
+    @mock.patch("urllib.request.urlopen")
+    @mock.patch("utils.gateway.cli_backends._hermes_home")
+    def test_unreachable_manifest_returns_empty(
+        self, home: mock.Mock, urlopen: mock.Mock
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home.return_value = Path(tmp)
+            urlopen.side_effect = OSError("offline")
+            self.assertEqual(_hermes_models(), [])

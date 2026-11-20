@@ -12,7 +12,6 @@ import {
   startDesktopControlIndicator,
   stopDesktopControlIndicator,
 } from "./desktop-control-indicator";
-import { createWorkspaceCheckpoint } from "./workspace";
 
 type ChatContentPart =
   | { type: "text"; text: string }
@@ -294,10 +293,7 @@ async function resolveShellPermission(
     }
     event.sender.send("permission:request", {
       id: permission.id,
-      kind:
-        permission.kind === "computer_control"
-          ? "computer_control"
-          : "shell_command",
+      kind: "computer_control",
       command: permission.command,
       cwd: permission.cwd,
       osIsolated: permission.os_isolated === true,
@@ -306,15 +302,6 @@ async function resolveShellPermission(
 
   if (allowed && permission.kind === "computer_control") {
     startDesktopControlIndicator(requestId);
-  }
-  if (allowed && permission.kind === "shell_command") {
-    try {
-      await createWorkspaceCheckpoint(
-        `Before ${permission.command.slice(0, 36)}`,
-      );
-    } catch {
-      // Non-Git workspaces still receive the normal explicit permission gate.
-    }
   }
 
   const response = await fetch(
@@ -613,6 +600,22 @@ export function registerChatApi() {
 
   ipcMain.handle("agents:backends", async () => {
     return agentBackends();
+  });
+
+  ipcMain.handle("models:catalog", async () => {
+    await ensureGatewayRunning();
+    const response = await fetch(`${GATEWAY_BASE_URL}/v1/models`, {
+      signal: AbortSignal.timeout(30_000),
+    });
+    const payload = (await response.json()) as {
+      data?: Array<{ id?: unknown }>;
+    };
+    if (!response.ok) {
+      throw new Error(gatewayError(payload, "Could not load model catalog."));
+    }
+    return (payload.data ?? [])
+      .map((item) => (typeof item.id === "string" ? item.id : ""))
+      .filter((id) => id.includes("/"));
   });
 
   ipcMain.handle(

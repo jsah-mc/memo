@@ -73,8 +73,8 @@ export function BotSettingsPanel() {
   return (
     <section className="grid gap-4">
       <div className="grid gap-2">
-        <span className="font-mono text-[10px] tracking-wider text-muted-foreground">
-          // BOTS
+        <span className="text-[11px] font-semibold tracking-wide text-muted-foreground">
+          Bots
         </span>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {profiles.map((agent) => {
@@ -84,7 +84,7 @@ export function BotSettingsPanel() {
                 key={agent.id}
                 type="button"
                 onClick={() => selectAgent(agent.id)}
-                className={`border p-2 text-left font-mono text-xs ${agent.id === activeAgent.id ? "border-primary bg-primary/10" : "border-border hover:bg-muted"}`}
+                className={`border p-2 text-left text-xs ${agent.id === activeAgent.id ? "border-primary bg-primary/10" : "border-border hover:bg-muted"}`}
               >
                 <span className="block truncate text-foreground">
                   {bot.name}
@@ -94,7 +94,7 @@ export function BotSettingsPanel() {
                     bot.enabled ? "text-primary" : "text-muted-foreground"
                   }
                 >
-                  {bot.enabled ? "[enabled]" : "[disabled]"} /{bot.command}
+                  {bot.enabled ? "Enabled" : "Disabled"} · /{bot.command}
                 </span>
               </button>
             );
@@ -102,7 +102,7 @@ export function BotSettingsPanel() {
         </div>
       </div>
 
-      <div className="terminal-card flex items-start gap-3 border border-border p-4">
+      <div className="flex items-start gap-3 rounded-md border border-border bg-card p-4">
         <BotIcon className="mt-0.5 size-5 text-primary" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-4">
@@ -141,8 +141,8 @@ export function BotSettingsPanel() {
       </label>
 
       <fieldset className="grid gap-2 border border-border p-3">
-        <legend className="px-1 font-mono text-[10px] tracking-wider text-muted-foreground">
-          // TOOL ACCESS
+        <legend className="px-1 text-[11px] font-semibold tracking-wide text-muted-foreground">
+          Tool access
         </legend>
         {BOT_TOOL_OPTIONS.map((tool) => (
           <label
@@ -156,7 +156,7 @@ export function BotSettingsPanel() {
               className="mt-0.5 size-4 accent-primary"
             />
             <span className="grid gap-0.5">
-              <span className="font-mono text-xs text-foreground">
+              <span className="text-xs text-foreground">
                 {tool.label}
               </span>
               <span className="text-[11px] font-normal text-muted-foreground">
@@ -168,25 +168,25 @@ export function BotSettingsPanel() {
       </fieldset>
 
       <fieldset className="grid gap-2 border border-border p-3">
-        <legend className="px-1 font-mono text-[10px] tracking-wider text-muted-foreground">
-          // PERMISSIONS
+        <legend className="px-1 text-[11px] font-semibold tracking-wide text-muted-foreground">
+          Permissions
         </legend>
         {(
           [
             [
               "full_access",
               "Full access",
-              "Approve shell commands and desktop control.",
+              "Allow desktop control without asking.",
             ],
             [
               "approve_for_me",
               "Approve for me",
-              "Approve shell commands; ask before desktop control.",
+              "Ask before desktop control.",
             ],
             [
               "always_ask",
               "Always ask",
-              "Ask before shell commands and desktop control.",
+              "Ask before every desktop control session.",
             ],
           ] as const
         ).map(([value, label, description]) => (
@@ -199,7 +199,7 @@ export function BotSettingsPanel() {
               className="mt-0.5 size-4 accent-primary"
             />
             <span className="grid gap-0.5">
-              <span className="font-mono text-xs">{label}</span>
+              <span className="text-xs">{label}</span>
               <span className="text-[11px] font-normal text-muted-foreground">
                 {description}
               </span>
@@ -224,15 +224,15 @@ export function BotSettingsPanel() {
           placeholder="*, GITHUB_CREATE_ISSUE"
           className="font-mono"
         />
-        <span className="font-mono text-[10px] text-muted-foreground">
+        <span className="text-[10px] text-muted-foreground">
           Comma-separated tool slugs. Use * for every tool in the bot&apos;s
           connected apps.
         </span>
       </label>
 
       <fieldset className="grid gap-2 border border-border p-3">
-        <legend className="px-1 font-mono text-[10px] tracking-wider text-muted-foreground">
-          // AUTHENTICATED COMPOSIO APPS
+        <legend className="px-1 text-[11px] font-semibold tracking-wide text-muted-foreground">
+          Connected apps
         </legend>
         {connectedApps.map((app) => (
           <label key={app} className="flex cursor-pointer items-center gap-3">
@@ -242,7 +242,7 @@ export function BotSettingsPanel() {
               onChange={(event) => toggleApp(app, event.target.checked)}
               className="size-4 accent-primary"
             />
-            <span className="font-mono text-xs capitalize">
+            <span className="text-xs capitalize">
               {app.replaceAll("_", " ")}
             </span>
           </label>
@@ -275,7 +275,7 @@ export function BotSettingsPanel() {
           placeholder="github, filesystem"
           className="font-mono"
         />
-        <span className="font-mono text-[10px] text-muted-foreground">
+        <span className="text-[10px] text-muted-foreground">
           Server IDs are passed only to runtimes that provide those MCP servers.
         </span>
       </label>

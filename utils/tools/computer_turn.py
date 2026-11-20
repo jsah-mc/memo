@@ -1,4 +1,4 @@
-"""Responses API tool loop for Memo's local computer capability."""
+"""Responses API tool loop for Memo's CUA Driver desktop capability."""
 
 from __future__ import annotations
 
@@ -9,20 +9,9 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from .browser import BrowserUseTool
-from .computer import (
-    ComputerSandboxTool,
-    detect_computer_task,
-    generic_app_request_name,
-    known_folder_request,
-)
+from .computer import ComputerSandboxTool, detect_computer_task
 from .permissions import PermissionBroker
 
-APP_LABELS = {
-    "notepad": "Notepad",
-    "calculator": "Calculator",
-    "paint": "Paint",
-    "file_explorer": "File Explorer",
-}
 _AFFIRMATION = (
     r"^(?:(?:yes|yeah|yep|sure|ok(?:ay)?)(?:,?\s+(?:do it|go ahead|"
     r"please|proceed))?|do it|go ahead|please do|continue|proceed)[.! ]*$"
@@ -96,74 +85,6 @@ def has_one_time_computer_approval(input_value: Any) -> bool:
     return False
 
 
-def _matches_approved_app_launch(command: str, user_text: str) -> bool:
-    """Bind conversational approval to one plain Windows app launch."""
-
-    folder = known_folder_request(user_text)
-    requested_app = (
-        folder[0] if folder is not None else generic_app_request_name(user_text)
-    )
-    if requested_app is None:
-        return False
-    launch = re.fullmatch(
-        r'\s*start\s+""\s+"(?P<target>[^"\r\n]+)"\s*',
-        command,
-        re.IGNORECASE,
-    )
-    if launch is None:
-        return False
-
-    requested_words = {
-        word.casefold()
-        for word in re.findall(r"[\w+#]+", requested_app)
-        if len(word) >= 2
-    }
-    target_words = {
-        word.casefold()
-        for word in re.findall(r"[\w+#]+", launch.group("target"))
-        if len(word) >= 2
-    }
-    return bool(requested_words & target_words)
-
-
-def canonical_app_launch_command(user_text: str) -> str | None:
-    """Build a non-injectable Windows launch command from the user's app name."""
-
-    folder = known_folder_request(user_text)
-    if folder is not None:
-        _, path = folder
-        return f'start "" "{path}"'
-    requested_app = generic_app_request_name(user_text)
-    if requested_app is None:
-        return None
-    aliases = {
-        "chrome": "chrome",
-        "google chrome": "chrome",
-        "edge": "msedge",
-        "microsoft edge": "msedge",
-        "firefox": "firefox",
-        "visual studio code": "code",
-        "vs code": "code",
-        "vscode": "code",
-        "windows terminal": "wt",
-        "terminal": "wt",
-        "microsoft word": "winword",
-        "word": "winword",
-        "microsoft excel": "excel",
-        "excel": "excel",
-        "microsoft powerpoint": "powerpnt",
-        "powerpoint": "powerpnt",
-        "spotify": "spotify:",
-        "steam": "steam:",
-        "settings": "ms-settings:",
-        "windows settings": "ms-settings:",
-        "microsoft store": "ms-windows-store:",
-        "windows store": "ms-windows-store:",
-    }
-    target = aliases.get(requested_app.casefold(), requested_app)
-    return f'start "" "{target}"'
-
-
 def _function_calls(response: dict[str, Any], names: set[str]) -> list[dict[str, Any]]:
     output = response.get("output")
     if not isinstance(output, list):
@@ -177,134 +98,6 @@ def _function_calls(response: dict[str, Any], names: set[str]) -> list[dict[str,
     ]
 
 
-async def direct_app_events(
-    tool: ComputerSandboxTool,
-    *,
-    app: str,
-    user_text: str,
-) -> AsyncIterator[dict[str, Any]]:
-    """Open an explicitly named app without allowing the model to decline."""
-
-    call_id = f"call_{uuid.uuid4().hex}"
-    arguments = {"app": app}
-    tool_call = {
-        "id": call_id,
-        "name": tool.app_name,
-        "arguments": arguments,
-    }
-    yield {"type": "memo.tool_call.started", "tool_call": tool_call}
-    try:
-        result = await tool.execute(
-            tool.app_name,
-            arguments,
-            user_text=user_text,
-        )
-    except Exception as exc:  # noqa: BLE001 - report launcher failure to the UI.
-        result = {"ok": False, "error": str(exc)}
-    yield {
-        "type": "memo.tool_call.completed",
-        "tool_call": {
-            **tool_call,
-            "result": result,
-            "is_error": not bool(result.get("ok")),
-        },
-    }
-
-    label = APP_LABELS.get(app, app)
-    if result.get("ok"):
-        text = f"Opened {label}."
-    else:
-        text = f"Could not open {label}: {result.get('error', 'unknown error')}"
-    yield {"type": "response.output_text.delta", "delta": text}
-    yield {
-        "type": "response.completed",
-        "response": {"output_text": text, "usage": {}},
-    }
-
-
-async def direct_named_app_events(
-    tool: ComputerSandboxTool,
-    *,
-    user_text: str,
-    permission_broker: PermissionBroker | None,
-    approved: bool = False,
-) -> AsyncIterator[dict[str, Any]]:
-    """Launch an arbitrary named app without trusting a model-generated command."""
-
-    folder = known_folder_request(user_text)
-    app_name = folder[0] if folder is not None else generic_app_request_name(user_text)
-    command = canonical_app_launch_command(user_text)
-    if app_name is None or command is None:
-        raise ValueError("The app-launch request is invalid.")
-
-    call_id = f"call_{uuid.uuid4().hex}"
-    arguments = {"command": command}
-    tool_call = {
-        "id": call_id,
-        "name": tool.shell_name,
-        "arguments": arguments,
-    }
-    yield {"type": "memo.tool_call.started", "tool_call": tool_call}
-
-    permission_granted = approved
-    if not permission_granted and permission_broker is not None:
-        pending = permission_broker.create(
-            {
-                "kind": "folder_open" if folder is not None else "app_launch",
-                "tool_call_id": call_id,
-                "command": command,
-                "cwd": str(tool.root),
-                "os_isolated": False,
-            }
-        )
-        yield {
-            "type": "memo.permission.requested",
-            "permission": {"id": pending.id, **pending.details},
-        }
-        permission_granted = await permission_broker.wait(pending.id)
-
-    if permission_granted:
-        try:
-            result = await tool.execute(
-                tool.shell_name,
-                arguments,
-                user_text=user_text,
-                permission_granted=True,
-            )
-        except Exception as exc:  # noqa: BLE001 - report launch failure to the UI.
-            result = {"ok": False, "error": str(exc)}
-    else:
-        result = {
-            "ok": False,
-            "permission_denied": True,
-            "error": "The app launch was not approved.",
-        }
-
-    yield {
-        "type": "memo.tool_call.completed",
-        "tool_call": {
-            **tool_call,
-            "result": result,
-            "is_error": not bool(result.get("ok")),
-        },
-    }
-    if result.get("ok"):
-        resolved = result.get("resolved_path") or result.get("resolved_name")
-        if resolved is None and folder is not None:
-            resolved = str(folder[1])
-        resolved = resolved or app_name
-        text = f"Opened {app_name} ({resolved})."
-    elif result.get("permission_denied"):
-        text = f"Opening {app_name} was not approved."
-    else:
-        text = f"Could not open {app_name}: {result.get('error', 'unknown error')}"
-    yield {"type": "response.output_text.delta", "delta": text}
-    yield {
-        "type": "response.completed",
-        "response": {"output_text": text, "usage": {}},
-    }
-
-
 async def agent_tool_events(
     sdk: Any,
     payload: dict[str, Any],
@@ -314,11 +107,10 @@ async def agent_tool_events(
     permission_broker: PermissionBroker | None = None,
     permission_mode: str = "always_ask",
 ) -> AsyncIterator[dict[str, Any]]:
-    """Expose enabled tools and let the model decide whether to use them."""
+    """Expose CUA Driver tools and let the model decide whether to use them."""
 
     user_text = computer_request_text(payload.get("input"))
     one_time_approval = has_one_time_computer_approval(payload.get("input"))
-    shell_name = getattr(computer_tool, "shell_name", "run_shell_command")
     desktop_names = getattr(computer_tool, "desktop_names", set())
     computer_names = getattr(computer_tool, "names", set())
     browser_name = getattr(browser_tool, "name", "browse_web")
@@ -396,10 +188,6 @@ async def agent_tool_events(
                 arguments = {}
             if not isinstance(arguments, dict):
                 arguments = {}
-            if name == shell_name:
-                app_command = canonical_app_launch_command(user_text)
-                if app_command is not None:
-                    arguments = {**arguments, "command": app_command}
             yield {
                 "type": "memo.tool_call.started",
                 "tool_call": {
@@ -440,40 +228,8 @@ async def agent_tool_events(
                     }
                     permission_granted = await permission_broker.wait(pending.id)
                     desktop_session_granted = permission_granted
-            elif name == shell_name:
-                command = arguments.get("command")
-                if permission_mode in {"full_access", "approve_for_me"}:
-                    permission_granted = True
-                elif one_time_approval:
-                    one_time_approval = False
-                    permission_granted = isinstance(
-                        command,
-                        str,
-                    ) and _matches_approved_app_launch(command, user_text)
-                if (
-                    not permission_granted
-                    and isinstance(command, str)
-                    and permission_broker is not None
-                ):
-                    pending = permission_broker.create(
-                        {
-                            "kind": "shell_command",
-                            "tool_call_id": call_id,
-                            "command": command,
-                            "cwd": str(computer_tool.root),
-                            "os_isolated": False,
-                        }
-                    )
-                    yield {
-                        "type": "memo.permission.requested",
-                        "permission": {
-                            "id": pending.id,
-                            **pending.details,
-                        },
-                    }
-                    permission_granted = await permission_broker.wait(pending.id)
 
-            if (name == shell_name or name in desktop_names) and not permission_granted:
+            if name in desktop_names and not permission_granted:
                 result = {
                     "ok": False,
                     "permission_denied": True,
@@ -487,18 +243,12 @@ async def agent_tool_events(
                         result = await browser_tool.execute(arguments)
                     elif computer_tool is None:
                         result = {"ok": False, "error": "Computer tools are disabled."}
-                    elif name == shell_name or name in desktop_names:
-                        result = await computer_tool.execute(
-                            name,
-                            arguments,
-                            user_text=user_text,
-                            permission_granted=True,
-                        )
                     else:
                         result = await computer_tool.execute(
                             name,
                             arguments,
                             user_text=user_text,
+                            permission_granted=permission_granted,
                         )
                 except Exception as exc:  # noqa: BLE001 - report policy errors.
                     result = {"ok": False, "error": str(exc)}

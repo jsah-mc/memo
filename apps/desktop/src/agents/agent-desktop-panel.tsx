@@ -173,7 +173,7 @@ export function AgentDesktopPanel({
   };
 
   return (
-    <aside className="h-full w-[360px] shrink-0 overflow-y-auto border-l border-border/60 bg-background/95 pt-14 backdrop-blur-xl">
+    <aside className="h-full w-[320px] shrink-0 overflow-y-auto border-l border-border/60 bg-background/95 pt-14 backdrop-blur-xl xl:w-[360px]">
       <div className="grid gap-4 p-3">
         <section className="grid grid-cols-4 gap-2" aria-label="Agent actions">
           <button

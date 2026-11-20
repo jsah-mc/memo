@@ -57,7 +57,7 @@ test("Ollama models are discovered from the installed CLI", () => {
     "apps/desktop/src/agents/create-agent-dialog.tsx",
     "utf8",
   );
-  assert.match(gateway, /\[executable, "list"\]/);
+  assert.match(gateway, /_run_cli\(executable, "list"\)/);
   assert.match(gateway, /"models": self\.available_models/);
   assert.match(models, /backend\.models/);
   assert.match(createAgent, /runtimeModels\.ollama/);

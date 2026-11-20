@@ -16,9 +16,7 @@ export function PermissionPrompt({
       marginY={1}
     >
       <Text color="yellow" bold>
-        {permission.kind === "computer_control"
-          ? "allow computer control?"
-          : "allow shell command?"}
+        allow computer control?
       </Text>
       <Text dimColor>{permission.command}</Text>
       {permission.cwd && <Text dimColor>{`cwd: ${permission.cwd}`}</Text>}

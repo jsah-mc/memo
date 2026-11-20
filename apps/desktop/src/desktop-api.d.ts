@@ -49,6 +49,9 @@ declare global {
         onEvent: (event: ChatStreamEvent) => void,
       ): () => void;
       cancelChat(requestId: string): void;
+      models: {
+        catalog(): Promise<string[]>;
+      };
       agents: {
         list(): Promise<AgentProfileData[]>;
         backends(): Promise<AgentBackendData[]>;
@@ -273,7 +276,7 @@ declare global {
 
   type PermissionRequest = {
     id: string;
-    kind: "computer_control" | "shell_command";
+    kind: "computer_control";
     command: string;
     cwd: string;
     osIsolated: boolean;

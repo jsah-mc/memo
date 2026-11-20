@@ -3,7 +3,7 @@ import { LoaderCircleIcon, Trash2Icon, UsersIcon } from "lucide-react";
 import { CreateAgentDialog } from "@/agents/create-agent-dialog";
 import { BotOnboardingDialog } from "@/agents/bot-onboarding-dialog";
 import { useAgents } from "@/agents/agent-provider";
-import { AgentActivityFace } from "@/agents/agent-activity";
+import { AgentActivityDot } from "@/agents/agent-activity";
 import { moderatedAgentColor } from "@/agents/agent-color";
 import { CreateAgentGroupDialog } from "@/agents/create-agent-group-dialog";
 import { EditAgentGroupDialog } from "@/agents/edit-agent-group-dialog";
@@ -30,8 +30,8 @@ function BotStatus({
   const bot = useBotSettings(agentId, agentName);
   if (!bot.enabled) return null;
   return (
-    <span className="ml-2 border border-primary/50 px-1 font-mono text-[9px] text-primary">
-      BOT /{bot.command}
+    <span className="ml-2 rounded-md border border-primary/40 px-1 text-[9px] font-medium text-primary">
+      Bot · {bot.command}
     </span>
   );
 }
@@ -40,9 +40,9 @@ function WorkspaceStatusBadge({ scope }: Readonly<{ scope: string }>) {
   const status = useWorkspaceStatus((state) => state.statuses[scope]);
   if (!status || (status.running === 0 && status.unread === 0)) return null;
   if (status.running > 0) {
-    return <span className="ml-auto flex items-center gap-1 font-mono text-[10px] text-primary"><LoaderCircleIcon className="size-3 animate-spin" />{status.running}</span>;
+    return <span className="ml-auto flex items-center gap-1 text-[10px] text-primary"><LoaderCircleIcon className="size-3 animate-spin" />{status.running}</span>;
   }
-  return <span className={`ml-auto min-w-4 rounded-full px-1 text-center font-mono text-[9px] text-primary-foreground ${status.lastResult === "error" ? "bg-destructive" : "bg-primary"}`}>{status.unread}</span>;
+  return <span className={`ml-auto min-w-4 rounded-md px-1 text-center text-[9px] text-primary-foreground ${status.lastResult === "error" ? "bg-destructive" : "bg-primary"}`}>{status.unread}</span>;
 }
 
 export function AgentSidebarSection({
@@ -99,8 +99,8 @@ export function AgentSidebarSection({
 
   return (
     <SidebarGroup className="shrink-0 px-2.5 pt-3 pb-2">
-      <SidebarGroupLabel className="text-xs font-medium">
-        // AGENTS
+      <SidebarGroupLabel className="font-display text-[13px] font-medium text-muted-foreground">
+        Agents
       </SidebarGroupLabel>
       <SidebarGroupContent>
         <div className="mb-1">
@@ -116,9 +116,9 @@ export function AgentSidebarSection({
                 className="h-11 rounded-sm data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
                 tooltip={`${agent.name} — ${agent.role}`}
               >
-                <AgentActivityFace
+                <AgentActivityDot
                   agentId={agent.id}
-                  className="flex w-11 shrink-0 items-center justify-center font-mono text-[9px] font-bold"
+                  className="mx-2"
                   color={moderatedAgentColor(agent.color)}
                 />
                 <span className="min-w-0 flex-1">
@@ -158,13 +158,13 @@ export function AgentSidebarSection({
           )}
         </SidebarMenu>
         {bots !== null && !bots.some((bot) => bot.enabled) && (
-          <div className="mt-3 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3">
-            <p className="font-mono text-[10px] tracking-wider text-primary">
-              // FIRST BOT
+          <div className="mt-3 rounded-md border border-dashed border-brand/40 bg-brand/5 p-3">
+            <p className="font-display text-sm font-medium text-brand">
+              First bot
             </p>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               No bots yet. Turn an agent into a persistent task bot — it will
-              also be available in the Memo terminal.
+              also be available from the command line.
             </p>
             <Button
               size="sm"
@@ -179,8 +179,8 @@ export function AgentSidebarSection({
           open={botSetupOpen}
           onOpenChange={setBotSetupOpen}
         />
-        <div className="mt-4 flex items-center justify-between px-2 text-xs font-medium text-muted-foreground">
-          <span>// GROUPS</span>
+        <div className="mt-4 flex items-center justify-between px-2 font-display text-[13px] font-medium text-muted-foreground">
+          <span>Groups</span>
         </div>
         <CreateAgentGroupDialog />
         <SidebarMenu className="mt-1 gap-1">

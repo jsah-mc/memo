@@ -18,6 +18,7 @@ export function ModelSidebar() {
     new Set(),
   );
   const [loadingRuntimes, setLoadingRuntimes] = useState(true);
+  const [catalogModels, setCatalogModels] = useState<string[]>([]);
   const runtimeModels = useRuntimeModels();
   const key = threadModelKey(activeAgent.id, activeThreadId);
   const saved = selections[key];
@@ -28,25 +29,29 @@ export function ModelSidebar() {
     [installedRuntimeIds],
   );
   const selectedRuntimeInstalled = installedRuntimeIds.has(selectedRuntime);
-  const models = useMemo(
-    () =>
-      selectedRuntimeInstalled
-        ? modelOptions(
-            selectedRuntime,
-            selectedModel,
-            runtimeModels[selectedRuntime],
-          ).filter((model) =>
-            model.toLowerCase().includes(search.trim().toLowerCase()),
-          )
-        : [],
-    [
-      runtimeModels,
-      search,
-      selectedModel,
-      selectedRuntime,
-      selectedRuntimeInstalled,
-    ],
-  );
+  const models = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const runtimeList = selectedRuntimeInstalled
+      ? modelOptions(
+          selectedRuntime,
+          selectedModel,
+          runtimeModels[selectedRuntime],
+        )
+      : [];
+    const catalogMatches = query
+      ? catalogModels.filter((id) => id.toLowerCase().includes(query))
+      : [];
+    return Array.from(
+      new Set([...runtimeList, ...catalogMatches]),
+    ).filter((model) => model.toLowerCase().includes(query));
+  }, [
+    catalogModels,
+    runtimeModels,
+    search,
+    selectedModel,
+    selectedRuntime,
+    selectedRuntimeInstalled,
+  ]);
 
   useEffect(() => {
     let current = true;
@@ -81,12 +86,29 @@ export function ModelSidebar() {
     };
   }, []);
 
+  useEffect(() => {
+    let current = true;
+    void window.desktopApi.models
+      .catalog()
+      .then((ids) => {
+        if (current) setCatalogModels(ids);
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, []);
+
   const selectModel = async (model: string) => {
     setUpdating(true);
     setError("");
     try {
       await updateAgentModel(activeAgent.id, model);
-      setSelection(key, { cli: selectedRuntime, model });
+      setSelection(key, {
+        cli: selectedRuntime,
+        model,
+        permissionMode: saved?.permissionMode,
+      });
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : "Could not change model.",
@@ -104,7 +126,11 @@ export function ModelSidebar() {
     try {
       const nextModel = runtimeModels[cli]?.[0] ?? option.defaultModel;
       await updateAgentRuntime(activeAgent.id, cli, nextModel);
-      setSelection(key, { cli, model: nextModel });
+      setSelection(key, {
+        cli,
+        model: nextModel,
+        permissionMode: saved?.permissionMode,
+      });
       setSearch("");
     } catch (reason) {
       setError(
@@ -116,7 +142,7 @@ export function ModelSidebar() {
   };
 
   return (
-    <aside className="h-full w-[380px] shrink-0 overflow-y-auto border-l border-border/60 bg-background/95 pt-14 backdrop-blur-xl">
+    <aside className="h-full w-[320px] shrink-0 overflow-y-auto border-l border-border/60 bg-background/95 pt-14 backdrop-blur-xl xl:w-[380px]">
       <div className="grid gap-3 p-3">
         <p className="px-1 text-[11px] text-muted-foreground">
           Changes apply immediately to {activeAgent.name} in every conversation.

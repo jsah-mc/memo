@@ -48,6 +48,28 @@ export async function checkGateway(): Promise<boolean> {
   }
 }
 
+let catalogCache: string[] | null = null;
+
+export async function fetchModelCatalog(): Promise<string[]> {
+  if (catalogCache) return catalogCache;
+  try {
+    const response = await fetch(`${GATEWAY_URL}/v1/models`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) return [];
+    const payload = (await response.json()) as {
+      data?: Array<{ id?: unknown }>;
+    };
+    const ids = (payload.data ?? [])
+      .map((item) => (typeof item.id === "string" ? item.id : ""))
+      .filter((id) => id.includes("/"));
+    catalogCache = ids;
+    return ids;
+  } catch {
+    return [];
+  }
+}
+
 export type ComposioConnection = {
   id?: string;
   toolkit?: unknown;

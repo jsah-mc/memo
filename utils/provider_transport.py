@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -24,6 +25,8 @@ PROVIDERS = {
     "xai": ("https://api.x.ai/v1", "XAI_API_KEY"),
     "groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY"),
     "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
+    "opencode": ("https://opencode.ai/inference/openai/v1", "OPENCODE_API_KEY"),
+    "opencode-go": ("https://opencode.ai/inference/go/openai/v1", "OPENCODE_API_KEY"),
 }
 
 
@@ -61,8 +64,12 @@ async def sse_events(response: httpx.Response) -> AsyncIterator[dict[str, Any]]:
 
 class ProviderTransport:
     def __init__(self, model: str, *, api_base: str | None = None):
-        self.provider, _, self.model = model.partition("/")
-        if not self.model:
+        # Accept both `provider/model` and `provider:model` (Hermes catalog form).
+        match = re.match(r"^(?P<provider>[^/:]+)[/:](?P<model>.+)$", model)
+        if match:
+            self.provider = match.group("provider").lower()
+            self.model = match.group("model")
+        else:
             self.provider, self.model = "openai", model
         self.api_base = api_base
 
@@ -76,7 +83,7 @@ class ProviderTransport:
             return {"x-goog-api-key": key}
         if self.provider not in PROVIDERS:
             raise ValueError(
-                f"Unsupported direct provider: {self.provider}. Use chatgpt, anthropic, openai, vercel, google, ollama, lmstudio, minimax, xai, groq, or openrouter."
+                f"Unsupported direct provider: {self.provider}. Use chatgpt, anthropic, openai, vercel, google, ollama, lmstudio, minimax, xai, groq, openrouter, opencode, or opencode-go."
             )
         key_name = PROVIDERS[self.provider][1]
         key = os.environ.get(key_name, "") if key_name else ""
@@ -206,9 +213,9 @@ class ProviderTransport:
                                 text = " ".join(p.get("text", "") for p in parts if "text" in p)
                                 if text:
                                     yield {"choices": [{"delta": {"content": text}}]}
-                else:
-                    async for event in source:
-                        yield event
+                    return
+                async for event in source:
+                    yield event
             finally:
                 await response.aclose()
                 await client.aclose()

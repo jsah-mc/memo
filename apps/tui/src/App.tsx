@@ -23,6 +23,7 @@ import {
   authorizeComposioToolkit,
   checkGateway,
   createAgent,
+  fetchModelCatalog,
   listComposioConnections,
   listComposioToolkits,
   openExternalUrl,
@@ -198,15 +199,18 @@ export default function App() {
     [bots, search],
   );
 
-  const modelOptions = useMemo(
-    () =>
+  const [catalogModels, setCatalogModels] = useState<string[]>([]);
+
+  const modelOptions = useMemo(() => {
+    const base =
       model &&
       !(CODEX_MODELS as readonly string[]).includes(model) &&
       !(PROVIDER_MODELS as readonly string[]).includes(model)
         ? [model, ...CODEX_MODELS, ...PROVIDER_MODELS]
-        : [...CODEX_MODELS, ...PROVIDER_MODELS],
-    [model],
-  );
+        : [...CODEX_MODELS, ...PROVIDER_MODELS];
+    const extra = catalogModels.filter((id) => !base.includes(id));
+    return extra.length ? [...base, ...extra] : base;
+  }, [model, catalogModels]);
 
   useEffect(() => {
     setCursor((current) => Math.min(current, entries.length - 1));
@@ -279,7 +283,12 @@ export default function App() {
       }
       if (cancelled) return;
       setGatewayOk(ok);
-      if (ok) void refreshApps();
+      if (ok) {
+        void refreshApps();
+        void fetchModelCatalog().then((ids) => {
+          if (!cancelled) setCatalogModels(ids);
+        });
+      }
       if (ok && !loadBots().some((bot) => bot.enabled)) {
         setSetupOpen(true);
       }
@@ -669,7 +678,7 @@ export default function App() {
               id: String(permission.id ?? ""),
               command: String(permission.command ?? ""),
               cwd: String(permission.cwd ?? ""),
-              kind: String(permission.kind ?? "shell_command"),
+              kind: String(permission.kind ?? "computer_control"),
               tool_call_id: callId || undefined,
             });
             setActivity({ face: "?", detail: "Waiting for permission…" });
