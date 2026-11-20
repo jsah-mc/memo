@@ -48,7 +48,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      - run: npm exec --yes --package=pnpm@11.20.0 -- pnpm install --frozen-lockfile
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
       - run: node --test scripts/tests/*.test.mjs
       - name: Typecheck all apps
         run: pnpm typecheck:all
